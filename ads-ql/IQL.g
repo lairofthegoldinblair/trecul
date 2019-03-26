@@ -340,6 +340,7 @@ conditionalExpression // Level (4)
 	| '>='^ 
 	| '<='^
 	| '<>'^
+	| '!='^
     | TK_LIKE^
     | TK_RLIKE^
 	) additiveExpression)?

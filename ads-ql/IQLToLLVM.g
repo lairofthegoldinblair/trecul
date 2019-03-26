@@ -201,6 +201,7 @@ expression[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMValueRef llvmVal,
     | ^(c='>=' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildCompare($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u, IQLToLLVMOpGE); })
     | ^(c='<=' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildCompare($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u, IQLToLLVMOpLE); })
     | ^(c='<>' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildCompare($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u, IQLToLLVMOpNE); })
+    | ^(c='!=' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildCompare($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u, IQLToLLVMOpNE); })
     | ^(TK_LIKE e1 = expression[$ctxt] e2 = expression[$ctxt] { IQLToLLVMNotImplemented(); })
     | ^(TK_RLIKE e1 = expression[$ctxt] e2 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildCompare($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $TK_RLIKE->u, IQLToLLVMOpRLike); })
     | ^(c='-' e1 = expression[$ctxt] (e2 = expression[$ctxt] { isBinary=1; })? { $llvmVal = isBinary ? IQLToLLVMBuildSub($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u) : IQLToLLVMBuildNegate($ctxt, e1.llvmVal, $e1.start->u, $c->u); })

@@ -212,6 +212,7 @@ expression[IQLTreeFactoryRef ctxt] returns [IQLExpressionRef e]
     | ^(t='>=' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildGreaterThanEquals($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t='<=' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildLessThanEquals($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t='<>' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildNotEquals($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
+    | ^(t='!>' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildNotEquals($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t=TK_LIKE e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildLike($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t=TK_RLIKE e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildRLike($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t='+' e1=expression[$ctxt] (e2=expression[$ctxt] { isBinary = 1; })? { $e = isBinary ? IQLBuildPlus($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)) : IQLBuildUnaryPlus($ctxt, e1, $t->getLine($t), $t->getCharPositionInLine($t)); })

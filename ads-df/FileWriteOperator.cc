@@ -152,20 +152,24 @@ RuntimeWriteOperator::~RuntimeWriteOperator()
 
 void RuntimeWriteOperator::start()
 {
-  // Are we compressing?
-  boost::filesystem::path p (getWriteType().mFile);
-  if (boost::algorithm::iequals(".gz", boost::filesystem::extension(p))) {
-    mCompressor = new ZLibCompress();
-  }
-  // Create directories if necessary before opening file.
-  if (!p.parent_path().empty()) {
-    boost::filesystem::create_directories(p.parent_path());
-  }
-  mFile = ::open(getWriteType().mFile.c_str(),
-		 O_WRONLY|O_CREAT|O_TRUNC,
-		 S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP);
-  if (mFile == -1) {
-    throw std::runtime_error("Couldn't create file");
+  if (boost::algorithm::equals(getWriteType().mFile, "-")) {
+    mFile = 0;
+  } else {
+    // Are we compressing?
+    boost::filesystem::path p (getWriteType().mFile);
+    if (boost::algorithm::iequals(".gz", boost::filesystem::extension(p))) {
+      mCompressor = new ZLibCompress();
+    }
+    // Create directories if necessary before opening file.
+    if (!p.parent_path().empty()) {
+      boost::filesystem::create_directories(p.parent_path());
+    }
+    mFile = ::open(getWriteType().mFile.c_str(),
+		   O_WRONLY|O_CREAT|O_TRUNC,
+		   S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP);
+    if (mFile == -1) {
+      throw std::runtime_error("Couldn't create file");
+    }
   }
   // Start a thread that will write
   mWriterThread = new boost::thread(boost::bind(&AsyncWriter<RuntimeWriteOperator>::run, 
@@ -227,7 +231,9 @@ void RuntimeWriteOperator::writeToHdfs(RecordBuffer input, bool isEOS)
       }    
     }
     // Clean close of file and file system
-    ::close(mFile);
+    if (mFile > 0) {
+      ::close(mFile);
+    }
     mFile = -1;
   }
 }
@@ -271,10 +277,10 @@ void RuntimeWriteOperator::onEvent(RuntimePort * port)
 
 void RuntimeWriteOperator::shutdown()
 {
-  if (mFile != -1) {
+  if (mFile > 0) {
     ::close(mFile);
-    mFile = -1;
   }
+  mFile = -1;
 }
 
 RuntimeOperator * RuntimeWriteOperatorType::create(RuntimeOperator::Services& services) const

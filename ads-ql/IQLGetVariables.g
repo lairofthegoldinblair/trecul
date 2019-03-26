@@ -111,6 +111,7 @@ expression[IQLGetVariablesContextRef ctxt]
     | ^('>=' expression[$ctxt] expression[$ctxt])
     | ^('<=' expression[$ctxt] expression[$ctxt])
     | ^('<>' expression[$ctxt] expression[$ctxt])
+    | ^('!=' expression[$ctxt] expression[$ctxt])
     | ^(TK_LIKE expression[$ctxt] expression[$ctxt])
     | ^(TK_RLIKE expression[$ctxt] expression[$ctxt])
     | ^('-' expression[$ctxt] (expression[$ctxt])? )
