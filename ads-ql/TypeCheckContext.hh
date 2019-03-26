@@ -45,6 +45,35 @@ class IQLToLLVMLValue;
 class RecordType;
 class RecordMemberList;
 
+class TypeCheckConfiguration
+{
+private:
+  bool mCaseInsensitive;
+public:
+  TypeCheckConfiguration(bool caseInsensitive=false)
+    :
+    mCaseInsensitive(caseInsensitive)
+  {
+  }
+
+  void caseInsensitive(bool val)
+  {
+    mCaseInsensitive = val;
+  }
+
+  bool caseInsensitive() const
+  {
+    return mCaseInsensitive;
+  }
+
+  // TODO: For the moment lets make this global.   
+  static TypeCheckConfiguration & get()
+  {
+    static TypeCheckConfiguration config;
+    return config;
+  }
+};
+
 class AliasedRecordType
 {
 private:
@@ -98,8 +127,12 @@ private:
   std::map<std::string, TreculSymbolTableEntry *> mUnprefixedNameLookup;
   // Sentinel value for detecting ambiguous unprefixed names.
   TreculSymbolTableEntry mAmbiguous;
+  // Is this symbol table case insensitive?
+  bool mCaseInsensitive;
+
+  std::string makeKey(const char * nm, const char * nm2) const;
 public:
-  TreculSymbolTable();
+  TreculSymbolTable(const TypeCheckConfiguration & typeCheckConfig);
   ~TreculSymbolTable();
   void clear();  
   TreculSymbolTableEntry * lookup(const char * nm, const char * nm2);
@@ -151,7 +184,8 @@ private:
 	    const std::vector<boost::dynamic_bitset<> >& masks);
 
 public:
-  TypeCheckContext(class DynamicRecordContext & recCtxt);
+  TypeCheckContext(const TypeCheckConfiguration & typeCheckConfig,
+		   class DynamicRecordContext & recCtxt);
 
   /**
    * Initialize type check context with a list of 
@@ -159,10 +193,12 @@ public:
    * mask arguments indicate which fields of each input struct
    * to include in the environment.
    */
-  TypeCheckContext(DynamicRecordContext & recCtxt,
+  TypeCheckContext(const TypeCheckConfiguration & typeCheckConfig,
+		   DynamicRecordContext & recCtxt,
 		   const std::vector<AliasedRecordType>& sources);
 
-  TypeCheckContext(DynamicRecordContext & recCtxt,
+  TypeCheckContext(const TypeCheckConfiguration & typeCheckConfig,
+		   DynamicRecordContext & recCtxt,
 		   const std::vector<AliasedRecordType>& sources,
 		   const std::vector<boost::dynamic_bitset<> >& masks);
 		   
@@ -173,7 +209,8 @@ public:
    * but when type checking the expressions outside the scope
    * of an aggregate function only the group by keys are available.
    */
-  TypeCheckContext(DynamicRecordContext & recCtxt,
+  TypeCheckContext(const TypeCheckConfiguration & typeCheckConfig,
+		   DynamicRecordContext & recCtxt,
 		   const RecordType * input,
 		   const std::vector<std::string>& groupKeys,
 		   bool isOlap);

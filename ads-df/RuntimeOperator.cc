@@ -2169,7 +2169,6 @@ void HashJoin::init(DynamicRecordContext & ctxt,
 		    const std::string& residual,
 		    const std::string& transfer)
 {
-  TypeCheckContext typeCheckCtxt(ctxt);
   std::vector<RecordMember> emptyMembers;
   RecordType emptyTy(emptyMembers);
   std::vector<const RecordType *> tableOnly;
@@ -2208,7 +2207,7 @@ void HashJoin::init(DynamicRecordContext & ctxt,
       const FieldType * probeType = mProbeInput->getMember(probeKeys[i]).GetType();
       const FieldType * tableType = mTableInput->getMember(tableKeys[i]).GetType();
       const FieldType * targetType = 
-	typeCheckCtxt.leastCommonTypeNullable(probeType, tableType);
+	TypeCheckContext::leastCommonTypeNullable(probeType, tableType);
       if (targetType == NULL) {
 	throw std::runtime_error((boost::format("Error generating conversion of"
 						"join key %1% to join key %2%") %

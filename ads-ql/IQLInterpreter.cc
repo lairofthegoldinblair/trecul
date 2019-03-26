@@ -1348,7 +1348,7 @@ void LLVMBase::InitializeLLVM()
 
   // Compile into an LLVM program
   mContext = new CodeGenerationContext();
-  mContext->createFunctionContext();
+  mContext->createFunctionContext(TypeCheckConfiguration::get());
 
 #if DECSUBST
   static unsigned numDecContextMembers(8);
@@ -2440,12 +2440,15 @@ public:
   void parseTransfer(const std::string& transfer);
   void parseUpdate(const std::string& transfer);
   void getFreeVariables(std::set<std::string>& freeVariables);
-  const RecordType * typeCheckTransfer(DynamicRecordContext & recCtxt,
+  const RecordType * typeCheckTransfer(const TypeCheckConfiguration & typeCheckConfig,
+				       DynamicRecordContext & recCtxt,
 				       const RecordType * source);
-  const RecordType * typeCheckTransfer(DynamicRecordContext & recCtxt,
+  const RecordType * typeCheckTransfer(const TypeCheckConfiguration & typeCheckConfig,
+				       DynamicRecordContext & recCtxt,
 				       const std::vector<AliasedRecordType>& sources,
 				       const std::vector<boost::dynamic_bitset<> >& masks);
-  void typeCheckUpdate(DynamicRecordContext & recCtxt,
+  void typeCheckUpdate(const TypeCheckConfiguration & typeCheckConfig,
+		       DynamicRecordContext & recCtxt,
 		       const std::vector<const RecordType *>& sources,
 		       const std::vector<boost::dynamic_bitset<> >& masks);
   pANTLR3_COMMON_TREE_NODE_STREAM getNodes() { return mNodes; }
@@ -2567,7 +2570,8 @@ void IQLParserStuff::getFreeVariables(std::set<std::string>& freeVariables)
   }
 }
 
-const RecordType * IQLParserStuff::typeCheckTransfer(DynamicRecordContext & recCtxt,
+const RecordType * IQLParserStuff::typeCheckTransfer(const TypeCheckConfiguration & typeCheckConfig,
+						     DynamicRecordContext & recCtxt,
 						     const RecordType * source)
 {
   // Create an appropriate context for type checking.  This requires associating the
@@ -2578,7 +2582,7 @@ const RecordType * IQLParserStuff::typeCheckTransfer(DynamicRecordContext & recC
   std::vector<boost::dynamic_bitset<> > masks;
   masks.resize(1);
   masks[0].resize(source->size(), true);
-  TypeCheckContext typeCheckContext(recCtxt, aliased, masks);
+  TypeCheckContext typeCheckContext(typeCheckConfig, recCtxt, aliased, masks);
 
   // Now pass through the type checker
   ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(mNodes));
@@ -2594,7 +2598,8 @@ const RecordType * IQLParserStuff::typeCheckTransfer(DynamicRecordContext & recC
 }
 
 const RecordType * 
-IQLParserStuff::typeCheckTransfer(DynamicRecordContext & recCtxt,
+IQLParserStuff::typeCheckTransfer(const TypeCheckConfiguration & typeCheckConfig,
+				  DynamicRecordContext & recCtxt,
 				  const std::vector<AliasedRecordType>& sources,
 				  const std::vector<boost::dynamic_bitset<> >& masks)
 
@@ -2602,7 +2607,7 @@ IQLParserStuff::typeCheckTransfer(DynamicRecordContext & recCtxt,
   // Create an appropriate context for type checking.  This requires associating the
   // input records with a name and then inserting all the members of the record type
   // with a symbol table.
-  TypeCheckContext typeCheckContext(recCtxt, sources, masks);
+  TypeCheckContext typeCheckContext(typeCheckConfig, recCtxt, sources, masks);
 
   // Now pass through the type checker
   ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(mNodes));
@@ -2617,7 +2622,8 @@ IQLParserStuff::typeCheckTransfer(DynamicRecordContext & recCtxt,
   return typeCheckContext.getOutputRecord();
 }
 
-void IQLParserStuff::typeCheckUpdate(DynamicRecordContext & recCtxt,
+void IQLParserStuff::typeCheckUpdate(const TypeCheckConfiguration & typeCheckConfig,
+				     DynamicRecordContext & recCtxt,
 				     const std::vector<const RecordType *>& sources,
 				     const std::vector<boost::dynamic_bitset<> >& masks)
 {
@@ -2629,7 +2635,7 @@ void IQLParserStuff::typeCheckUpdate(DynamicRecordContext & recCtxt,
     std::string nm ((boost::format("input%1%") % i).str());
     aliased.push_back(AliasedRecordType(nm, sources[i]));
   } 
-  TypeCheckContext typeCheckContext(recCtxt, aliased, masks);
+  TypeCheckContext typeCheckContext(typeCheckConfig, recCtxt, aliased, masks);
 
   // Now pass through the type checker
   ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(mNodes));
@@ -2690,8 +2696,9 @@ RecordTypeTransfer::RecordTypeTransfer(DynamicRecordContext& recCtxt, const std:
   mIsIdentity(false)
 {
   IQLParserStuff p;
+  const TypeCheckConfiguration & typeCheckConfig(TypeCheckConfiguration::get());
   p.parseTransfer(transfer);
-  mTarget = p.typeCheckTransfer(recCtxt, source);
+  mTarget = p.typeCheckTransfer(typeCheckConfig, recCtxt, source);
 
   // Create a valid code generation context based on the input and output record formats.
   InitializeLLVM();
@@ -2706,7 +2713,7 @@ RecordTypeTransfer::RecordTypeTransfer(DynamicRecordContext& recCtxt, const std:
     // Save the name
     funNames.push_back(mFunName + (i ? "&move" : "&copy"));
     // Clean up the symbol table from the last code gen
-    mContext->reinitializeForTransfer();
+    mContext->reinitializeForTransfer(typeCheckConfig);
     // Create the function object with its arguments (these go into the
     // new freshly created symbol table).
     ConstructFunction(funNames.back(), argumentNames);
@@ -2865,7 +2872,8 @@ RecordTypeTransfer2::RecordTypeTransfer2(DynamicRecordContext& recCtxt,
   // Create an appropriate context for type checking.  This requires associating the
   // input records with a name and then inserting all the members of the record type
   // with a symbol table.
-  TypeCheckContext typeCheckContext(recCtxt, mSources);
+  const TypeCheckConfiguration & typeCheckConfig(TypeCheckConfiguration::get());
+  TypeCheckContext typeCheckContext(typeCheckConfig, recCtxt, mSources);
 
   // Now pass through the type checker
   ANTLR3AutoPtr<ANTLR3_COMMON_TREE_NODE_STREAM> nodes(antlr3CommonTreeNodeStreamNewTree(parserRet.tree, ANTLR3_SIZE_HINT));
@@ -2899,7 +2907,7 @@ RecordTypeTransfer2::RecordTypeTransfer2(DynamicRecordContext& recCtxt,
     // Save the name
     funNames.push_back(mFunName + (i ? "&move" : "&copy"));
     // Clean up the symbol table from the last code gen
-    mContext->reinitializeForTransfer();
+    mContext->reinitializeForTransfer(typeCheckConfig);
     // Create the function object with its arguments (these go into the
     // new freshly created symbol table).
     ConstructFunction(funNames.back(), argumentNames);
@@ -3091,7 +3099,7 @@ void RecordTypeInPlaceUpdate::init(class DynamicRecordContext& recCtxt,
 
   IQLParserStuff p;
   p.parseUpdate(statements);
-  p.typeCheckUpdate(recCtxt, sources, masks);
+  p.typeCheckUpdate(TypeCheckConfiguration::get(), recCtxt, sources, masks);
 
   InitializeLLVM();
 
@@ -3253,7 +3261,7 @@ void RecordTypeFunction::init(DynamicRecordContext& recCtxt)
   // input record with a name and then inserting all the members of the record type
   // with a symbol table.
   // TODO: check for name ambiguity and resolve.
-  TypeCheckContext typeCheckContext(recCtxt, mSources);
+  TypeCheckContext typeCheckContext(TypeCheckConfiguration::get(), recCtxt, mSources);
 
   ANTLR3AutoPtr<ANTLR3_COMMON_TREE_NODE_STREAM> nodes(antlr3CommonTreeNodeStreamNewTree(parserRet.tree, ANTLR3_SIZE_HINT));
   
@@ -3406,7 +3414,7 @@ IQLRecordTypeBuilder::IQLRecordTypeBuilder(DynamicRecordContext& ctxt,
   // std::cout << parserRet.tree->toStringTree(parserRet.tree)->chars << std::endl;
 
   // Now pass through builder
-  TypeCheckContext typeCheckContext(ctxt);
+  TypeCheckContext typeCheckContext(TypeCheckConfiguration::get(), ctxt);
   IQLRecordTypeContextRef gc = wrap(this);
   ANTLR3AutoPtr<ANTLR3_COMMON_TREE_NODE_STREAM> nodes(antlr3CommonTreeNodeStreamNewTree(parserRet.tree, ANTLR3_SIZE_HINT));
   ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(nodes.get()));
@@ -3441,7 +3449,8 @@ RecordTypeAggregate::RecordTypeAggregate(DynamicRecordContext& recCtxt,
   // Create an appropriate context for type checking.  This requires associating the
   // input record with a name and then inserting all the members of the record type
   // with a symbol table.
-  TypeCheckContext typeCheckContext(recCtxt, mSource, groupKeys, isOlap);
+  const TypeCheckConfiguration & typeCheckConfig(TypeCheckConfiguration::get());
+  TypeCheckContext typeCheckContext(typeCheckConfig, recCtxt, mSource, groupKeys, isOlap);
 
   // Now pass through the type checker
   ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(p.getNodes()));
@@ -3469,7 +3478,7 @@ RecordTypeAggregate::RecordTypeAggregate(DynamicRecordContext& recCtxt,
  mContext->saveAggregateContext(&mContext->Update);
 
  // Reinitialize and create initializer.
- mContext->createFunctionContext();
+ mContext->createFunctionContext(typeCheckConfig);
  createTransferFunction(mInitializeFun, mSource, mAggregate);
 
  // Generate code to initialize group by keys (nothing
@@ -3491,7 +3500,7 @@ RecordTypeAggregate::RecordTypeAggregate(DynamicRecordContext& recCtxt,
  mContext->saveAggregateContext(&mContext->Initialize);
 
  // Reinitialize and create transfer
- mContext->createFunctionContext();
+ mContext->createFunctionContext(typeCheckConfig);
  if (!isOlap) {
    createTransferFunction(mTransferFun, mAggregate, mTarget);
  } else {
@@ -3577,7 +3586,7 @@ void RecordTypeAggregate::init(class DynamicRecordContext& recCtxt,
   // First parse all into AST
   IQLParserStuff initParser;
   initParser.parseTransfer(initializer);
-  mAggregate = initParser.typeCheckTransfer(recCtxt, source);
+  mAggregate = initParser.typeCheckTransfer(TypeCheckConfiguration::get(), recCtxt, source);
   // TODO: Add type checking phase to update
   IQLParserStuff updateParser;
   updateParser.parseUpdate(update);
@@ -3590,7 +3599,7 @@ void RecordTypeAggregate::init(class DynamicRecordContext& recCtxt,
   for(std::size_t i=0; i<groupKeys.size(); i++) {
     masks[1].set(i, false);
   }
-  updateParser.typeCheckUpdate(recCtxt, updateSources, masks);
+  updateParser.typeCheckUpdate(TypeCheckConfiguration::get(), recCtxt, updateSources, masks);
   //
   // Code gen time
   //
@@ -3640,7 +3649,7 @@ void RecordTypeAggregate::init(class DynamicRecordContext& recCtxt,
   if (!isOlap) {
     defaultTransfer = "input.*";
     transferParser.parseTransfer(defaultTransfer);
-    mTarget = transferParser.typeCheckTransfer(recCtxt, mAggregate);
+    mTarget = transferParser.typeCheckTransfer(TypeCheckConfiguration::get(), recCtxt, mAggregate);
     createTransferFunction(mTransferFun, mAggregate, mTarget);
   } else {
     std::stringstream xfer;
@@ -3670,7 +3679,7 @@ void RecordTypeAggregate::init(class DynamicRecordContext& recCtxt,
 
     defaultTransfer = xfer.str();
     transferParser.parseTransfer(defaultTransfer);
-    mTarget = transferParser.typeCheckTransfer(recCtxt, types, masks);
+    mTarget = transferParser.typeCheckTransfer(TypeCheckConfiguration::get(), recCtxt, types, masks);
     createTransferFunction(mTransferFun, updateSources, masks, mTarget);
     mContext->IQLMoveSemantics = 0;
   }

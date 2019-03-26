@@ -259,20 +259,6 @@ public:
   }
 };
 
-class SymbolTable
-{
-private:
-  typedef std::map<std::string, IQLToLLVMLValue *> table_type;
-  table_type mSymbols;
-public:
-  SymbolTable();
-  ~SymbolTable();
-  IQLToLLVMLValue * lookup(const char * nm) const;
-  void add(const char * nm, IQLToLLVMLValue * value);
-  void clear();
-  void dump() const;
-};
-
 class CodeGenerationFunctionContext {
 public:
   LLVMBuilderRef Builder;
@@ -522,7 +508,7 @@ public:
    * Initialize the members of code generation that correspond
    * to the function context.
    */
-  void reinitializeForTransfer();
+  void reinitializeForTransfer(const class TypeCheckConfiguration & typeCheckConfig);
 
   /**
    * Reinitialize some state for compiling a new function.
@@ -534,7 +520,7 @@ public:
    * Initialize the members of code generation that correspond
    * to the function context.
    */
-  void createFunctionContext();
+  void createFunctionContext(const class TypeCheckConfiguration & typeCheckConfig);
 
   /**
    * Dump contents of symbol table.

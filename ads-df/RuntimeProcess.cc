@@ -679,6 +679,7 @@ int PlanRunner::run(int argc, char ** argv)
   po::options_description desc("Allowed options");
   desc.add_options()
     ("help", "produce help message")
+    ("case-insensitive", "should identifiers be case insensitive")
     ("compile", "generate dataflow plan but don't run")
     ("serial", po::value<int32_t>(), "specific partition against which to run a dataflow")
     ("partitions", po::value<int32_t>(), "number of partitions for the flow")
@@ -734,6 +735,10 @@ int PlanRunner::run(int argc, char ** argv)
     return 1;    
   }
 
+  if (vm.count("case-insensitive")) {
+    TypeCheckConfiguration::get().caseInsensitive(true);
+  }
+  
   if (vm.count("compile")) {
     std::string inputFile(vm["file"].as<std::string>());
     int32_t partitions=1;

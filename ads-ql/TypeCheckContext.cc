@@ -32,6 +32,7 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <boost/algorithm/string/case_conv.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/regex.hpp>
@@ -91,7 +92,9 @@ IQLToLLVMLValue * TreculSymbolTableEntry::getValue() const
   return mValue;;
 }
 
-TreculSymbolTable::TreculSymbolTable()
+TreculSymbolTable::TreculSymbolTable(const TypeCheckConfiguration & typeCheckConfig)
+  :
+  mCaseInsensitive(typeCheckConfig.caseInsensitive())
 {
 }
 
@@ -112,10 +115,8 @@ void TreculSymbolTable::clear()
 
 TreculSymbolTableEntry * TreculSymbolTable::lookup(const char * nm, const char * nm2)
 {
+  std::string key(makeKey(nm, nm2));
   if (nm2) {
-    std::string key(nm);
-    key += ".";
-    key += nm2;
     table_const_iterator it = mNameLookup.find(key);
     if (it == mNameLookup.end()) {
       std::string fields;
@@ -130,7 +131,7 @@ TreculSymbolTableEntry * TreculSymbolTable::lookup(const char * nm, const char *
     }    
     return it->second;
   } else {
-    table_const_iterator it = mUnprefixedNameLookup.find(nm);
+    table_const_iterator it = mUnprefixedNameLookup.find(key);
     if (it == mUnprefixedNameLookup.end()) {
       std::string fields;
       for(table_const_iterator it = mNameLookup.begin();
@@ -151,14 +152,13 @@ TreculSymbolTableEntry * TreculSymbolTable::lookup(const char * nm, const char *
 void TreculSymbolTable::add(const char * nm, const char * nm2, 
 			    const FieldType * ft, IQLToLLVMLValue * val)
 {
-  std::string key(nm);
-  if (nm2 != NULL) {
-    key += ".";
-    key += nm2;
-  }
+  std::string key(makeKey(nm, nm2));
   TreculSymbolTableEntry * e =  new TreculSymbolTableEntry(ft, val);
   mNameLookup[key] = e;
   std::string unprefixed(nm2 ? nm2 : nm);
+  if (mCaseInsensitive) {
+    boost::to_lower(unprefixed);
+  }
   table_iterator it = mUnprefixedNameLookup.find(unprefixed);
   if (it != mUnprefixedNameLookup.end()) {
     it->second = &mAmbiguous;
@@ -182,10 +182,7 @@ void TreculSymbolTable::add(const char * nm, const char * nm2,
 bool TreculSymbolTable::contains(const char * nm, const char * nm2) const
 {
   if (nm2) {
-    std::string key(nm);
-    key += ".";
-    key += nm2;
-    table_const_iterator it = mNameLookup.find(key);
+    table_const_iterator it = mNameLookup.find(makeKey(nm, nm2));
     return (it != mNameLookup.end());
   } else {
     table_const_iterator it = mUnprefixedNameLookup.find(nm);
@@ -193,31 +190,24 @@ bool TreculSymbolTable::contains(const char * nm, const char * nm2) const
   }
 }
 
-// void IQLSymbolTableAdd(TreculSymbolTable * symTable, const char * name, IQLFieldTypeRef value)
-// {
-//   symTable->add(name, NULL, unwrap(value));
-// }
+std::string TreculSymbolTable::makeKey(const char * nm, const char * nm2) const
+{
+  std::string key(nm);
+  if (nm2 != NULL) {
+    key += ".";
+    key += nm2;
+  }
+  if (mCaseInsensitive) {
+    boost::to_lower(key);
+  }
+  return key;
+}
 
-// IQLFieldTypeRef IQLSymbolTableLookup(TreculSymbolTable * symTable, const char * name)
-// {
-//   std::map<std::string, IQLFieldTypeRef> * tab = reinterpret_cast<std::map<std::string, IQLFieldTypeRef> *>(symTable);
-//   std::map<std::string, IQLFieldTypeRef>::const_iterator it = tab->find(name);
-//   if (tab->end() == it) {
-//     std::string fields;
-//     for(std::map<std::string, IQLFieldTypeRef>::const_iterator it = tab->begin();
-// 	it != tab->end();
-// 	++it) {
-//       if (fields.size()) fields += ", ";
-//       fields += it->first;
-//     }
-//     throw std::runtime_error((boost::format("Undefined variable: %1%.  Available fields = (%2%)") % name % fields).str());
-//     //return NULL;
-//   }
-//   return it->second;
-// }
-
-TypeCheckContext::TypeCheckContext(DynamicRecordContext& recCtxt)
+TypeCheckContext::TypeCheckContext(const TypeCheckConfiguration & typeCheckConfig,
+				   DynamicRecordContext& recCtxt)
   :
+  mSymbolTable(typeCheckConfig),
+  mAggregateTable(typeCheckConfig),
   mContext(recCtxt),
   mOutputRecord(NULL),
   mTypeCheckSymbolTable(NULL),
@@ -229,10 +219,13 @@ TypeCheckContext::TypeCheckContext(DynamicRecordContext& recCtxt)
 {
 }
 
-TypeCheckContext::TypeCheckContext(DynamicRecordContext & recCtxt,
+TypeCheckContext::TypeCheckContext(const TypeCheckConfiguration & typeCheckConfig,
+				   DynamicRecordContext & recCtxt,
 				   const std::vector<AliasedRecordType>& sources,
 				   const std::vector<boost::dynamic_bitset<> >& masks)
   :
+  mSymbolTable(typeCheckConfig),
+  mAggregateTable(typeCheckConfig),
   mContext(recCtxt),
   mOutputRecord(NULL),
   mTypeCheckSymbolTable(NULL),
@@ -245,9 +238,12 @@ TypeCheckContext::TypeCheckContext(DynamicRecordContext & recCtxt,
   init(sources, masks);
 }
 
-TypeCheckContext::TypeCheckContext(DynamicRecordContext & recCtxt,
+TypeCheckContext::TypeCheckContext(const TypeCheckConfiguration & typeCheckConfig,
+				   DynamicRecordContext & recCtxt,
 				   const std::vector<AliasedRecordType>& sources)
   :
+  mSymbolTable(typeCheckConfig),
+  mAggregateTable(typeCheckConfig),
   mContext(recCtxt),
   mOutputRecord(NULL),
   mTypeCheckSymbolTable(NULL),
@@ -265,11 +261,14 @@ TypeCheckContext::TypeCheckContext(DynamicRecordContext & recCtxt,
   init(sources, masks);
 }
 
-TypeCheckContext::TypeCheckContext(DynamicRecordContext & recCtxt,
+TypeCheckContext::TypeCheckContext(const TypeCheckConfiguration & typeCheckConfig,
+				   DynamicRecordContext & recCtxt,
 				   const RecordType * input,
 				   const std::vector<std::string>& groupKeys,
 				   bool isOlap)
   :
+  mSymbolTable(typeCheckConfig),
+  mAggregateTable(typeCheckConfig),
   mContext(recCtxt),
   mOutputRecord(NULL),
   mTypeCheckSymbolTable(NULL),

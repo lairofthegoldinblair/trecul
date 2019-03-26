@@ -819,11 +819,12 @@ BOOST_AUTO_TEST_CASE(testRecordTypeBuilder)
   BOOST_CHECK(rt->hasMember("h"));
 }
 
-BOOST_AUTO_TEST_CASE(testTreculSymbolTable)
+void testTreculSymbolTableDriver(bool caseInsensitive)
 {
   DynamicRecordContext ctxt;
   const FieldType * ft = CharType::Get(ctxt, 6);
-  TreculSymbolTable st;
+  TypeCheckConfiguration typeCheckConfig(caseInsensitive);
+  TreculSymbolTable st(typeCheckConfig);
   BOOST_CHECK(!st.contains("r1", "f1"));
   BOOST_CHECK(!st.contains("r1", "f2"));
   BOOST_CHECK(!st.contains("r2", "f1"));
@@ -839,6 +840,9 @@ BOOST_AUTO_TEST_CASE(testTreculSymbolTable)
   }
   st.add("r1", "f1", ft);
   BOOST_CHECK(st.contains("r1", "f1"));
+  BOOST_CHECK_EQUAL(caseInsensitive, st.contains("R1", "f1"));
+  BOOST_CHECK_EQUAL(caseInsensitive, st.contains("r1", "F1"));
+  BOOST_CHECK_EQUAL(caseInsensitive, st.contains("R1", "F1"));
   BOOST_CHECK(!st.contains("r1", "f2"));
   BOOST_CHECK(!st.contains("r2", "f1"));
   BOOST_CHECK(NULL != st.lookup("r1", "f1"));
@@ -863,6 +867,16 @@ BOOST_AUTO_TEST_CASE(testTreculSymbolTable)
   BOOST_CHECK(NULL != st.lookup("r1", "f2"));
   BOOST_CHECK(NULL != st.lookup("f2", NULL));
   BOOST_CHECK(NULL != st.lookup("r2", "f1"));
+}
+
+BOOST_AUTO_TEST_CASE(testTreculSymbolTableCaseSensitive)
+{
+  testTreculSymbolTableDriver(false);
+}
+
+BOOST_AUTO_TEST_CASE(testTreculSymbolTableCaseInsensitive)
+{
+  testTreculSymbolTableDriver(true);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)

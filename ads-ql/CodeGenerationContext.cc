@@ -231,57 +231,6 @@ bool IQLToLLVMLocal::isNullable() const
   return mNullBit != NULL;
 }
 
-SymbolTable::SymbolTable()
-{
-}
-
-SymbolTable::~SymbolTable()
-{
-  for(table_type::iterator it = mSymbols.begin();
-      it != mSymbols.end();
-      ++it) {
-    delete it->second;
-  }
-}
-
-IQLToLLVMLValue * SymbolTable::lookup(const char * nm) const
-{
-  table_type::const_iterator it = mSymbols.find(nm);
-  if (it == mSymbols.end() )
-    return NULL;
-  else
-    return it->second;
-}
-
-void SymbolTable::add(const char * nm, IQLToLLVMLValue * value)
-{
-  // Don't bother worrying about overwriting a symbol table entry
-  // this should be safe by virtue of type check. 
-  // TODO: We shouldn't even be managing a symbol table during
-  // code generation all names should be resolved during type
-  // checking.
-  // table_type::const_iterator it = mSymbols.find(nm);
-  // if (it != mSymbols.end() )
-  //   throw std::runtime_error((boost::format("Variable %1% already defined")
-  // 			      % nm).str());
-  mSymbols[nm] = value;
-}
-
-void SymbolTable::clear()
-{
-  mSymbols.clear();
-}
-
-void SymbolTable::dump() const
-{
-  // for(table_type::const_iterator it = tab.begin();
-  //     it != tab.end();
-  //     ++it) {
-  //   std::cerr << it->first.c_str() << ":";
-  //   llvm::unwrap(unwrap(it->second)->getValue())->dump();
-  // }
-}
-
 CodeGenerationFunctionContext::CodeGenerationFunctionContext()
   :
   Builder(NULL),
@@ -432,11 +381,11 @@ llvm::Value * CodeGenerationContext::getContextArgumentRef()
   return lookupValue("__DecimalContext__", NULL)->getValue();
 }
 
-void CodeGenerationContext::reinitializeForTransfer()
+void CodeGenerationContext::reinitializeForTransfer(const TypeCheckConfiguration & typeCheckConfig)
 {
   delete (local_cache *) AllocaCache;
   delete mSymbolTable;
-  mSymbolTable = new TreculSymbolTable();
+  mSymbolTable = new TreculSymbolTable(typeCheckConfig);
   AllocaCache = new local_cache();
 }
 
@@ -448,10 +397,10 @@ void CodeGenerationContext::reinitialize()
   unwrap(IQLRecordArguments)->clear();
 }
 
-void CodeGenerationContext::createFunctionContext()
+void CodeGenerationContext::createFunctionContext(const TypeCheckConfiguration & typeCheckConfig)
 {
   LLVMBuilder = LLVMCreateBuilderInContext(LLVMContext);
-  mSymbolTable = new TreculSymbolTable();
+  mSymbolTable = new TreculSymbolTable(typeCheckConfig);
   LLVMFunction = NULL;
   IQLRecordArguments = wrap(new std::map<std::string, std::pair<std::string, const RecordType*> >());
   IQLOutputRecord = NULL;
