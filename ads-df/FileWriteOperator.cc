@@ -153,7 +153,7 @@ RuntimeWriteOperator::~RuntimeWriteOperator()
 void RuntimeWriteOperator::start()
 {
   if (boost::algorithm::equals(getWriteType().mFile, "-")) {
-    mFile = 0;
+    mFile = STDOUT_FILENO;
   } else {
     // Are we compressing?
     boost::filesystem::path p (getWriteType().mFile);
@@ -231,7 +231,7 @@ void RuntimeWriteOperator::writeToHdfs(RecordBuffer input, bool isEOS)
       }    
     }
     // Clean close of file and file system
-    if (mFile > 0) {
+    if (mFile != STDOUT_FILENO) {
       ::close(mFile);
     }
     mFile = -1;
@@ -277,7 +277,7 @@ void RuntimeWriteOperator::onEvent(RuntimePort * port)
 
 void RuntimeWriteOperator::shutdown()
 {
-  if (mFile > 0) {
+  if (mFile != STDOUT_FILENO) {
     ::close(mFile);
   }
   mFile = -1;
