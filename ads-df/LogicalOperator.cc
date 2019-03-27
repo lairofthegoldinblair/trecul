@@ -230,11 +230,24 @@ bool LogicalOperator::getBooleanValue(PlanCheckContext& log,
 {
   try {
     const std::string & s(boost::get<std::string>(p.Value));
-    return boost::algorithm::iequals(s, "true");
+    if (boost::algorithm::iequals(s, "true")) {
+      return true;
+    } else if (boost::algorithm::iequals(s, "false")) {
+      return false;
+    } else {
+      log.logError(*this, p, "Expected boolean argument type with valid values 'true' and 'false'");
+    }
   } catch(boost::bad_get& e) {
-    log.logError(*this, p, "Expected boolean argument type with "
-		 "value of \"true\" or \"false\"");
+    try {
+      int32_t val = boost::get<int32_t>(p.Value);
+      if (val != 0 && val != 1) {
+	log.logError(*this, p, "Expected boolean argument type with valid values 0 and 1");
+      }
+      return val == 1;
+    } catch (boost::bad_get& e) {
+    }
   }
+  log.logError(*this, p, "Expected boolean argument type with valid values 'true', 'false', 0 and 1");
   return false;
 }
 
