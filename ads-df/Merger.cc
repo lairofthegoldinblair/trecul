@@ -707,13 +707,17 @@ void LogicalFileWrite::check(PlanCheckContext& ctxt)
       mConnect = getStringValue(ctxt, *it);
     } else if (it->equals("file")) {
       mFile = getStringValue(ctxt, *it);
-    } else if (it->equals("format") && getBooleanValue(ctxt, *it)) {
-      buildHeader(true);
+    } else if (it->equals("format")) {
+      if (getBooleanValue(ctxt, *it)) {
+	buildHeader(true);
+      }
     } else if (it->equals("formatfile")) {
       buildHeader(true);
       mHeaderFile = getStringValue(ctxt, *it);
-    } else if (it->equals("header") && getBooleanValue(ctxt, *it)) {
-      buildHeader(false);
+    } else if (it->equals("header")) {
+      if (getBooleanValue(ctxt, *it)) {
+	buildHeader(false);
+      }
     } else if (it->equals("headerfile")) {
       buildHeader(false);
       mHeaderFile = getStringValue(ctxt, *it);
