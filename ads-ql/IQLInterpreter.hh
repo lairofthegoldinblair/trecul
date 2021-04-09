@@ -92,9 +92,6 @@ public:
 
 class LLVMBase
 {
-private:
-  llvm::ExecutionEngine * TheExecutionEngine;
-
 protected:
   class CodeGenerationContext * mContext;
   llvm::legacy::FunctionPassManager * mFPM;

@@ -32,6 +32,7 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <arpa/inet.h>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -1091,21 +1092,23 @@ extern "C" boost::posix_time::ptime utc_timestamp() {
 
 extern "C" int64_t unix_timestamp(boost::posix_time::ptime t)
 {
-  // TODO: Should make a way of setting the ambient time zone
-  typedef boost::date_time::local_adjustor<boost::posix_time::ptime, -5, 
-    boost::posix_time::us_dst> us_eastern;
+  // // TODO: Should make a way of setting the ambient time zone
+  // typedef boost::date_time::local_adjustor<boost::posix_time::ptime, -5, 
+  //   boost::posix_time::us_dst> us_eastern;
   boost::posix_time::ptime unixZero = boost::posix_time::from_time_t(0); 
-  boost::posix_time::ptime utcTime = us_eastern::local_to_utc(t);
-  return (utcTime - unixZero).total_seconds();
+  // boost::posix_time::ptime utcTime = us_eastern::local_to_utc(t);
+  return (t - unixZero).total_seconds();
+  // return (t - unixZero).total_seconds();
 }
 
 extern "C" boost::posix_time::ptime from_unixtime(int64_t unixTime)
 {
   // TODO: Should make a way of setting the ambient time zone
-  typedef boost::date_time::local_adjustor<boost::posix_time::ptime, -5, 
-    boost::posix_time::us_dst> us_eastern;
+  // typedef boost::date_time::local_adjustor<boost::posix_time::ptime, -5, 
+  //   boost::posix_time::us_dst> us_eastern;
   boost::posix_time::ptime utcTime = boost::posix_time::from_time_t(unixTime);
-  return us_eastern::utc_to_local(utcTime);
+  // return us_eastern::utc_to_local(utcTime);
+  return utcTime;
 }
 
 extern "C" boost::posix_time::ptime datetime_add_second(boost::posix_time::ptime t,
@@ -1168,6 +1171,82 @@ extern "C" boost::gregorian::date date_add_year(boost::gregorian::date t,
   return t + boost::gregorian::years(units);
 }
 
+static const unsigned char v4MappedPrefix[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF };
+extern "C" void InternalIPAddress(const char * lhs, 
+				  Varchar * result,
+				  InterpreterContext * ctxt) {
+  const uint8_t * octets = (const uint8_t *) lhs;
+  char buf[INET6_ADDRSTRLEN];
+  if (memcmp(lhs, v4MappedPrefix, sizeof(v4MappedPrefix)) == 0) {
+    snprintf(buf, sizeof(buf), "%u.%u.%u.%u", octets[12], octets[13], octets[14], octets[15]);
+  } else {
+    const char * result = ::inet_ntop(AF_INET6, (struct in6_addr *) lhs, buf, sizeof(buf));
+    if (result == 0) {
+      buf[0] = 0;
+    }
+  }
+  copyFromString(&buf[0], result, ctxt);
+}
+
+extern "C" void InternalParseIPAddress(const Varchar * lhs,
+				       char * result,
+				       InterpreterContext * ctxt) {
+  struct in_addr in4;
+  int ret = ::inet_pton(AF_INET, lhs->c_str(), &in4);
+  if (ret == 1) {
+    memcpy(&result[0], &v4MappedPrefix[0], 12);
+    memcpy(&result[12], &in4, 4);
+  } else {
+    ret = ::inet_pton(AF_INET6, lhs->c_str(), result);
+    if (1 != ret) {
+      memset(result, 0, 16);
+    }
+  }
+}
+
+static void fixup_prefix_length(const char * ip, int32_t & prefix_length)
+{
+  if (prefix_length > 128) {
+    prefix_length = 128;
+  }
+  if (prefix_length < 0) {
+    prefix_length = 0;
+  }
+  if (prefix_length <= 32 && memcmp(ip, v4MappedPrefix, sizeof(v4MappedPrefix)) == 0) {
+    // For V4 address make the prefix relative to 32 bits
+    prefix_length += 96;
+  }
+}
+
+extern "C" void InternalTruncateIPAddress(const char * ip, 
+					  int32_t prefix_length,
+					  char * result,
+					  InterpreterContext * ctxt) {
+  fixup_prefix_length(ip, prefix_length);
+  memcpy(result, ip, 16);
+  // Early bytes can stay as they are  
+  int i = prefix_length / 8;
+  if (prefix_length % 8 != 0) {
+    // Middle partial byte has to be dealt with
+    result[i] = result[i] & 0xFF << (8 - (prefix_length % 8));
+    i++;
+  }
+  
+  // Later bytes get zeroed
+  if (i < 16) memset(&result[i], 0, 16-i);
+}
+
+extern "C" int32_t InternalIPAddressAddrBlockMatch(const char * prefix_ip, 
+						   int32_t prefix_length,
+						   const char * ip) {
+  fixup_prefix_length(prefix_ip, prefix_length);
+  char zeroed_ip[16];
+  char zeroed_prefix_ip[16];
+  InternalTruncateIPAddress(prefix_ip, prefix_length, zeroed_prefix_ip, nullptr);
+  InternalTruncateIPAddress(ip, prefix_length, zeroed_ip, nullptr);
+  return 0 == memcmp(zeroed_prefix_ip, zeroed_ip, 16);
+}
+
 extern "C" void InternalArrayException() {
   throw std::runtime_error("Array Bounds Exception");
 }
@@ -1205,7 +1284,6 @@ public:
 
 LLVMBase::LLVMBase()
   :
-  TheExecutionEngine(NULL),
   mContext(NULL),
   mFPM(NULL)
 {
@@ -1213,13 +1291,8 @@ LLVMBase::LLVMBase()
 
 LLVMBase::~LLVMBase()
 {
-  bool hasEE = (TheExecutionEngine != NULL);
   delete mFPM;
-  delete TheExecutionEngine;
   if (mContext) {
-    if (hasEE) {
-      mContext->disownModule();
-    }
     delete mContext;
     mContext = NULL;
   }
@@ -2057,6 +2130,56 @@ void LLVMBase::InitializeLLVM()
   libFunVal = ::LoadAndValidateExternalFunction(*this, "exp", funTy);
 
   numArguments = 0;
+  argumentTypes[numArguments++] = LLVMDoubleTypeInContext(mContext->LLVMContext);
+  funTy = LLVMFunctionType(LLVMDoubleTypeInContext(mContext->LLVMContext), &argumentTypes[0], numArguments, 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "sin", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = LLVMDoubleTypeInContext(mContext->LLVMContext);
+  funTy = LLVMFunctionType(LLVMDoubleTypeInContext(mContext->LLVMContext), &argumentTypes[0], numArguments, 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "cos", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = LLVMDoubleTypeInContext(mContext->LLVMContext);
+  funTy = LLVMFunctionType(LLVMDoubleTypeInContext(mContext->LLVMContext), &argumentTypes[0], numArguments, 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "asin", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = LLVMDoubleTypeInContext(mContext->LLVMContext);
+  funTy = LLVMFunctionType(LLVMDoubleTypeInContext(mContext->LLVMContext), &argumentTypes[0], numArguments, 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "acos", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = LLVMPointerType(LLVMInt8TypeInContext(mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = LLVMPointerType(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = LLVMFunctionType(LLVMVoidTypeInContext(mContext->LLVMContext), &argumentTypes[0], numArguments, 0);
+  LoadAndValidateExternalFunction("ip_address", "InternalIPAddress", llvm::unwrap(funTy));
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = LLVMPointerType(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = LLVMPointerType(LLVMInt8TypeInContext(mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = LLVMFunctionType(LLVMVoidTypeInContext(mContext->LLVMContext), &argumentTypes[0], numArguments, 0);
+  LoadAndValidateExternalFunction("parse_ip_address", "InternalParseIPAddress", llvm::unwrap(funTy));
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = LLVMPointerType(LLVMInt8TypeInContext(mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = LLVMInt32TypeInContext(mContext->LLVMContext);
+  argumentTypes[numArguments++] = LLVMPointerType(LLVMInt8TypeInContext(mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = LLVMFunctionType(LLVMVoidTypeInContext(mContext->LLVMContext), &argumentTypes[0], numArguments, 0);
+  LoadAndValidateExternalFunction("truncate_ip_address", "InternalTruncateIPAddress", llvm::unwrap(funTy));
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = LLVMPointerType(LLVMInt8TypeInContext(mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = LLVMInt32TypeInContext(mContext->LLVMContext);
+  argumentTypes[numArguments++] = LLVMPointerType(LLVMInt8TypeInContext(mContext->LLVMContext), 0);
+  // argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = LLVMFunctionType(LLVMInt32TypeInContext(mContext->LLVMContext), &argumentTypes[0], numArguments, 0);
+  LoadAndValidateExternalFunction("cidr_ip_address_match", "InternalIPAddressAddrBlockMatch", llvm::unwrap(funTy));
+
+  numArguments = 0;
   funTy = LLVMFunctionType(LLVMVoidTypeInContext(mContext->LLVMContext), &argumentTypes[0], numArguments, 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalArrayException", funTy);
 
@@ -2069,10 +2192,6 @@ void LLVMBase::InitializeLLVM()
   llvm::EngineBuilder engBuilder(llvm::unwrap(mContext->LLVMModule));
   std::string ErrStr;
   engBuilder.setErrorStr(&ErrStr);
-  TheExecutionEngine = engBuilder.create();
-  if (!TheExecutionEngine) {
-    throw std::runtime_error((boost::format("Could not create ExecutionEngine: %1%\n") % ErrStr).str());
-  }
 
   mFPM = new llvm::legacy::FunctionPassManager(llvm::unwrap(mContext->LLVMModule));
 

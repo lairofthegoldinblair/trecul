@@ -4185,8 +4185,8 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallDatetime)
 			);
 
   // Actually execute this thing.
-  boost::posix_time::ptime t = boost::posix_time::time_from_string("2011-02-17 15:38:33");
-  boost::posix_time::ptime t2 = boost::posix_time::time_from_string("2012-01-12 13:12:23");
+  boost::posix_time::ptime t = boost::posix_time::time_from_string("2011-02-17 20:38:33");
+  boost::posix_time::ptime t2 = boost::posix_time::time_from_string("2012-01-12 18:12:23");
   boost::gregorian::date d = boost::gregorian::from_string("2011-02-17");
   boost::gregorian::date d2 = boost::gregorian::from_string("2011-02-28");
   
