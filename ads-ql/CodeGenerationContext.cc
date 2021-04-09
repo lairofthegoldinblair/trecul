@@ -613,7 +613,7 @@ CodeGenerationContext::buildArray(std::vector<IQLToLLVMTypedValue>& vals,
   llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
   llvm::Type * retTy = arrayTy->LLVMGetType(this);
   llvm::Value * result = buildEntryBlockAlloca(retTy, "nullableBinOp");    
-  llvm::Type * ptrToElmntTy = llvm::cast<llvm::SequentialType>(retTy)->getElementType();
+  llvm::Type * ptrToElmntTy = llvm::cast<llvm::ArrayType>(retTy)->getElementType();
   ptrToElmntTy = llvm::PointerType::get(ptrToElmntTy, 0);
   llvm::Value * ptrToElmnt = b->CreateBitCast(result, ptrToElmntTy);
   // TODO: We are not allowing nullable element types for arrays at this point.
@@ -2230,7 +2230,7 @@ bool CodeGenerationContext::isChar(llvm::Value * val)
 
 int32_t CodeGenerationContext::getCharArrayLength(llvm::Type * ty)
 {
-  return llvm::cast<llvm::ArrayType>(llvm::cast<llvm::SequentialType>(ty)->getElementType())->getNumElements();
+  return llvm::cast<llvm::ArrayType>(llvm::cast<llvm::PointerType>(ty)->getElementType())->getNumElements();
 }
 
 int32_t CodeGenerationContext::getCharArrayLength(llvm::Value * val)
@@ -3075,7 +3075,7 @@ void CodeGenerationContext::buildReturnValue(const IQLToLLVMValue * iqlVal, cons
     b->CreateStore(llvmVal, loc); 
   } else {
     llvm::Value * val = b->CreateLoad(llvmVal);
-    llvm::SequentialType * st = llvm::dyn_cast<llvm::SequentialType>(loc->getType());
+    llvm::PointerType * st = llvm::dyn_cast<llvm::PointerType>(loc->getType());
     if (st == NULL || st->getElementType() != val->getType()) {
       loc->getType()->dump();
       val->getType()->dump();
