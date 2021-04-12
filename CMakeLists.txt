@@ -57,7 +57,7 @@ set(Boost_USE_MULTITHREADED ON)
 #
 # Boost
 #
-find_package( Boost 1.55 COMPONENTS date_time filesystem iostreams program_options regex serialization system thread unit_test_framework REQUIRED )
+find_package( Boost 1.55 COMPONENTS date_time filesystem iostreams program_options regex serialization system thread timer unit_test_framework REQUIRED )
 include_directories ( ${Boost_INCLUDE_DIR} )
 
 #
@@ -90,16 +90,16 @@ endif (HADOOP_FOUND)
 #
 find_package(LLVM REQUIRED)
 
-# What version of LLVM?  We only support LLVM 3.4.2
+# What version of LLVM?  We only support LLVM 11.0.1
 execute_process(
 COMMAND ${LLVM_CONFIG} --version
 OUTPUT_VARIABLE LLVM_VERSION
 OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-if (NOT ${LLVM_VERSION} VERSION_EQUAL "3.5.2")
-  MESSAGE(FATAL_ERROR "LLVM Version is ${LLVM_VERSION}; only 3.5.2 is supported")
-endif (NOT ${LLVM_VERSION} VERSION_EQUAL "3.5.2")
+if (NOT ${LLVM_VERSION} VERSION_EQUAL "11.0.1")
+  MESSAGE(FATAL_ERROR "LLVM Version is ${LLVM_VERSION}; only 11.0.1 is supported")
+endif (NOT ${LLVM_VERSION} VERSION_EQUAL "11.0.1")
 
 
 # Definitions needed by LLVM headers
@@ -114,7 +114,7 @@ link_directories( ${LLVM_LIBRARY_DIR} )
 
 # What we need for LLVM native jit
 execute_process(
-COMMAND ${LLVM_CONFIG} --libs core bitreader bitwriter interpreter asmparser native jit
+COMMAND ${LLVM_CONFIG} --libs analysis core bitreader bitwriter executionengine instcombine object orcjit runtimedyld scalaropts support native 
 OUTPUT_VARIABLE LLVM_JIT_LIBS
 OUTPUT_STRIP_TRAILING_WHITESPACE
 )
@@ -141,17 +141,14 @@ find_library(LIB_NCURSES ncurses)
 find_library(LIB_TINFO tinfo)
 
 #
-# Setup CXX11 flag
+# Setup CXX14 flag
 #
 include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
-CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
-if(COMPILER_SUPPORTS_CXX11)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-elseif(COMPILER_SUPPORTS_CXX0X)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
+CHECK_CXX_COMPILER_FLAG("-std=c++14" COMPILER_SUPPORTS_CXX14)
+if(COMPILER_SUPPORTS_CXX14)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 else()
-        message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
+        message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++14 support. Please use a different C++ compiler.")
 endif()
 
 ######################################################

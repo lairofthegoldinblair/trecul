@@ -36,7 +36,7 @@
 #include <iostream>
 
 #include <boost/format.hpp>
-#include <boost/progress.hpp>
+#include <boost/timer/progress_display.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
@@ -46,7 +46,7 @@
 
 #define BOOST_TEST_MODULE MyTest
 #include <boost/test/unit_test.hpp>
-#include <boost/test/floating_point_comparison.hpp>
+#include <boost/test/tools/floating_point_comparison.hpp>
 
 // Forward decls
 bool decimalEquals(const char * literal,

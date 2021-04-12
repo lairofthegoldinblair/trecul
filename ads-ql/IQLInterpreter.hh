@@ -61,8 +61,6 @@ class RecordType;
 namespace llvm {
   class Type;
   class Value;
-  class ExecutionEngine;
-  class MachineRelocation;
   namespace legacy {
     class FunctionPassManager;
   }
@@ -246,154 +244,6 @@ public:
   IQLUpdateModule * create() const;
 };
 
-/**
- * X86MethodInfo represents a JIT'd function together with relocations.
- *
- * If marked as valid, this function is relocatable.  The relocation 
- * is implemented by the Boost serialization methods.
- * The point in having these relocatable methods is that code generation
- * in LLVM isn't too fast and there are some important cases for us (e.g.
- * scoring) in which we have LOTS (megabytes) of code.  It make much
- * more sense for us to compile & code gen once at plan compilation time
- * and then farm out X86 code rather than LLVM bitcode.  Doing so means that
- * we need to be able to perform relocations (in scoring we need relocations
- * specifically for floating point constants that live in the constant pool).
- * This is specific to LLVM 2.8 & X86 and will need to track carefully
- * to subsequent LLVM versions!  Hopefully when the MCJIT project is
- * complete this code will no longer be necessary.
- */
-class X86MethodInfo
-{
-public:
-  /**
-   * These are the different kinds of relocations supported
-   * by LLVM for the X86 Target.  This enum is defined in
-   * the LLVM code base in lib/Target/X86/X86Relocations.h
-   * but is NOT part of the official LLVM API.  This definition
-   * is correct for LLVM 2.8 and 2.9 but may change in the future.
-   */
-  enum RelocationType {
-    reloc_pcrel_word = 0,
-    reloc_picrel_word = 1,
-    reloc_absolute_word = 2,
-    reloc_absolute_word_sext = 3,
-    reloc_absolute_dword = 4
-  };
-  /**
-   * A serializable representation for an important subset
-   * of X86 relocations: those which are absolute offsets
-   * to addresses within the method segments.
-   * MachineCodeOffset is an offset from MethodBegin.
-   * ResultPtrOffset is an offset relative to MethodBegin.
-   */
-  class Relocation
-  {
-  public:
-    intptr_t MachineCodeOffset;
-    intptr_t ResultPtrOffset;
-    std::string Symbol;
-    Relocation()
-      :
-      MachineCodeOffset(0),
-      ResultPtrOffset(0)
-    {
-    }
-    Relocation(intptr_t machineCodeOffset,
-	       intptr_t resultPtrOffset)
-      :
-      MachineCodeOffset(machineCodeOffset),
-      ResultPtrOffset(resultPtrOffset)
-    {
-    }
-    Relocation(intptr_t machineCodeOffset,
-	       const std::string& symbol)
-      :
-      MachineCodeOffset(machineCodeOffset),
-      Symbol(symbol)
-    {
-    }
-    // Serialization
-    template <class Archive>
-    void serialize(Archive & ar, const unsigned int version)
-    {
-      ar & BOOST_SERIALIZATION_NVP(MachineCodeOffset);
-      ar & BOOST_SERIALIZATION_NVP(ResultPtrOffset);
-      ar & BOOST_SERIALIZATION_NVP(Symbol);
-    }
-  };
-
-private:
-  uint8_t * mMethodBegin;
-  std::size_t mMethodSize;
-  std::size_t mCodeOffset;
-  std::vector<Relocation> mRelocations;
-  bool mIsValid;
-
-  // Serialization
-  friend class boost::serialization::access;
-  template <class Archive>
-  void save(Archive & ar, const unsigned int version) const
-  {
-    // How is the method region aligned?  Preserving this
-    // mod 16 is important because of SSE extensions and their
-    // 128-bit types.  If we have packed doubles in the constant pool
-    // whose addresses are used with SSE2 then you'll fail with
-    // segfault if alignment isn't preserved.
-    uint8_t alignMod16 = (uint8_t) ((uintptr_t) mMethodBegin)&0x0f;
-    ar & BOOST_SERIALIZATION_NVP(mMethodSize);
-    ar & BOOST_SERIALIZATION_NVP(mCodeOffset);
-    ar & BOOST_SERIALIZATION_NVP(mRelocations);
-    ar & BOOST_SERIALIZATION_NVP(mIsValid);
-    ar & BOOST_SERIALIZATION_NVP(alignMod16);
-    ar << boost::serialization::make_array(mMethodBegin, mMethodSize);
-  }
-  template <class Archive>
-  void load(Archive & ar, const unsigned int version) 
-  {
-    uint8_t alignMod16;
-    ar & BOOST_SERIALIZATION_NVP(mMethodSize);
-    ar & BOOST_SERIALIZATION_NVP(mCodeOffset);
-    ar & BOOST_SERIALIZATION_NVP(mRelocations);
-    ar & BOOST_SERIALIZATION_NVP(mIsValid);
-    ar & BOOST_SERIALIZATION_NVP(alignMod16);
-    mMethodBegin = allocateRWX(mMethodSize, alignMod16);
-    ar >> boost::serialization::make_array(mMethodBegin, mMethodSize);
-    relocate();
-  }
-  BOOST_SERIALIZATION_SPLIT_MEMBER()
-
-  /**
-   * Allocate a writable, executable memory region for
-   * deserialized JIT'd function.
-   */
-  uint8_t * allocateRWX(std::size_t sz, uint8_t alignMod16);
-  /**
-   * Apply relocations to code after deserialization.
-   */
-  void relocate();
-public:
-  X86MethodInfo()
-    :
-    mMethodBegin(NULL),
-    mMethodSize(0),
-    mIsValid(true)
-  {
-  }
-
-  void setMethod(void * methodBegin,
-		 void * methodEnd,
-		 void * codeBegin);
-  void addRelocation(const llvm::MachineRelocation& reloc,
-		     const std::map<void*, std::string>& externalFunctions);
-
-  void * getCodeBegin() 
-  {
-    if (!mIsValid)
-      throw std::runtime_error("X86 Method has invalid relocations");
-    return mMethodBegin + mCodeOffset;
-  }
-};
-
 class IQLTransferModule
 {
 private:
@@ -405,62 +255,38 @@ private:
   LLVMFuncType mCopyFunction;
   LLVMFuncType mMoveFunction;
   class IQLRecordBufferMethodHandle * mImpl;
-  X86MethodInfo * mInfo;
-  bool mIsPIC;
 
   // Create the LLVM module from the bitcode.
   void initImpl(const std::map<void*,std::string>& externalFunctions);
-
-  // Used for serializing/deserializing PIC code.
-  X86MethodInfo * getFunInfo(const std::string& str) const;
 
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
   void save(Archive & ar, const unsigned int version) const
   {
-    ar & BOOST_SERIALIZATION_NVP(mIsPIC);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    if (!mIsPIC) {
-      ar & BOOST_SERIALIZATION_NVP(mCopyFunName);
-      ar & BOOST_SERIALIZATION_NVP(mMoveFunName);
-      ar & BOOST_SERIALIZATION_NVP(mBitcode);
-    } else {
-      // Serialize the copy function info
-      X86MethodInfo * info = getFunInfo(mCopyFunName);
-      ar & BOOST_SERIALIZATION_NVP(info);      
-    }
+    ar & BOOST_SERIALIZATION_NVP(mCopyFunName);
+    ar & BOOST_SERIALIZATION_NVP(mMoveFunName);
+    ar & BOOST_SERIALIZATION_NVP(mBitcode);
   }
   template <class Archive>
   void load(Archive & ar, const unsigned int version) 
   {
-    ar & BOOST_SERIALIZATION_NVP(mIsPIC);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    if (!mIsPIC) {
-      ar & BOOST_SERIALIZATION_NVP(mCopyFunName);
-      ar & BOOST_SERIALIZATION_NVP(mMoveFunName);
-      ar & BOOST_SERIALIZATION_NVP(mBitcode);
-      // No need for a valid map of external functions
-      // since we are not trying to extract relocations.
-      std::map<void*,std::string> externalFunctions;
-      initImpl(externalFunctions);
-    } else {
-      // Grab the method without a method handle, so
-      // directly the X86 code.
-      X86MethodInfo * info = NULL;
-      ar & BOOST_SERIALIZATION_NVP(info);      
-      mInfo = info;
-      mCopyFunction = (LLVMFuncType) mInfo->getCodeBegin();
-    }
+    ar & BOOST_SERIALIZATION_NVP(mCopyFunName);
+    ar & BOOST_SERIALIZATION_NVP(mMoveFunName);
+    ar & BOOST_SERIALIZATION_NVP(mBitcode);
+    // No need for a valid map of external functions
+    // since we are not trying to extract relocations.
+    std::map<void*,std::string> externalFunctions;
+    initImpl(externalFunctions);
   }
   BOOST_SERIALIZATION_SPLIT_MEMBER()
   IQLTransferModule()
     :
     mCopyFunction(NULL),
     mMoveFunction(NULL),
-    mImpl(NULL),
-    mInfo(NULL),
-    mIsPIC(false)
+    mImpl(NULL)
   {
   }
 public:
@@ -468,8 +294,7 @@ public:
 		    const std::string& copyFunName, 
 		    const std::string& moveFunName, 
 		    const std::string& bitcode,
-		    const std::map<void*,std::string>& externalFunctions,
-		    bool isPIC = false);
+		    const std::map<void*,std::string>& externalFunctions);
   ~IQLTransferModule();
   /**
    * Copy or move the contents of source to target depending on the value
@@ -546,7 +371,7 @@ public:
   /** 
    * create a serializable IQLTransferModule that implements the program.
    */
-  IQLTransferModule * create(bool isPIC=false) const;
+  IQLTransferModule * create() const;
 };
 
 class IQLTransferModule2
