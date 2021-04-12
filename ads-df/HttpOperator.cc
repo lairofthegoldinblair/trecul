@@ -1,7 +1,7 @@
 #include <deque>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/asio.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <boost/format.hpp>
 #include <boost/intrusive/list.hpp>
 #include <boost/lexical_cast.hpp>
