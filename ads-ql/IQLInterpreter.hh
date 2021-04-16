@@ -93,12 +93,6 @@ class LLVMBase
 protected:
   class CodeGenerationContext * mContext;
   llvm::legacy::FunctionPassManager * mFPM;
-  /**
-   * Index from address to symbol for external functions.
-   * This is needed so we can recognize the relocations of
-   * function calls to external functions.
-   */
-  std::map<void*, std::string> mExternalFunctionsIdx;
 
   void InitializeLLVM();
   void ConstructFunction(const std::string& funName, const std::vector<std::string>& recordArgs);
@@ -127,32 +121,19 @@ public:
 						llvm::Type * funTy);
 };
 
-class IQLRecordBufferMethod
-{
-private:
-  typedef void (*LLVMFuncType)(char*, class InterpreterContext *);
-  LLVMFuncType mFunction;
-  class IQLRecordBufferMethodHandle * mImpl;
-public:
-  IQLRecordBufferMethod(const std::string& bitcode, const std::string& functionName);
-  ~IQLRecordBufferMethod();
-  void Execute(char * buf, class InterpreterContext * ctxt) const
-  {
-    (*mFunction)(buf, ctxt);
-  }
-};
-
 class IQLUpdateModule
 {
 private:
   std::string mFunName;
-  std::string mBitcode;
+  std::string mObjectFile;
   // TODO: change this to support more than two inputs (using char** presumably)
   typedef void (*LLVMFuncType)(char*, char*, class InterpreterContext *);
   LLVMFuncType mFunction;
   class IQLRecordBufferMethodHandle * mImpl;
 
   // Create the LLVM module from the bitcode.
+  void initImpl(const std::string & bitcode);
+  // Load the object file into the JIT
   void initImpl();
 
   // Serialization
@@ -161,13 +142,13 @@ private:
   void save(Archive & ar, const unsigned int version) const
   {
     ar & BOOST_SERIALIZATION_NVP(mFunName);
-    ar & BOOST_SERIALIZATION_NVP(mBitcode);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
   }
   template <class Archive>
   void load(Archive & ar, const unsigned int version) 
   {
     ar & BOOST_SERIALIZATION_NVP(mFunName);
-    ar & BOOST_SERIALIZATION_NVP(mBitcode);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
 
     initImpl();
   }
@@ -202,11 +183,7 @@ private:
   std::string mFunName;
   std::string mStatements;
   std::string mBitcode;
-
-  // TODO: change this to support more than two inputs (using char** presumably)
-  typedef void (*LLVMFuncType)(char*, char*, class InterpreterContext *);
-  LLVMFuncType mUpdateFunction;
-  class IQLRecordBufferMethodHandle * mImpl;
+  std::unique_ptr<IQLUpdateModule> mModule;
 
   void init(class DynamicRecordContext& recCtxt, 
 	    const std::string & funName, 
@@ -236,7 +213,7 @@ public:
    * Copy or move the contents of source to target depending on the value
    * of flag isSourceMove.
    */
-  void execute(RecordBuffer & source, RecordBuffer target, class InterpreterContext * ctxt) const;
+  void execute(RecordBuffer & source, RecordBuffer target, class InterpreterContext * ctxt);
 
   /**
    * Create serializable update function.
@@ -250,14 +227,16 @@ private:
   RecordTypeMalloc mMalloc;
   std::string mCopyFunName;
   std::string mMoveFunName;
-  std::string mBitcode;
+  std::string mObjectFile;
   typedef void (*LLVMFuncType)(char*, char*, class InterpreterContext *);
   LLVMFuncType mCopyFunction;
   LLVMFuncType mMoveFunction;
   class IQLRecordBufferMethodHandle * mImpl;
 
   // Create the LLVM module from the bitcode.
-  void initImpl(const std::map<void*,std::string>& externalFunctions);
+  void initImpl(const std::string & bitcode);
+  // Load the object file into the JIT
+  void initImpl();
 
   // Serialization
   friend class boost::serialization::access;
@@ -267,7 +246,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
     ar & BOOST_SERIALIZATION_NVP(mCopyFunName);
     ar & BOOST_SERIALIZATION_NVP(mMoveFunName);
-    ar & BOOST_SERIALIZATION_NVP(mBitcode);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
   }
   template <class Archive>
   void load(Archive & ar, const unsigned int version) 
@@ -275,11 +254,8 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
     ar & BOOST_SERIALIZATION_NVP(mCopyFunName);
     ar & BOOST_SERIALIZATION_NVP(mMoveFunName);
-    ar & BOOST_SERIALIZATION_NVP(mBitcode);
-    // No need for a valid map of external functions
-    // since we are not trying to extract relocations.
-    std::map<void*,std::string> externalFunctions;
-    initImpl(externalFunctions);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
+    initImpl();
   }
   BOOST_SERIALIZATION_SPLIT_MEMBER()
   IQLTransferModule()
@@ -293,8 +269,7 @@ public:
   IQLTransferModule(const RecordTypeMalloc & targetMalloc,
 		    const std::string& copyFunName, 
 		    const std::string& moveFunName, 
-		    const std::string& bitcode,
-		    const std::map<void*,std::string>& externalFunctions);
+		    const std::string& bitcode);
   ~IQLTransferModule();
   /**
    * Copy or move the contents of source to target depending on the value
@@ -318,10 +293,7 @@ private:
   std::string mTransfer;
   std::string mBitcode;
 
-  typedef void (*LLVMFuncType)(char*, char*, class InterpreterContext *);
-  LLVMFuncType mCopyFunction;
-  LLVMFuncType mMoveFunction;
-  class IQLRecordBufferMethodHandle * mImpl;
+  std::unique_ptr<IQLTransferModule> mModule;
   bool mIsIdentity;
 public:
   /**
@@ -350,7 +322,7 @@ public:
    * Copy or move the contents of source to target depending on the value
    * of flag isSourceMove.
    */
-  void execute(RecordBuffer & source, RecordBuffer target, class InterpreterContext * ctxt, bool isSourceMove) const;
+  void execute(RecordBuffer & source, RecordBuffer & target, class InterpreterContext * ctxt, bool isSourceMove);
 
   /**
    * The target type of the transfer.
@@ -380,7 +352,7 @@ private:
   RecordTypeMalloc mMalloc;
   std::string mCopyFunName;
   std::string mMoveFunName;
-  std::string mBitcode;
+  std::string mObjectFile;
   // TODO: Must genericize
   typedef void (*LLVMFuncType)(char*, char*, char *, class InterpreterContext *);
   LLVMFuncType mCopyFunction;
@@ -388,6 +360,8 @@ private:
   class IQLRecordBufferMethodHandle * mImpl;
 
   // Create the LLVM module from the bitcode.
+  void initImpl(const std::string & bitcode);
+  // Load the object file into the JIT
   void initImpl();
 
   // Serialization
@@ -398,7 +372,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
     ar & BOOST_SERIALIZATION_NVP(mCopyFunName);
     ar & BOOST_SERIALIZATION_NVP(mMoveFunName);
-    ar & BOOST_SERIALIZATION_NVP(mBitcode);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
   }
   template <class Archive>
   void load(Archive & ar, const unsigned int version) 
@@ -406,7 +380,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
     ar & BOOST_SERIALIZATION_NVP(mCopyFunName);
     ar & BOOST_SERIALIZATION_NVP(mMoveFunName);
-    ar & BOOST_SERIALIZATION_NVP(mBitcode);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
 
     initImpl();
   }
@@ -438,6 +412,8 @@ public:
     RecordBuffer sources[2] = { sourceA, sourceB };
     bool isSourceMove [2] = { isSourceAMove, isSourceBMove };
     execute(&sources[0], &isSourceMove[0], 2, target, ctxt);
+    sourceA = sources[0];
+    sourceB = sources[1];
   }
   /**
    * Copy or move the contents of source to target depending on the value
@@ -459,11 +435,7 @@ private:
   std::string mTransfer;
   std::string mBitcode;
 
-  // TODO: Must genericize
-  typedef void (*LLVMFuncType)(char*, char*, char *, class InterpreterContext *);
-  LLVMFuncType mCopyFunction;
-  LLVMFuncType mMoveFunction;
-  class IQLRecordBufferMethodHandle * mImpl;
+  std::unique_ptr<IQLTransferModule2> mModule;
 public:
   /**
    * Perform a transfer of the source record to a target following the specification
@@ -478,14 +450,16 @@ public:
 
   void execute(RecordBuffer & sourceA, 
 	       RecordBuffer & sourceB,
-	       RecordBuffer target, 
+	       RecordBuffer & target, 
 	       class InterpreterContext * ctxt, 
 	       bool isSourceAMove,
-	       bool isSourceBMove) const
+	       bool isSourceBMove)
   {
     RecordBuffer sources[2] = { sourceA, sourceB };
     bool isSourceMove [2] = { isSourceAMove, isSourceBMove };
     execute(&sources[0], &isSourceMove[0], 2, target, ctxt);
+    sourceA = sources[0];
+    sourceB = sources[1];
   }
   /**
    * Copy or move the contents of source to target depending on the value
@@ -494,8 +468,8 @@ public:
   void execute(RecordBuffer * sources, 
 	       bool * isSourceMove,
 	       int32_t numSources,
-	       RecordBuffer target, 
-	       class InterpreterContext * ctxt) const;
+	       RecordBuffer & target, 
+	       class InterpreterContext * ctxt);
 
   /**
    * The target type of the transfer.
@@ -517,11 +491,13 @@ public:
   typedef void (*LLVMFuncType)(char*, char*, int32_t *, class InterpreterContext *);
 private:
   std::string mFunName;
-  std::string mBitcode;
+  std::string mObjectFile;
   LLVMFuncType mFunction;
   class IQLRecordBufferMethodHandle * mImpl;
 
   // Create the LLVM module from the bitcode.
+  void initImpl(const std::string & bitcode);
+  // Load the object file into the JIT
   void initImpl();
 
   // Serialization
@@ -530,13 +506,13 @@ private:
   void save(Archive & ar, const unsigned int version) const
   {
     ar & BOOST_SERIALIZATION_NVP(mFunName);
-    ar & BOOST_SERIALIZATION_NVP(mBitcode);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
   }
   template <class Archive>
   void load(Archive & ar, const unsigned int version) 
   {
     ar & BOOST_SERIALIZATION_NVP(mFunName);
-    ar & BOOST_SERIALIZATION_NVP(mBitcode);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
 
     initImpl();
   }
@@ -578,8 +554,7 @@ private:
   std::string mStatements;
   std::string mBitcode;
 
-  LLVMFuncType mFunction;
-  class IQLRecordBufferMethodHandle * mImpl;
+  std::unique_ptr<IQLFunctionModule> mModule;
 
   void init(class DynamicRecordContext& recCtxt);
 public:
@@ -608,13 +583,7 @@ public:
   /**
    * Evaluate and return.
    */
-  int32_t execute(RecordBuffer sourceA, RecordBuffer sourceB, class InterpreterContext * ctxt) const;
-
-  /**
-   * For those who want to make a copy of the function pointer into another
-   * data structure...
-   */
-  LLVMFuncType getRawFunction () const { return mFunction; }
+  int32_t execute(RecordBuffer sourceA, RecordBuffer sourceB, class InterpreterContext * ctxt);
   
   /**
    * Create a serializable representation of the function that can be sent on the wire.
@@ -630,7 +599,7 @@ private:
   std::string mInitName;
   std::string mUpdateName;
   std::string mTransferName;
-  std::string mBitcode;
+  std::string mObjectFile;
   // TODO: change this to support more than two inputs (using char** presumably)
   typedef void (*LLVMFuncType)(char*, char*, class InterpreterContext *);
   typedef void (*LLVMFuncType2)(char*, char*, char*, class InterpreterContext *);
@@ -641,6 +610,8 @@ private:
   bool mIsTransferIdentity;
 
   // Create the LLVM module from the bitcode.
+  void initImpl(const std::string & bitcode);
+  // Load the object file into the JIT
   void initImpl();
 
   // Serialization
@@ -651,7 +622,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mInitName);
     ar & BOOST_SERIALIZATION_NVP(mUpdateName);
     ar & BOOST_SERIALIZATION_NVP(mTransferName);
-    ar & BOOST_SERIALIZATION_NVP(mBitcode);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
     ar & BOOST_SERIALIZATION_NVP(mAggregateMalloc);
     ar & BOOST_SERIALIZATION_NVP(mTransferMalloc);
     ar & BOOST_SERIALIZATION_NVP(mIsTransferIdentity);
@@ -662,7 +633,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mInitName);
     ar & BOOST_SERIALIZATION_NVP(mUpdateName);
     ar & BOOST_SERIALIZATION_NVP(mTransferName);
-    ar & BOOST_SERIALIZATION_NVP(mBitcode);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
     ar & BOOST_SERIALIZATION_NVP(mAggregateMalloc);
     ar & BOOST_SERIALIZATION_NVP(mTransferMalloc);
     ar & BOOST_SERIALIZATION_NVP(mIsTransferIdentity);
@@ -793,7 +764,7 @@ public:
   }
 
   /** 
-   * create a serializable IQLTransferModule that implements the program.
+   * create a serializable IQLAggregateModule that implements the program.
    */
   IQLAggregateModule * create() const;
 };

@@ -121,7 +121,7 @@ BOOST_AUTO_TEST_CASE(testTransferStringLiteral)
   BOOST_CHECK_EQUAL(FieldType::VARCHAR, 
 		    t1.getTarget()->getMember("d").GetType()->GetEnum());
   RecordBuffer inputBuf;
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);  
   const char * actual =
     t1.getTarget()->getVarcharPtr("a", outputBuf)->c_str();
@@ -168,7 +168,7 @@ void ImplicitCastInt32ToDouble(bool int32Nullable, bool doubleNullable)
 			", a/b AS j"
 			);
   
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);  
   BOOST_CHECK_EQUAL(FieldType::DOUBLE, 
 		    t1.getTarget()->getMember("c").GetType()->GetEnum());
@@ -260,7 +260,7 @@ void ImplicitCastDecimalToDouble(bool decimalNullable, bool doubleNullable)
 			", a/b AS j"
 			);
   
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);  
   BOOST_CHECK_EQUAL(FieldType::DOUBLE, 
 		    t1.getTarget()->getMember("c").GetType()->GetEnum());
@@ -906,7 +906,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
     BOOST_CHECK_EQUAL(2, ty->GetSize());
     const FixedArrayType * arrTy = static_cast<const FixedArrayType *>(ty);
     BOOST_CHECK_EQUAL(FieldType::INT32, arrTy->getElementType()->GetEnum());    
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(2*9923432, t1.getTarget()->getMemberOffset("f").getArrayInt32(outputBuf,0));
     BOOST_CHECK_EQUAL(3*9923432, t1.getTarget()->getMemberOffset("f").getArrayInt32(outputBuf,1));
@@ -922,7 +922,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
     BOOST_CHECK_EQUAL(2, ty->GetSize());
     const FixedArrayType * arrTy = static_cast<const FixedArrayType *>(ty);
     BOOST_CHECK_EQUAL(FieldType::INT32, arrTy->getElementType()->GetEnum());    
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(2*9923432, t1.getTarget()->getMemberOffset("f").getArrayInt32(outputBuf,0));
     BOOST_CHECK_EQUAL(3*9923432, t1.getTarget()->getMemberOffset("f").getArrayInt32(outputBuf,1));
@@ -937,7 +937,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
     BOOST_CHECK_EQUAL(FieldType::INT32, ty->GetEnum());
     ty = t1.getTarget()->getMember("g").GetType();
     BOOST_CHECK_EQUAL(FieldType::INT32, ty->GetEnum());
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(2*9923432, t1.getTarget()->getMemberOffset("f").getInt32(outputBuf));
     BOOST_CHECK_EQUAL(3*9923432, t1.getTarget()->getMemberOffset("g").getInt32(outputBuf));
@@ -952,7 +952,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
     BOOST_CHECK_EQUAL(FieldType::INT32, ty->GetEnum());
     ty = t1.getTarget()->getMember("g").GetType();
     BOOST_CHECK_EQUAL(FieldType::INT32, ty->GetEnum());
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(2*9923432, t1.getTarget()->getMemberOffset("f").getInt32(outputBuf));
     BOOST_CHECK_EQUAL(3*9923432, t1.getTarget()->getMemberOffset("g").getInt32(outputBuf));
@@ -967,7 +967,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
     BOOST_CHECK_EQUAL(FieldType::DOUBLE, ty->GetEnum());
     ty = t1.getTarget()->getMember("g").GetType();
     BOOST_CHECK_EQUAL(FieldType::DOUBLE, ty->GetEnum());
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(2*8234.24344, t1.getTarget()->getMemberOffset("f").getDouble(outputBuf));
     BOOST_CHECK_EQUAL(3*8234.24344, t1.getTarget()->getMemberOffset("g").getDouble(outputBuf));
@@ -1021,7 +1021,8 @@ BOOST_AUTO_TEST_CASE(testIQLArrayDotProduct)
 			       "SET i = i-1;\n"
 			       "END WHILE\n"
 			       "SET e=accum;");
-    up.execute(inputBuf, NULL, &runtimeCtxt);
+    RecordBuffer outputBuf;
+    up.execute(inputBuf, outputBuf, &runtimeCtxt);
     BOOST_CHECK_CLOSE(expected, 
 		      recTy.getDouble("e", inputBuf),
 		      0.00000000001);
@@ -1070,7 +1071,8 @@ BOOST_AUTO_TEST_CASE(testIQLMultipleWhile)
 			       "SET d = d - 1;\n"
 			       "END WHILE"
 			       );
-    up.execute(lhs, NULL, &runtimeCtxt);
+    RecordBuffer outputBuf;
+    up.execute(lhs, outputBuf, &runtimeCtxt);
     BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
     BOOST_CHECK_EQUAL(92347, recTy.getInt32("b", lhs));
     BOOST_CHECK_EQUAL(9923432, recTy.getInt32("c", lhs));
@@ -2673,7 +2675,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferIntegers)
   recordType->setInt32("b", 230, inputBuf);
   recordType->setInt32("c", 2300, inputBuf);
   recordType->Print(inputBuf, std::cout);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getInt32("a", outputBuf));
@@ -2699,38 +2701,49 @@ BOOST_AUTO_TEST_CASE(testIQLRecordModulus)
   // Actually execute this thing.
   InterpreterContext runtimeCtxt;
   RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
-  recordType->setInt32("a", 23, inputBuf);
-  recordType->setInt32("b", 7, inputBuf);
-  recordType->setInt64("c", 2300, inputBuf);
-  recordType->setInt64("d", 231, inputBuf);
-  t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
-  BOOST_CHECK_EQUAL((23%7), t1.getTarget()->getInt32("e", outputBuf));
-  BOOST_CHECK_EQUAL((2300LL%231LL), t1.getTarget()->getInt64("f", outputBuf));
+  {
+    RecordBuffer outputBuf;
+    recordType->setInt32("a", 23, inputBuf);
+    recordType->setInt32("b", 7, inputBuf);
+    recordType->setInt64("c", 2300, inputBuf);
+    recordType->setInt64("d", 231, inputBuf);
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK_EQUAL((23%7), t1.getTarget()->getInt32("e", outputBuf));
+    BOOST_CHECK_EQUAL((2300LL%231LL), t1.getTarget()->getInt64("f", outputBuf));
+  }
 
-  recordType->setInt32("a", 23, inputBuf);
-  recordType->setInt32("b", -7, inputBuf);
-  recordType->setInt64("c", 2300, inputBuf);
-  recordType->setInt64("d", -231, inputBuf);
-  t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
-  BOOST_CHECK_EQUAL((23%-7), t1.getTarget()->getInt32("e", outputBuf));
-  BOOST_CHECK_EQUAL((2300LL%-231LL), t1.getTarget()->getInt64("f", outputBuf));
+  {
+    RecordBuffer outputBuf;
+    recordType->setInt32("a", 23, inputBuf);
+    recordType->setInt32("b", -7, inputBuf);
+    recordType->setInt64("c", 2300, inputBuf);
+    recordType->setInt64("d", -231, inputBuf);
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK_EQUAL((23%-7), t1.getTarget()->getInt32("e", outputBuf));
+    BOOST_CHECK_EQUAL((2300LL%-231LL), t1.getTarget()->getInt64("f", outputBuf));
+  }
 
-  recordType->setInt32("a", -23, inputBuf);
-  recordType->setInt32("b", 7, inputBuf);
-  recordType->setInt64("c", -2300, inputBuf);
-  recordType->setInt64("d", 231, inputBuf);
-  t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
-  BOOST_CHECK_EQUAL((-23%7), t1.getTarget()->getInt32("e", outputBuf));
-  BOOST_CHECK_EQUAL((-2300LL%231LL), t1.getTarget()->getInt64("f", outputBuf));
+  {
+    RecordBuffer outputBuf;
+    recordType->setInt32("a", -23, inputBuf);
+    recordType->setInt32("b", 7, inputBuf);
+    recordType->setInt64("c", -2300, inputBuf);
+    recordType->setInt64("d", 231, inputBuf);
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK_EQUAL((-23%7), t1.getTarget()->getInt32("e", outputBuf));
+    BOOST_CHECK_EQUAL((-2300LL%231LL), t1.getTarget()->getInt64("f", outputBuf));
+  }
 
-  recordType->setInt32("a", -23, inputBuf);
-  recordType->setInt32("b", -7, inputBuf);
-  recordType->setInt64("c", -2300, inputBuf);
-  recordType->setInt64("d", -231, inputBuf);
-  t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
-  BOOST_CHECK_EQUAL((-23%-7), t1.getTarget()->getInt32("e", outputBuf));
-  BOOST_CHECK_EQUAL((-2300LL%-231LL), t1.getTarget()->getInt64("f", outputBuf));
+  {
+    RecordBuffer outputBuf;
+    recordType->setInt32("a", -23, inputBuf);
+    recordType->setInt32("b", -7, inputBuf);
+    recordType->setInt64("c", -2300, inputBuf);
+    recordType->setInt64("d", -231, inputBuf);
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK_EQUAL((-23%-7), t1.getTarget()->getInt32("e", outputBuf));
+    BOOST_CHECK_EQUAL((-2300LL%-231LL), t1.getTarget()->getInt64("f", outputBuf));
+  }
 }
 
 class BinaryOp
@@ -2831,7 +2844,7 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
   // Actually execute this thing.
   InterpreterContext runtimeCtxt;
   RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   recordType->setInt32("a", 23, inputBuf);
   recordType->setInt32("b", 7, inputBuf);
   recordType->setInt64("c", 2300, inputBuf);
@@ -2850,6 +2863,7 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
   recordType->setInt32("b", -7, inputBuf);
   recordType->setInt64("c", 2300, inputBuf);
   recordType->setInt64("d", -231, inputBuf);
+  t1.getTarget()->getFree().free(outputBuf);
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(op(23,-7), t1.getTarget()->getInt32("e", outputBuf));
   BOOST_CHECK_EQUAL(op((int64_t) 2300, (int64_t) -231), 
@@ -2864,6 +2878,7 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
   recordType->setInt32("b", 7, inputBuf);
   recordType->setInt64("c", -2300, inputBuf);
   recordType->setInt64("d", 231, inputBuf);
+  t1.getTarget()->getFree().free(outputBuf);
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(op(-23,7), t1.getTarget()->getInt32("e", outputBuf));
   BOOST_CHECK_EQUAL(op((int64_t) -2300, (int64_t) 231),
@@ -2878,6 +2893,7 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
   recordType->setInt32("b", -7, inputBuf);
   recordType->setInt64("c", -2300, inputBuf);
   recordType->setInt64("d", -231, inputBuf);
+  t1.getTarget()->getFree().free(outputBuf);
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(op(-23,-7), t1.getTarget()->getInt32("e", outputBuf));
   BOOST_CHECK_EQUAL(op((int64_t) -2300, (int64_t) -231), 
@@ -2891,6 +2907,7 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
   if (isNullable1) {
     recordType->getFieldAddress("a").setNull(inputBuf);
     recordType->getFieldAddress("c").setNull(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
     BOOST_CHECK(t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
@@ -2902,6 +2919,7 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
     recordType->getFieldAddress("c").setInt64(9923LL, inputBuf);
     recordType->getFieldAddress("b").setNull(inputBuf);
     recordType->getFieldAddress("d").setNull(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
     BOOST_CHECK(t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
@@ -2913,6 +2931,7 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
     recordType->getFieldAddress("c").setNull(inputBuf);
     recordType->getFieldAddress("b").setNull(inputBuf);
     recordType->getFieldAddress("d").setNull(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
     BOOST_CHECK(t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
@@ -3031,7 +3050,7 @@ void testIntegerUnaryOp(bool isNullable1, const UnaryOp& op)
   // Actually execute this thing.
   InterpreterContext runtimeCtxt;
   RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   recordType->setInt32("a", 23, inputBuf);
   recordType->setInt64("c", 2300, inputBuf);
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
@@ -3043,6 +3062,7 @@ void testIntegerUnaryOp(bool isNullable1, const UnaryOp& op)
 
   recordType->setInt32("a", -23, inputBuf);
   recordType->setInt64("c", -23008283445434LL, inputBuf);
+  t1.getTarget()->getFree().free(outputBuf);
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(op(-23), t1.getTarget()->getInt32("e", outputBuf));
   BOOST_CHECK_EQUAL(op((int64_t) -23008283445434LL), 
@@ -3053,10 +3073,12 @@ void testIntegerUnaryOp(bool isNullable1, const UnaryOp& op)
   if (isNullable1) {
     recordType->getFieldAddress("a").setNull(inputBuf);
     recordType->getFieldAddress("c").setNull(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
     BOOST_CHECK(t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
   }
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLBitwiseNot)
@@ -3086,13 +3108,14 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferLocalVariable)
   recordType->setInt32("b", 230, inputBuf);
   recordType->setInt32("c", 2300, inputBuf);
   recordType->Print(inputBuf, std::cout);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getInt32("a", outputBuf));
   BOOST_CHECK_EQUAL(2300, t1.getTarget()->getInt32("c", outputBuf));
   BOOST_CHECK_EQUAL(230, t1.getTarget()->getInt32("d", outputBuf));
   BOOST_CHECK_EQUAL(2553, t1.getTarget()->getInt32("e", outputBuf));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLTransferParseErrors)
@@ -3208,7 +3231,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatement)
   recordType->setInt32("a", 23, inputBuf);
   recordType->setInt32("b", 230, inputBuf);
   recordType->setInt32("c", 2300, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(230, t1.getTarget()->getInt32("d", outputBuf));
@@ -3225,6 +3248,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatement)
   BOOST_CHECK_EQUAL(3.0, t1.getTarget()->getDouble("o", outputBuf));
   BOOST_CHECK_EQUAL(3.0, t1.getTarget()->getDouble("p", outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("q").isNull(outputBuf));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLCaseStatementVarchar)
@@ -3246,11 +3270,12 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementVarchar)
   recordType->setInt32("a", 23, inputBuf);
   recordType->setInt32("b", 230, inputBuf);
   recordType->setVarchar("c", "2300", inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(boost::algorithm::equals("TRUE",
 				       t1.getTarget()->getVarcharPtr("d", outputBuf)->c_str()));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLCaseStatementDecimal)
@@ -3283,7 +3308,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementDecimal)
   decimal128 expected2;
   ::decimal128FromString(&expected2, "777.7234", 
 			 runtimeCtxt.getDecimalContext());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   int ret=memcmp(t1.getTarget()->getMemberOffset("d").getDecimalPtr(outputBuf),
 		 &expected, DECIMAL128_Bytes);
@@ -3296,7 +3321,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementDecimal)
 	     &expected2, 
 	     DECIMAL128_Bytes);
   BOOST_CHECK_EQUAL(0, ret);
-
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLCaseStatementTypePromotion)
@@ -3326,7 +3351,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementTypePromotion)
   decimal128 expected;
   ::decimal128FromString(&expected, "99823", 
 			 runtimeCtxt.getDecimalContext());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   int ret=memcmp(t1.getTarget()->getMemberOffset("d").getDecimalPtr(outputBuf),
 		 &expected, DECIMAL128_Bytes);
@@ -3360,7 +3385,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementNullCondition)
   recordType->setInt32("a", 23, inputBuf);
   recordType->setInt32("b", 230, inputBuf);
   recordType->setInt32("c", 123456, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(99823, t1.getTarget()->getFieldAddress("d").getInt32(outputBuf));
   BOOST_CHECK_EQUAL(123456, t1.getTarget()->getFieldAddress("e").getInt32(outputBuf));
@@ -3369,7 +3394,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementNullCondition)
 
   recordType->getFieldAddress("a").setNull(inputBuf);
   recordType->setInt32("b", 231, inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  t1.getTarget()->getFree().free(outputBuf);
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getFieldAddress("d").getInt32(outputBuf));
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getFieldAddress("e").getInt32(outputBuf));
@@ -3399,7 +3424,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementNullPromotion)
   recordType->setInt32("b", 230, inputBuf);
   recordType->setInt64("c", 123456, inputBuf);
   {
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(230LL, t1.getTarget()->getFieldAddress("d").getInt64(outputBuf));
     BOOST_CHECK(!t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
@@ -3407,7 +3432,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementNullPromotion)
   }
   recordType->getFieldAddress("b").setNull(inputBuf);
   {
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
@@ -3642,7 +3667,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStrings)
     // Simple Transfer of everything
     RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), "input.*");
     t1.getTarget()->dump();
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     t1.getTarget()->Print(outputBuf, std::cout);
     t1.getTarget()->GetFree()->free(outputBuf);
@@ -3660,7 +3685,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStrings)
     // Output an expression
     RecordTypeTransfer t4(ctxt, "xfer4", recordType.get(), "user_agent + url AS field1, user_agent + referrer AS field2");
     t4.getTarget()->dump();
-    RecordBuffer outputBuf = t4.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t4.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     t4.getTarget()->Print(outputBuf, std::cout);
     t4.getTarget()->GetFree()->free(outputBuf);
@@ -3670,7 +3695,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStrings)
     // Case insensitivity of keyword
     RecordTypeTransfer t4(ctxt, "xfer4", recordType.get(), "user_agent + url aS field1, user_agent + referrer as field2");
     t4.getTarget()->dump();
-    RecordBuffer outputBuf = t4.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t4.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     t4.getTarget()->Print(outputBuf, std::cout);
     t4.getTarget()->GetFree()->free(outputBuf);
@@ -3680,7 +3705,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStrings)
     // Output an expression and all inputs
     RecordTypeTransfer t5(ctxt, "xfer5", recordType.get(), "input.*, user_agent + url AS field1, user_agent + referrer AS field2");
     t5.getTarget()->dump();
-    RecordBuffer outputBuf = t5.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t5.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     t5.getTarget()->Print(outputBuf, std::cout);
     t5.getTarget()->GetFree()->free(outputBuf);
@@ -3708,7 +3733,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStringsWithMove)
     RecordBuffer inputBuf = createSimpleLogInputRecord(recordType);
     RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), "input.*");
     t1.getTarget()->dump();
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, true);
     t1.getTarget()->Print(outputBuf, std::cout);
     t1.getTarget()->GetFree()->free(outputBuf);
@@ -3728,7 +3753,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStringsWithMove)
   //   // Output an expression
   //   RecordTypeTransfer t4(ctxt, "xfer4", recordType.get(), "user_agent + url AS field1, user_agent + referrer AS field2");
   //   t4.getTarget()->dump();
-  //   RecordBuffer outputBuf = t4.getTarget()->GetMalloc()->malloc();
+  //   RecordBuffer outputBuf;
   //   t4.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   //   t4.getTarget()->Print(outputBuf, std::cout);
   //   t4.getTarget()->GetFree()->free(outputBuf);
@@ -3738,7 +3763,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStringsWithMove)
   //   // Output an expression and all inputs
   //   RecordTypeTransfer t5(ctxt, "xfer5", recordType.get(), "input.*, user_agent + url AS field1, user_agent + referrer AS field2");
   //   t5.getTarget()->dump();
-  //   RecordBuffer outputBuf = t5.getTarget()->GetMalloc()->malloc();
+  //   RecordBuffer outputBuf;
   //   t5.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   //   t5.getTarget()->Print(outputBuf, std::cout);
   //   t5.getTarget()->GetFree()->free(outputBuf);
@@ -3769,7 +3794,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferFloats)
   recordType->setDouble("a", 23.88, inputBuf);
   recordType->setDouble("b", 230.23, inputBuf);
   recordType->setDouble("c", 2300.1, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(23.88, t1.getTarget()->getDouble("a", outputBuf));
@@ -3780,6 +3805,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferFloats)
   BOOST_CHECK_EQUAL(23.023, t1.getTarget()->getDouble("g", outputBuf));
   BOOST_CHECK_EQUAL(23.334, t1.getTarget()->getDouble("h", outputBuf));
   BOOST_CHECK_EQUAL(23334, t1.getTarget()->getDouble("i", outputBuf));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLFunctionNamesNotAllowedAsVariables)
@@ -3820,7 +3846,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallDouble)
   recordType->setDouble("a", 23.88, inputBuf);
   recordType->setDouble("b", 230.23, inputBuf);
   recordType->setDouble("c", 2300.1, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(23.88, t1.getTarget()->getDouble("a", outputBuf));
@@ -3857,7 +3883,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallDecimal)
   ::decimal128FromString(recordType->getMemberOffset("b").getDecimalPtr(inputBuf),
 			 "-123456.82349234", 
 			 runtimeCtxt.getDecimalContext());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(true, decimalEquals("123456.82", t1.getTarget(), "a", outputBuf));
   BOOST_CHECK_EQUAL(true, decimalEquals("123500.0", t1.getTarget(), "b", outputBuf));
@@ -3913,7 +3939,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallString)
   recordType->setVarchar("b", "    bbbb dfee   ", inputBuf);
   recordType->setVarchar("c", "cdefGHIJK", inputBuf);
   recordType->setVarchar("d", longStr.c_str(), inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(0, strcmp("aaa", t1.getTarget()->getVarcharPtr("a", outputBuf)->c_str()));
@@ -3984,7 +4010,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallUrlDecode)
   recordType->setVarchar("c", "c%64e%20fG%48I", inputBuf);
   recordType->setVarchar("d", longStr.c_str(), inputBuf);
   recordType->setVarchar("e", longStrDecoded.c_str(), inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(boost::algorithm::equals("aaa", t1.getTarget()->getVarcharPtr("a", outputBuf)->c_str()));
@@ -4031,7 +4057,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallReplace)
   recordType->setVarchar("b", "", inputBuf);
   recordType->setVarchar("c", "cde fGHI", inputBuf);
   recordType->setVarchar("d", longStr.c_str(), inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(boost::algorithm::equals("aaa", t1.getTarget()->getVarcharPtr("a", outputBuf)->c_str()));
@@ -4085,7 +4111,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallLocate)
   recordType->setVarchar("b", "", inputBuf);
   recordType->setVarchar("c", "cde fGHI", inputBuf);
   recordType->setVarchar("d", longStr.c_str(), inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(1, t1.getTarget()->getInt32("e", outputBuf));
@@ -4123,7 +4149,7 @@ void testDatediff(bool leftNullable, bool rightNullable)
 
   // Actually execute this thing.
   RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   recordType->setDate("a", boost::gregorian::from_string("2011-02-17"), inputBuf);
   recordType->setDate("b", boost::gregorian::from_string("2011-02-15"), inputBuf);
@@ -4132,17 +4158,20 @@ void testDatediff(bool leftNullable, bool rightNullable)
 
   recordType->setDate("a", boost::gregorian::from_string("2011-02-01"), inputBuf);
   recordType->setDate("b", boost::gregorian::from_string("2011-02-15"), inputBuf);
+  t1.getTarget()->getFree().free(outputBuf);
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(-14, t1.getTarget()->getInt32("c", outputBuf));
 
   if (leftNullable) {
     recordType->getFieldAddress("a").setNull(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("c").isNull(outputBuf));
   }
 
   if (rightNullable) {
     recordType->getFieldAddress("b").setNull(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("c").isNull(outputBuf));
   }
@@ -4194,7 +4223,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallDatetime)
   recordType->setDatetime("a", t, inputBuf);
   recordType->setDate("b", d, inputBuf);
   recordType->setInt64("c", 1326391943LL, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(5, t1.getTarget()->getInt32("f", outputBuf));
@@ -4208,6 +4237,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallDatetime)
   BOOST_CHECK_EQUAL(2455610, t1.getTarget()->getInt32("m", outputBuf));
   BOOST_CHECK_EQUAL(1297975113, t1.getTarget()->getInt32("n", outputBuf));
   BOOST_CHECK_EQUAL(t2, t1.getTarget()->getFieldAddress("o").getDatetime(outputBuf));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLIntervalTypes)
@@ -4256,7 +4286,7 @@ BOOST_AUTO_TEST_CASE(testIQLIntervalTypes)
   recordType->setDatetime("a", dt, inputBuf);
   recordType->setInt32("a1", 5, inputBuf);
   recordType->setInt32("a2", 5, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(5, t1.getTarget()->getFieldAddress("b").getInt32(outputBuf));
@@ -4291,6 +4321,7 @@ BOOST_AUTO_TEST_CASE(testIQLIntervalTypes)
 		    t1.getTarget()->getFieldAddress("q").getDatetime(outputBuf));
   BOOST_CHECK_EQUAL(boost::posix_time::time_from_string("2011-02-22 15:38:33"),
 		    t1.getTarget()->getFieldAddress("r").getDatetime(outputBuf));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLIntervalTypesNegative)
@@ -4387,7 +4418,7 @@ BOOST_AUTO_TEST_CASE(testIQLIntervalTypesDate)
   RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
   boost::gregorian::date dt = boost::gregorian::from_string("2011-02-17");
   recordType->setDate("a", dt, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(boost::posix_time::time_from_string("2011-02-17 00:01:12"),
@@ -4416,6 +4447,7 @@ BOOST_AUTO_TEST_CASE(testIQLIntervalTypesDate)
 		    t1.getTarget()->getFieldAddress("o").getDate(outputBuf));
   BOOST_CHECK_EQUAL(boost::gregorian::from_string("2006-02-17"),
 		    t1.getTarget()->getFieldAddress("p").getDate(outputBuf));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Integers)
@@ -4449,7 +4481,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Integers)
   recordType2->setInt32("d", 52, inputBuf2);
   recordType2->setInt32("e", 520, inputBuf2);
   recordType2->setInt32("f", 5200, inputBuf2);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getInt32("a", outputBuf));
@@ -4458,6 +4490,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Integers)
   BOOST_CHECK_EQUAL(52, t1.getTarget()->getInt32("d", outputBuf));
   BOOST_CHECK_EQUAL(520, t1.getTarget()->getInt32("e", outputBuf));
   BOOST_CHECK_EQUAL(5200, t1.getTarget()->getInt32("f", outputBuf));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersWithCompoundName)
@@ -4519,7 +4552,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersWithCompoundName)
     recordType2->setInt32("d", 52, inputBuf2);
     recordType2->setInt32("e", 520, inputBuf2);
     recordType2->setInt32("a", 5200, inputBuf2);
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
     BOOST_CHECK_EQUAL(23, t1.getTarget()->getInt32("a", outputBuf));
@@ -4544,7 +4577,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersWithCompoundName)
     recordType2->setInt32("d", 52, inputBuf2);
     recordType2->setInt32("e", 520, inputBuf2);
     recordType2->setInt32("a", 5200, inputBuf2);
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
     BOOST_CHECK_EQUAL(23, t1.getTarget()->getInt32("a", outputBuf));
@@ -4616,7 +4649,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersWithCompoundNameVarchar)
     recordType2->setVarchar("d", "52", inputBuf2);
     recordType2->setVarchar("e", "520", inputBuf2);
     recordType2->setVarchar("a", "5200", inputBuf2);
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
     BOOST_CHECK(boost::algorithm::equals("23", 
@@ -4649,7 +4682,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersWithCompoundNameVarchar)
     recordType2->setVarchar("d", "52", inputBuf2);
     recordType2->setVarchar("e", "520", inputBuf2);
     recordType2->setVarchar("a", "5200", inputBuf2);
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
     BOOST_CHECK(boost::algorithm::equals("23", 
@@ -4696,7 +4729,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferRegex)
 			  "`c[0-9]+`");
     BOOST_CHECK_EQUAL(4U, t1.getTarget()->size());
     // Actually execute this thing.
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(3, t1.getTarget()->getInt32("c1", outputBuf));
@@ -4710,7 +4743,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferRegex)
 			  "`c[0-9]+`, `e.*`");
     BOOST_CHECK_EQUAL(6U, t1.getTarget()->size());
     // Actually execute this thing.
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(3, t1.getTarget()->getInt32("c1", outputBuf));
@@ -4726,7 +4759,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferRegex)
 			  "`c[0-9]+`, `eff`");
     BOOST_CHECK_EQUAL(5U, t1.getTarget()->size());
     // Actually execute this thing.
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(3, t1.getTarget()->getInt32("c1", outputBuf));
@@ -4741,7 +4774,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferRegex)
 			  "eff AS foo, `c[0-9]+`, `eff`");
     BOOST_CHECK_EQUAL(6U, t1.getTarget()->size());
     // Actually execute this thing.
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(3, t1.getTarget()->getInt32("c1", outputBuf));
@@ -4757,7 +4790,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferRegex)
 			  "eff AS foo, `c[0-9]+`, a");
     BOOST_CHECK_EQUAL(6U, t1.getTarget()->size());
     // Actually execute this thing.
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(3, t1.getTarget()->getInt32("c1", outputBuf));
@@ -4773,7 +4806,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferRegex)
 			  "eff AS foo, `c[0-9]+`, 34*a AS a");
     BOOST_CHECK_EQUAL(6U, t1.getTarget()->size());
     // Actually execute this thing.
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(3, t1.getTarget()->getInt32("c1", outputBuf));
@@ -4789,7 +4822,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferRegex)
 			  "eff AS foo, `c[0-9]*3$`, 34*a AS a");
     BOOST_CHECK_EQUAL(3U, t1.getTarget()->size());
     // Actually execute this thing.
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(4, t1.getTarget()->getInt32("c3", outputBuf));
@@ -4802,7 +4835,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferRegex)
 			  "eff AS foo, `c[0-9]*3`, 34*a AS a");
     BOOST_CHECK_EQUAL(3U, t1.getTarget()->size());
     // Actually execute this thing.
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(4, t1.getTarget()->getInt32("c3", outputBuf));
@@ -4850,7 +4883,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Regex)
 			 "`c[0-9]+`");
     BOOST_CHECK_EQUAL(4U, t1.getTarget()->size());
     // Actually execute this thing.
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
     BOOST_CHECK_EQUAL(3, t1.getTarget()->getInt32("c1", outputBuf));
@@ -4975,7 +5008,7 @@ void testCharCast(bool isNullable)
 			"CAST(a AS CHAR(4)) AS ret");
     BOOST_CHECK_EQUAL(4, t1.getTarget()->begin_members()->GetType()->GetSize());
     BOOST_CHECK_EQUAL(FieldType::CHAR, t1.getTarget()->begin_members()->GetType()->GetEnum());
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     char expected [] = "1234";
@@ -4987,7 +5020,7 @@ void testCharCast(bool isNullable)
 			"CAST(a AS CHAR(8)) AS ret");
     BOOST_CHECK_EQUAL(8, t1.getTarget()->begin_members()->GetType()->GetSize());
     BOOST_CHECK_EQUAL(FieldType::CHAR, t1.getTarget()->begin_members()->GetType()->GetEnum());
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     char expected [] = "123456  ";
@@ -4999,7 +5032,7 @@ void testCharCast(bool isNullable)
 			"CAST(b AS CHAR(4)) AS ret");
     BOOST_CHECK_EQUAL(4, t1.getTarget()->begin_members()->GetType()->GetSize());
     BOOST_CHECK_EQUAL(FieldType::CHAR, t1.getTarget()->begin_members()->GetType()->GetEnum());
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     char expected [] = "abcd";
@@ -5012,7 +5045,7 @@ void testCharCast(bool isNullable)
     BOOST_CHECK_EQUAL(18, t1.getTarget()->begin_members()->GetType()->GetSize());
     BOOST_CHECK_EQUAL(FieldType::CHAR, t1.getTarget()->begin_members()->GetType()->GetEnum());
     BOOST_CHECK_EQUAL(isNullable, t1.getTarget()->begin_members()->GetType()->isNullable());
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     char expected [] = "abcdefghijklmnop  ";
@@ -5025,7 +5058,7 @@ void testCharCast(bool isNullable)
     BOOST_CHECK_EQUAL(16, t1.getTarget()->begin_members()->GetType()->GetSize());
     BOOST_CHECK_EQUAL(FieldType::CHAR, t1.getTarget()->begin_members()->GetType()->GetEnum());
     BOOST_CHECK_EQUAL(isNullable, t1.getTarget()->begin_members()->GetType()->isNullable());
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     char expected [] = "abcdefghijklmnop";
@@ -5073,7 +5106,7 @@ void testDateCast(bool isNullable)
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
 			"CAST(b AS DATE) AS varcharToDate");
     BOOST_CHECK_EQUAL(FieldType::DATE, t1.getTarget()->begin_members()->GetType()->GetEnum());
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     boost::gregorian::date expected(2011, boost::gregorian::Mar, 16);
@@ -5085,7 +5118,7 @@ void testDateCast(bool isNullable)
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
 			"cast(b as date) AS varcharToDate");
     BOOST_CHECK_EQUAL(FieldType::DATE, t1.getTarget()->begin_members()->GetType()->GetEnum());
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     boost::gregorian::date expected(2011, boost::gregorian::Mar, 16);
@@ -5096,7 +5129,7 @@ void testDateCast(bool isNullable)
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
 			"CAST(g AS DATE) AS varcharToDate");
     BOOST_CHECK_EQUAL(FieldType::DATE, t1.getTarget()->begin_members()->GetType()->GetEnum());
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     boost::gregorian::date expected(2011, boost::gregorian::Feb, 22);
@@ -5155,7 +5188,7 @@ void testDatetimeCast(bool isNullable)
 	m != e; ++m) {
       BOOST_CHECK_EQUAL(FieldType::DATETIME, m->GetType()->GetEnum());
     }
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(expected1, t1.getTarget()->getMemberOffset("varcharToDatetime").getDatetime(outputBuf));
@@ -5222,7 +5255,7 @@ void testInt32Cast(bool isNullable)
       BOOST_CHECK_EQUAL(FieldType::INT32, it->GetType()->GetEnum());
       BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
     }
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(23444, t1.getTarget()->getInt32("a", outputBuf));
@@ -5293,7 +5326,7 @@ void testInt64Cast(bool isNullable)
       BOOST_CHECK_EQUAL(FieldType::INT64, it->GetType()->GetEnum());
       BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
     }
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(233444772354LL, t1.getTarget()->getInt64("a", outputBuf));
@@ -5374,7 +5407,7 @@ void testDoubleCast(bool isNullable)
       BOOST_CHECK_EQUAL(FieldType::DOUBLE, it->GetType()->GetEnum());
       BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
     }
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(23444.324, t1.getTarget()->getDouble("a", outputBuf));
@@ -5478,7 +5511,7 @@ void testDecimalCast(bool isNullable)
       BOOST_CHECK_EQUAL(FieldType::BIGDECIMAL, it->GetType()->GetEnum());
       BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
     }
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(decimalEquals("23444.324", t1.getTarget(), "a", outputBuf));
@@ -5558,7 +5591,7 @@ void testVarcharCast(bool isNullable)
       BOOST_CHECK_EQUAL(FieldType::VARCHAR, it->GetType()->GetEnum());
       BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
     }
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(boost::algorithm::equals("2011-03-12", 
@@ -5627,7 +5660,7 @@ void testNullableVarcharCast()
       BOOST_CHECK_EQUAL(FieldType::VARCHAR, it->GetType()->GetEnum());
       BOOST_CHECK(it->GetType()->isNullable());
     }
-    RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+    RecordBuffer outputBuf;
     InterpreterContext runtimeCtxt;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("a").isNull(outputBuf));
@@ -5672,10 +5705,11 @@ BOOST_AUTO_TEST_CASE(testIQLAddChar)
   recordType->setChar("c", "123456789", inputBuf);
   BOOST_CHECK_EQUAL(41, t1.getTarget()->begin_members()->GetType()->GetSize());
   BOOST_CHECK_EQUAL(FieldType::CHAR, t1.getTarget()->begin_members()->GetType()->GetEnum());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(0, strcmp("4381905F306900000161B14DDCDB9911123456789",t1.getTarget()->getFieldAddress("b").getCharPtr(outputBuf)));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLUnaryPlusAndMinus)
@@ -5701,7 +5735,7 @@ BOOST_AUTO_TEST_CASE(testIQLUnaryPlusAndMinus)
   RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
   recordType->setInt32("x", 32, inputBuf);
   recordType->setInt32("y", -8, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(32, t1.getTarget()->getInt32("a", outputBuf));
@@ -5711,6 +5745,7 @@ BOOST_AUTO_TEST_CASE(testIQLUnaryPlusAndMinus)
   BOOST_CHECK_EQUAL(8, t1.getTarget()->getInt32("e", outputBuf));
   BOOST_CHECK_EQUAL(-8, t1.getTarget()->getInt32("f", outputBuf));
   BOOST_CHECK_EQUAL(8, t1.getTarget()->getInt32("g", outputBuf));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLGetVariables)
@@ -5820,7 +5855,7 @@ BOOST_AUTO_TEST_CASE(testIQLGreaterLeast)
   recordType->setDate("l", d2, inputBuf);
   recordType->setVarchar("m", "asdfkeekefe", inputBuf);
   recordType->setVarchar("n", "asdfwefkefe", inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(FieldType::INT32, 
 		    t1.getTarget()->getMember("result1").GetType()->GetEnum());
@@ -5891,6 +5926,7 @@ BOOST_AUTO_TEST_CASE(testIQLGreaterLeast)
   BOOST_CHECK_EQUAL(FieldType::INT64, 
 		    t1.getTarget()->getMember("result18").GetType()->GetEnum());
   BOOST_CHECK_EQUAL(88823445323LL, t1.getTarget()->getInt64("result18", outputBuf));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLNegate)
@@ -5920,7 +5956,7 @@ BOOST_AUTO_TEST_CASE(testIQLNegate)
   ::decimal128FromString(recordType->getMemberOffset("w").getDecimalPtr(inputBuf), 
 			 "-56.8234", 
 			 runtimeCtxt.getDecimalContext());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   decimal128 expected;
   ::decimal128FromString(&expected, "56.8234", runtimeCtxt.getDecimalContext());
@@ -5932,6 +5968,7 @@ BOOST_AUTO_TEST_CASE(testIQLNegate)
 			   &expected,
 			   t1.getTarget()->getMemberOffset("d").getDecimalPtr(outputBuf),
 			   16));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLNegateNullable)
@@ -5961,7 +5998,7 @@ BOOST_AUTO_TEST_CASE(testIQLNegateNullable)
   decimal128 input;
   ::decimal128FromString(&input, "-56.8234", runtimeCtxt.getDecimalContext());
   recordType->getMemberOffset("w").setDecimal(input, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   decimal128 expected;
   ::decimal128FromString(&expected, "56.8234", runtimeCtxt.getDecimalContext());
@@ -5980,7 +6017,6 @@ BOOST_AUTO_TEST_CASE(testIQLNegateNullable)
   recordType->getFieldAddress("y").setNull(inputBuf);
   recordType->getFieldAddress("z").setNull(inputBuf);
   recordType->getFieldAddress("w").setNull(inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(t1.getTarget()->getFieldAddress("a").isNull(outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
@@ -6015,7 +6051,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableChar)
   BOOST_CHECK_EQUAL(9, t1.getTarget()->getMember("d").GetType()->GetSize());
   BOOST_CHECK_EQUAL(FieldType::CHAR, t1.getTarget()->getMember("d").GetType()->GetEnum());
   BOOST_CHECK(t1.getTarget()->getMember("d").GetType()->isNullable());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
@@ -6024,7 +6060,6 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableChar)
   t1.getTarget()->GetFree()->free(outputBuf);
 
   recordType->getFieldAddress("a").setNull(inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
@@ -6053,7 +6088,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableInt32)
   BOOST_CHECK(t1.getTarget()->begin_members()->GetType()->isNullable());
   BOOST_CHECK_EQUAL(FieldType::INT32, t1.getTarget()->getMember("d").GetType()->GetEnum());
   BOOST_CHECK(t1.getTarget()->getMember("d").GetType()->isNullable());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
@@ -6062,7 +6097,6 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableInt32)
   t1.getTarget()->GetFree()->free(outputBuf);
 
   recordType->getFieldAddress("a").setNull(inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
@@ -6096,7 +6130,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableDecimal)
   BOOST_CHECK(t1.getTarget()->begin_members()->GetType()->isNullable());
   BOOST_CHECK_EQUAL(FieldType::BIGDECIMAL, t1.getTarget()->getMember("d").GetType()->GetEnum());
   BOOST_CHECK(t1.getTarget()->getMember("d").GetType()->isNullable());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK_EQUAL(0, memcmp(t1.getTarget()->getFieldAddress("b").getDecimalPtr(outputBuf),
@@ -6105,7 +6139,6 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableDecimal)
   t1.getTarget()->GetFree()->free(outputBuf);
 
   recordType->getFieldAddress("a").setNull(inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
@@ -6128,7 +6161,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableDatetime)
   RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
   boost::posix_time::ptime dt = boost::posix_time::time_from_string("2011-02-17 15:38:33");
   recordType->setDatetime("a", dt, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
@@ -6137,7 +6170,6 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableDatetime)
   t1.getTarget()->GetFree()->free(outputBuf);
 
   recordType->getFieldAddress("a").setNull(inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
   t1.getTarget()->GetFree()->free(outputBuf);
@@ -6165,7 +6197,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableVarchar)
   recordType->setVarchar("c", "little lamb", inputBuf);
   BOOST_CHECK_EQUAL(FieldType::VARCHAR, t1.getTarget()->begin_members()->GetType()->GetEnum());
   BOOST_CHECK(t1.getTarget()->begin_members()->GetType()->isNullable());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK_EQUAL(0, strcmp(t1.getTarget()->getFieldAddress("b").getVarcharPtr(outputBuf)->c_str(),
@@ -6173,7 +6205,6 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableVarchar)
   t1.getTarget()->GetFree()->free(outputBuf);
 
   recordType->getFieldAddress("a").setNull(inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   t1.getTarget()->GetFree()->free(outputBuf);
@@ -6202,7 +6233,7 @@ void testIsNull(bool isNullable)
   BOOST_CHECK(!t1.getTarget()->getMember("b").GetType()->isNullable());
   BOOST_CHECK_EQUAL(FieldType::INT32, t1.getTarget()->getMember("d").GetType()->GetEnum());
   BOOST_CHECK(!t1.getTarget()->getMember("d").GetType()->isNullable());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK_EQUAL(0, t1.getTarget()->getFieldAddress("b").getInt32(outputBuf));
@@ -6218,7 +6249,6 @@ void testIsNull(bool isNullable)
     BOOST_CHECK(!t1.getTarget()->getMember("b").GetType()->isNullable());
     BOOST_CHECK_EQUAL(FieldType::INT32, t1.getTarget()->getMember("d").GetType()->GetEnum());
     BOOST_CHECK(!t1.getTarget()->getMember("d").GetType()->isNullable());
-    outputBuf = t1.getTarget()->GetMalloc()->malloc();
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
     BOOST_CHECK_EQUAL(1, t1.getTarget()->getFieldAddress("b").getInt32(outputBuf));
@@ -6262,7 +6292,7 @@ void testIsNullFunction(bool isNullable1, bool isNullable2,
   BOOST_CHECK_EQUAL(FieldType::INT32, t1.getTarget()->getMember("b").GetType()->GetEnum());
   BOOST_CHECK_EQUAL(resultNullable,
 		    t1.getTarget()->getMember("b").GetType()->isNullable());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK_EQUAL(999, t1.getTarget()->getFieldAddress("b").getInt32(outputBuf));
@@ -6270,7 +6300,6 @@ void testIsNullFunction(bool isNullable1, bool isNullable2,
 
   if(isNullable1) {
     recordType->getFieldAddress("a").setNull(inputBuf);
-    outputBuf = t1.getTarget()->GetMalloc()->malloc();
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
     BOOST_CHECK_EQUAL(8234, t1.getTarget()->getFieldAddress("b").getInt32(outputBuf));
@@ -6279,7 +6308,6 @@ void testIsNullFunction(bool isNullable1, bool isNullable2,
   if(isNullable2) {
     recordType->setInt32("a", 999, inputBuf);
     recordType->getFieldAddress("c").setNull(inputBuf);
-    outputBuf = t1.getTarget()->GetMalloc()->malloc();
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
     BOOST_CHECK_EQUAL(999, t1.getTarget()->getFieldAddress("b").getInt32(outputBuf));
@@ -6288,7 +6316,6 @@ void testIsNullFunction(bool isNullable1, bool isNullable2,
   if(isNullable1 && isNullable2) {
     recordType->getFieldAddress("a").setNull(inputBuf);
     recordType->getFieldAddress("c").setNull(inputBuf);
-    outputBuf = t1.getTarget()->GetMalloc()->malloc();
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
     t1.getTarget()->GetFree()->free(outputBuf);
@@ -6331,7 +6358,7 @@ BOOST_AUTO_TEST_CASE(testIQLIsNullFunctionTypePromotion)
   BOOST_CHECK_EQUAL(FieldType::INT64, t1.getTarget()->getMember("b").GetType()->GetEnum());
   BOOST_CHECK_EQUAL(false,
 		    t1.getTarget()->getMember("b").GetType()->isNullable());
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK_EQUAL(999LL, t1.getTarget()->getFieldAddress("b").getInt64(outputBuf));
@@ -6339,7 +6366,6 @@ BOOST_AUTO_TEST_CASE(testIQLIsNullFunctionTypePromotion)
 
   // Check that the actual type promo works
   recordType->getFieldAddress("a").setNull(inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK_EQUAL(8234LL, t1.getTarget()->getFieldAddress("b").getInt64(outputBuf));
@@ -6394,7 +6420,7 @@ void internalTestTransferOfNullableIntegers(const std::string& xfer)
   recordType->setInt32("a", 23, inputBuf);
   recordType->setInt32("b", 230, inputBuf);
   recordType->setInt32("c", 2300, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("a").isNull(outputBuf));
@@ -6408,7 +6434,6 @@ void internalTestTransferOfNullableIntegers(const std::string& xfer)
   t1.getTarget()->getFree().free(outputBuf);
 	      
   recordType->getFieldAddress("c").setNull(inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("a").isNull(outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("c").isNull(outputBuf));
@@ -6454,7 +6479,7 @@ void testTransferWithAtLeastOneNullable(DynamicRecordContext& ctxt,
   recordType->setInt32("a", 23, inputBuf);
   recordType->setInt32("b", 230, inputBuf);
   recordType->setInt32("c", 2300, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("a").isNull(outputBuf));
@@ -6468,7 +6493,6 @@ void testTransferWithAtLeastOneNullable(DynamicRecordContext& ctxt,
   t1.getTarget()->getFree().free(outputBuf);
 	      
   recordType->getFieldAddress("c").setNull(inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("a").isNull(outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("c").isNull(outputBuf));
@@ -6536,7 +6560,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferNullableToNullable)
   recordType->setInt32("c", 2300, inputBuf);
   recordType->setInt32("d", 21, inputBuf);
   recordType->setInt32("e", 20, inputBuf);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
@@ -6549,7 +6573,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferNullableToNullable)
 	      
   recordType->getFieldAddress("a").setNull(inputBuf);
   recordType->getFieldAddress("c").setNull(inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
@@ -6608,7 +6631,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullable)
   recordType2->setInt32("d", 52, inputBuf2);
   recordType2->setInt32("e", 520, inputBuf2);
   recordType2->setInt32("f", 5200, inputBuf2);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
   BOOST_CHECK(!t1.getTarget()->getMemberOffset("a").isNull(outputBuf));
@@ -6626,7 +6649,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullable)
   t1.getTarget()->getFree().free(outputBuf);
 
   recordType2->getMemberOffset("e").setNull(inputBuf2);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
   BOOST_CHECK(!t1.getTarget()->getMemberOffset("a").isNull(outputBuf));
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getInt32("a", outputBuf));
@@ -6642,7 +6664,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullable)
   t1.getTarget()->getFree().free(outputBuf);
 
   recordType->getMemberOffset("b").setNull(inputBuf);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
   BOOST_CHECK(!t1.getTarget()->getMemberOffset("a").isNull(outputBuf));
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getInt32("a", outputBuf));
@@ -6705,7 +6726,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullableAndNot)
   recordType2->setInt32("d", 52, inputBuf2);
   recordType2->setInt32("e", 520, inputBuf2);
   recordType2->setInt32("f", 5200, inputBuf2);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
   BOOST_CHECK(!t1.getTarget()->getMemberOffset("a").isNull(outputBuf));
@@ -6723,7 +6744,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullableAndNot)
   t1.getTarget()->getFree().free(outputBuf);
 
   recordType2->getMemberOffset("e").setNull(inputBuf2);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
   BOOST_CHECK(!t1.getTarget()->getMemberOffset("a").isNull(outputBuf));
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getInt32("a", outputBuf));
@@ -6788,7 +6808,7 @@ void internalTestIQLRecordTransfer2IntegersNullableLarge(bool nullability,
   recordType2->setInt32("d", 52, inputBuf2);
   recordType2->setInt32("e", 520, inputBuf2);
   recordType2->setInt32("f", 5200, inputBuf2);
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
   for(std::size_t i=0; i<sz; i++) { 
@@ -6805,7 +6825,6 @@ void internalTestIQLRecordTransfer2IntegersNullableLarge(bool nullability,
   t1.getTarget()->getFree().free(outputBuf);
 
   recordType2->getMemberOffset("e").setNull(inputBuf2);
-  outputBuf = t1.getTarget()->GetMalloc()->malloc();
   t1.execute(inputBuf, inputBuf2, outputBuf, &runtimeCtxt, false, false);
   for(std::size_t i=0; i<sz; i++) { 
     std::string m = (boost::format("a%1%") % i).str();
@@ -6963,7 +6982,7 @@ BOOST_AUTO_TEST_CASE(testStringLiteralEscapes)
   
   InterpreterContext runtimeCtxt;
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
-  RecordBuffer outputBuf = t1.getTarget()->GetMalloc()->malloc();
+  RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);  
   BOOST_CHECK(boost::algorithm::equals("noescapes",
 				       t1.getTarget()->getFieldAddress("a").getVarcharPtr(outputBuf)->c_str()));
