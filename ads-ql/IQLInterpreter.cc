@@ -56,6 +56,7 @@
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
+#include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -107,95 +108,40 @@ extern "C" {
 
 class OrcJit
 {
-public:
-  using ObjLayerT = llvm::orc::LegacyRTDyldObjectLinkingLayer;
-  using CompileLayerT = llvm::orc::LegacyIRCompileLayer<ObjLayerT, llvm::orc::SimpleCompiler>;
 private:
-  
-  std::vector<llvm::orc::VModuleKey> mModuleKeys;
-  llvm::orc::ExecutionSession mExecutionSession;
-  std::shared_ptr<llvm::orc::SymbolResolver> mResolver;
-  std::unique_ptr<llvm::TargetMachine> mTargetMachine;
-  const llvm::DataLayout mDataLayout;
-  ObjLayerT mObjectLayer;
-  CompileLayerT mCompileLayer;
-
-  std::string mangle(const std::string &Name) {
-    std::string MangledName;
-    {
-      llvm::raw_string_ostream MangledNameStream(MangledName);
-      llvm::Mangler::getNameWithPrefix(MangledNameStream, Name, mDataLayout);
-    }
-    return MangledName;
-  }
-
+  std::unique_ptr<llvm::orc::LLJIT> mJIT;
 
 public:
   OrcJit(std::function<void(llvm::orc::VModuleKey, const llvm::object::ObjectFile &Obj,
 			    const llvm::RuntimeDyld::LoadedObjectInfo &)> notifyLoaded,
 	 std::function<void(llvm::orc::VModuleKey, const llvm::object::ObjectFile &Obj,
-			    const llvm::RuntimeDyld::LoadedObjectInfo &)> notifyFinalized);
-
-  llvm::JITSymbol findMangledSymbol(const std::string & name)
+			    const llvm::RuntimeDyld::LoadedObjectInfo &)> notifyFinalized)
   {
-    for (auto module : llvm::make_range(mModuleKeys.begin(), mModuleKeys.end()))
-      if (auto Sym = mCompileLayer.findSymbolIn(module, name, true))
-        return Sym;
-    
-    for (auto module : llvm::make_range(mModuleKeys.begin(), mModuleKeys.end()))
-      if (auto Sym = mObjectLayer.findSymbolIn(module, name, true))
-        return Sym;
-    
-    // If we can't find the symbol in the JIT, try looking in the host process.
-    if (auto SymAddr = llvm::RTDyldMemoryManager::getSymbolAddressInProcess(name))
-      return llvm::JITSymbol(SymAddr, llvm::JITSymbolFlags::Exported);
-
-    return nullptr;
+    auto creator = [notifyLoaded](llvm::orc::ExecutionSession & es, const llvm::Triple & tt) -> std::unique_ptr<llvm::orc::ObjectLayer> {
+	  auto mem = []() { return std::make_unique<llvm::SectionMemoryManager>(); };	  
+	  auto layer = std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(es, std::move(mem));
+	  layer->setNotifyLoaded(notifyLoaded);
+	  return layer;
+    };
+    llvm::ExitOnError exitOnErr;
+    mJIT = exitOnErr(llvm::orc::LLJITBuilder().setObjectLinkingLayerCreator(std::move(creator)).create());
+    // TODO: Best to limit this search to the external functions we define, but this works
+    auto searchGen = exitOnErr(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(mJIT->getDataLayout().getGlobalPrefix()));
+    mJIT->getExecutionSession().getJITDylibByName("main")->addGenerator(std::move(searchGen));
   }
 
-  llvm::orc::VModuleKey addModule(std::unique_ptr<llvm::Module> module) {
-    auto key = mExecutionSession.allocateVModule();
-    llvm::cantFail(mCompileLayer.addModule(key, std::move(module)));
-    mModuleKeys.push_back(key);
-    return key;
+  llvm::Error addModule(llvm::orc::ThreadSafeModule module) {
+    return mJIT->addIRModule(std::move(module));
   }
 
-  llvm::orc::VModuleKey addObject(std::unique_ptr<llvm::MemoryBuffer> obj) {
-    auto key = mExecutionSession.allocateVModule();
-    llvm::cantFail(mObjectLayer.addObject(key, std::move(obj)));
-    mModuleKeys.push_back(key);
-    return key;
+  llvm::Error addObject(std::unique_ptr<llvm::MemoryBuffer> obj) {
+    return mJIT->addObjectFile(std::move(obj));
   }
 
-  llvm::JITSymbol findSymbol(const std::string Name) {
-    return findMangledSymbol(mangle(Name));
+  llvm::Expected<llvm::JITEvaluatedSymbol> findSymbol(const std::string Name) {
+    return mJIT->lookup(Name);
   }
 };
-
-OrcJit::OrcJit(std::function<void(llvm::orc::VModuleKey, const llvm::object::ObjectFile &Obj,
-				  const llvm::RuntimeDyld::LoadedObjectInfo &)> notifyLoaded,
-	       std::function<void(llvm::orc::VModuleKey, const llvm::object::ObjectFile &Obj,
-				  const llvm::RuntimeDyld::LoadedObjectInfo &)> notifyFinalized)
-  :
-  mResolver(llvm::orc::createLegacyLookupResolver(mExecutionSession,
-						  [this](llvm::StringRef name) {
-						    return this->findMangledSymbol(std::string(name));
-						  },
-						  [](llvm::Error Err) {
-						    llvm::cantFail(std::move(Err), "lookupMangledSymbol failed"); }
-						  )),
-  mTargetMachine(llvm::EngineBuilder().selectTarget()),
-  mDataLayout(mTargetMachine->createDataLayout()),
-  mObjectLayer(llvm::AcknowledgeORCv1Deprecation, mExecutionSession,
-	       [this](llvm::orc::VModuleKey) {
-		 return ObjLayerT::Resources{ std::make_shared<llvm::SectionMemoryManager>(), this->mResolver };
-	       },
-	       notifyLoaded, notifyFinalized),
-  mCompileLayer(llvm::AcknowledgeORCv1Deprecation, mObjectLayer,
-		llvm::orc::SimpleCompiler(*mTargetMachine))
-{
-  llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);  
-}
 
 // Forward decls
 extern "C" void InternalInt32FromDate(boost::gregorian::date arg,
@@ -2286,8 +2232,6 @@ void LLVMBase::InitializeLLVM()
   mFPM = new llvm::legacy::FunctionPassManager(llvm::unwrap(mContext->LLVMModule));
 
   // Set up the optimizer pipeline.
-  // // Promote allocas to registers.
-  // mFPM->add(llvm::createPromoteMemoryToRegisterPass());
   // Do simple "peephole" optimizations and bit-twiddling optzns.
   mFPM->add(llvm::createInstructionCombiningPass());
   // Reassociate expressions.
@@ -2459,7 +2403,8 @@ IQLRecordBufferMethodHandle::IQLRecordBufferMethodHandle(const std::string& obje
 					 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo) {
 				  });
 
-  mModuleKey = mJIT->addObject(llvm::MemoryBuffer::getMemBuffer(objectFile));
+  // mModuleKey = mJIT->addObject(llvm::MemoryBuffer::getMemBuffer(objectFile));
+  llvm::cantFail(mJIT->addObject(llvm::MemoryBuffer::getMemBuffer(objectFile)));
 }
 
 IQLRecordBufferMethodHandle::~IQLRecordBufferMethodHandle()
@@ -2469,13 +2414,14 @@ IQLRecordBufferMethodHandle::~IQLRecordBufferMethodHandle()
 void IQLRecordBufferMethodHandle::initialize(const std::string& bitcode, 
 					     const std::vector<std::string>& functionNames,
 					     std::string & objectFile)
-{  
+{
+  std::unique_ptr<llvm::LLVMContext> context(new llvm::LLVMContext());
   std::unique_ptr<llvm::Module> module;
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   llvm::InitializeNativeTargetAsmParser();
   llvm::MemoryBufferRef mb(bitcode, "MyModule");
-  llvm::Expected<std::unique_ptr<llvm::Module> > errOr = llvm::parseBitcodeFile(mb, ctxt);
+  llvm::Expected<std::unique_ptr<llvm::Module> > errOr = llvm::parseBitcodeFile(mb, *context.get());
   if (!errOr) {
     std::string err("Failed to restore LLVM module: ");
     llvm::raw_string_ostream sstr (err);
@@ -2493,16 +2439,18 @@ void IQLRecordBufferMethodHandle::initialize(const std::string& bitcode,
 					 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo) {
 				    this->onObjectFinalized(key, obj, objInfo);
 				  });
-  mModuleKey = mJIT->addModule(std::move(module));
+  // mModuleKey = mJIT->addModule(std::move(module));
+  llvm::cantFail(mJIT->addModule(llvm::orc::ThreadSafeModule(std::move(module), std::move(context))));
 }
 
 void * IQLRecordBufferMethodHandle::getFunPtr(const std::string& nm)
 {
   // TODO: Prepend __????
   auto ExprSymbol = mJIT->findSymbol(nm);
-  assert(ExprSymbol && "Function not found");
 
-  return reinterpret_cast<void *>(llvm::cantFail(ExprSymbol.getAddress()));
+  // return reinterpret_cast<void *>(llvm::cantFail(ExprSymbol.getAddress()));
+  llvm::ExitOnError ExitOnErr;
+  return reinterpret_cast<void *>(ExitOnErr(std::move(ExprSymbol)).getAddress());
 }
 
 class IQLParserStuff
