@@ -34,7 +34,7 @@
 
 add_executable(ads-df-test test.cc)
 
-target_link_libraries( ads-df-test ads-df  ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} )
+target_link_libraries( ads-df-test ads-df  ${Boost_TIMER_LIBRARY} ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} )
 
 add_executable(parser-test parser-test.cc)
 

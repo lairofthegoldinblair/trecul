@@ -1129,7 +1129,7 @@ public:
   RecordTypeFree();
   RecordTypeFree(std::size_t sz, const std::vector<FieldAddress>& offsets);
   ~RecordTypeFree();
-  void free(RecordBuffer buf) const;
+  void free(RecordBuffer & buf) const;
 };
 
 class RecordTypeMalloc

@@ -1486,7 +1486,7 @@ RecordTypeFree::~RecordTypeFree()
 {
 }
 
-void RecordTypeFree::free(RecordBuffer buf) const
+void RecordTypeFree::free(RecordBuffer & buf) const
 {
   if (buf.Ptr == NULL) return;
 

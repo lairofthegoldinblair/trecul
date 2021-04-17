@@ -588,7 +588,8 @@ RuntimeCopyOperatorType::RuntimeCopyOperatorType(const RecordTypeFree & freeFunc
   for(std::vector<const RecordTypeTransfer *>::const_iterator it = transfers.begin();
       it != transfers.end();
       ++it) {
-    mTransfers.push_back((*it)->create(pics[it - transfers.begin()]));
+    // mTransfers.push_back((*it)->create(pics[it - transfers.begin()]));
+    mTransfers.push_back((*it)->create());
   }
 }
 

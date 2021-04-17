@@ -36,14 +36,18 @@
 #include <iostream>
 
 #include <boost/format.hpp>
-#include <boost/progress.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <boost/iostreams/device/array.hpp>
+#include <boost/iostreams/filtering_stream.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/asio/ip/host_name.hpp>
+#include <boost/timer/timer.hpp>
+#include <boost/process/io.hpp>
+#include <boost/process/system.hpp>
 
 #include "IQLInterpreter.hh"
 #include "RecordParser.hh"
@@ -521,68 +525,97 @@ BOOST_AUTO_TEST_CASE(testConcurrentFifo)
   c.join();
 }
 
+struct test_gz
+{
+  boost::filesystem::path filename;
+  test_gz()
+    :
+    filename("test.gz")
+  {
+    std::string testdata = "aaaaaaaaaabbbbbbbbbccccccccccccccccccccccccccccccdddddddd";
+    namespace io = boost::iostreams;
+    {
+      // put ostream in a scope so its d'tor
+      // is executed; that flushes everything
+      // through the zlib filter.
+      std::ofstream f(filename.c_str());
+      io::filtering_ostream out;
+      out.push(io::gzip_compressor());
+      out.push(f);
+      out << testdata;
+    }  
+  }
+  
+
+  ~test_gz()
+  {
+    boost::system::error_code ec;
+    boost::filesystem::remove(filename, ec);
+  }
+};
+
 // DBTODO
-// typedef AsyncFileTraits<gzip_file_traits> AsyncGzip;
-// typedef AsyncDoubleBufferStream<AsyncGzip> AsyncGzipStream;
+typedef AsyncFileTraits<gzip_file_traits> AsyncGzip;
+typedef AsyncDoubleBufferStream<AsyncGzip> AsyncGzipStream;
 
-// BOOST_AUTO_TEST_CASE(testAsyncFileSystem)
-// {
-//   // Try a relatively small block size so we exercise the block management.
-//   std::string f((boost::format("%1%/logs/test.gz") % 
-// 		 getenv("HOME")).str());
-//   AsyncGzipStream::filesystem_type fs = 
-//     AsyncGzipStream::file_system_type::openFor(f.c_str());
-//   AsyncGzipStream stream(fs,
-// 			 f.c_str(), 
-// 			 20);
-//   BOOST_CHECK(NULL == stream.open(0));
-//   uint8_t * buf = stream.open(10);
-//   BOOST_CHECK(buf != NULL);
-//   BOOST_CHECK_EQUAL(0, memcmp(buf, "aaaaaaaaaa", 10));
-//   stream.consume(10);
-//   BOOST_CHECK(!stream.isEOF());
-//   uint8_t * buf1 = stream.open(9);
-//   BOOST_CHECK_EQUAL(buf+10, buf1);
-//   BOOST_CHECK_EQUAL(0, memcmp(buf1, "bbbbbbbbb", 9));
-//   stream.consume(9);
-//   BOOST_CHECK(!stream.isEOF());
-//   buf = stream.open(30);
-//   BOOST_CHECK_EQUAL(0, memcmp(buf, "cccccccccccccccccccccccccccccc", 30));
-//   stream.consume(30);
-//   BOOST_CHECK(!stream.isEOF());
-//   // This tests opening to the end of the file with a short read.
-//   buf = stream.open(20);
-//   BOOST_CHECK(buf == NULL);
-//   buf = stream.open(8);
-//   BOOST_CHECK_EQUAL(0, memcmp(buf, "dddddddd", 8));
-//   stream.consume(8);  
-//   BOOST_CHECK(stream.isEOF());
-//   AsyncGzipStream::file_system_type::closeFileSystem(fs);
-// }
+BOOST_AUTO_TEST_CASE(testAsyncFileSystem)
+{
+  // Try a relatively small block size so we exercise the block management.
+  test_gz testdata;
+  std::string f(testdata.filename.c_str());
+  AsyncGzipStream::filesystem_type fs = 
+    AsyncGzipStream::file_system_type::openFor(f.c_str());
+  AsyncGzipStream stream(fs,
+			 f.c_str(), 
+			 20);
+  BOOST_CHECK(NULL == stream.open(0));
+  uint8_t * buf = stream.open(10);
+  BOOST_CHECK(buf != NULL);
+  BOOST_CHECK_EQUAL(0, memcmp(buf, "aaaaaaaaaa", 10));
+  stream.consume(10);
+  BOOST_CHECK(!stream.isEOF());
+  uint8_t * buf1 = stream.open(9);
+  BOOST_CHECK_EQUAL(buf+10, buf1);
+  BOOST_CHECK_EQUAL(0, memcmp(buf1, "bbbbbbbbb", 9));
+  stream.consume(9);
+  BOOST_CHECK(!stream.isEOF());
+  buf = stream.open(30);
+  BOOST_CHECK_EQUAL(0, memcmp(buf, "cccccccccccccccccccccccccccccc", 30));
+  stream.consume(30);
+  BOOST_CHECK(!stream.isEOF());
+  // This tests opening to the end of the file with a short read.
+  buf = stream.open(20);
+  BOOST_CHECK(buf == NULL);
+  buf = stream.open(8);
+  BOOST_CHECK_EQUAL(0, memcmp(buf, "dddddddd", 8));
+  stream.consume(8);  
+  BOOST_CHECK(stream.isEOF());
+  AsyncGzipStream::file_system_type::closeFileSystem(fs);
+}
 
-// BOOST_AUTO_TEST_CASE(testAsyncFileSystemOneShot)
-// {
-//   // Try a relatively small block size so we exercise the block management
-//   // when trying to open a window bigger than the block size
-//   std::string f((boost::format("%1%/logs/test.gz") % 
-// 		 getenv("HOME")).str());
-//   AsyncGzipStream::filesystem_type fs = 
-//     AsyncGzipStream::file_system_type::openFor(f.c_str());
-//   AsyncGzipStream stream(fs,
-// 			 f.c_str(), 
-// 			 20);
-//   BOOST_CHECK(NULL == stream.open(0));
-//   uint8_t * buf = stream.open(57);
-//   BOOST_REQUIRE(buf != NULL);
-//   BOOST_CHECK_EQUAL(0, memcmp(buf, 
-// 			      "aaaaaaaaaa"
-// 			      "bbbbbbbbb"
-// 			      "cccccccccccccccccccccccccccccc"
-// 			      "dddddddd", 57));
-//   stream.consume(57);
-//   BOOST_CHECK(stream.isEOF());
-//   AsyncGzipStream::file_system_type::closeFileSystem(fs);
-// }
+BOOST_AUTO_TEST_CASE(testAsyncFileSystemOneShot)
+{
+  // Try a relatively small block size so we exercise the block management
+  // when trying to open a window bigger than the block size
+  test_gz testdata;
+  std::string f(testdata.filename.c_str());
+  AsyncGzipStream::filesystem_type fs = 
+    AsyncGzipStream::file_system_type::openFor(f.c_str());
+  AsyncGzipStream stream(fs,
+			 f.c_str(), 
+			 20);
+  BOOST_CHECK(NULL == stream.open(0));
+  uint8_t * buf = stream.open(57);
+  BOOST_REQUIRE(buf != NULL);
+  BOOST_CHECK_EQUAL(0, memcmp(buf, 
+			      "aaaaaaaaaa"
+			      "bbbbbbbbb"
+			      "cccccccccccccccccccccccccccccc"
+			      "dddddddd", 57));
+  stream.consume(57);
+  BOOST_CHECK(stream.isEOF());
+  AsyncGzipStream::file_system_type::closeFileSystem(fs);
+}
 
 BOOST_AUTO_TEST_CASE(testPortRequestList)
 {
@@ -629,11 +662,30 @@ BOOST_AUTO_TEST_CASE(testPortRequestList)
   BOOST_CHECK_EQUAL(r.request_next(), &r);
 }
 
+struct gzipped_test_file
+{
+  boost::filesystem::path p;
+  gzipped_test_file()
+  {
+    auto b = Executable::getPath().parent_path() / "parser-test";
+    p = b;
+    p.replace_extension("gz");
+    int ret = boost::process::system("gzip", boost::process::std_in < b, boost::process::std_out > p);
+    BOOST_CHECK_EQUAL(0, ret);
+  }
+
+  ~gzipped_test_file()
+  {
+    boost::system::error_code ec;
+    boost::filesystem::remove(p, ec);
+  }
+};
+
 BOOST_AUTO_TEST_CASE(testZlibDecompress)
 {
   uint8_t buf[128*1024];
-  ZLibDecompress<MemoryMappedFileBuffer> d((boost::format("%1%/logs/event_d_2010_11_03.gz") % 
-					    getenv("HOME")).str().c_str());
+  gzipped_test_file tf;
+  ZLibDecompress<MemoryMappedFileBuffer> d(tf.p.c_str());
   // Read a full page
   BOOST_CHECK(64*1024 == d.read(buf, 64*1024));
   // Read two full pages
@@ -647,8 +699,8 @@ BOOST_AUTO_TEST_CASE(testZlibDecompress)
 BOOST_AUTO_TEST_CASE(testZlibDecompressStdio)
 {
   uint8_t buf[128*1024];
-  ZLibDecompress<BlockBufferStream<stdio_file_traits> > d((boost::format("%1%/logs/event_d_2010_11_03.gz") % 
-					    getenv("HOME")).str().c_str());
+  gzipped_test_file tf;
+  ZLibDecompress<BlockBufferStream<stdio_file_traits> > d(tf.p.c_str());
   // Read a full page
   BOOST_CHECK(64*1024 == d.read(buf, 64*1024));
   // Read two full pages
@@ -661,17 +713,12 @@ BOOST_AUTO_TEST_CASE(testZlibDecompressStdio)
 
 BOOST_AUTO_TEST_CASE(testFileGlob)
 {
-  {
-    std::vector<std::string> files;
-    Glob::expand("~/logs/*.gz", files);
-  }
-  {
-    std::vector<std::string> files;
-    Glob::expand("~/logs/CUST-big2", files);
-    BOOST_CHECK_EQUAL(1, (int) files.size());
-    BOOST_CHECK_EQUAL(0, strcmp((boost::format("%1%/logs/CUST-big2") % getenv("HOME")).str().c_str(),
-				files[0].c_str()));
-  }
+  auto p = Executable::getPath();
+  std::vector<std::string> files;
+  Glob::expand(p.remove_filename().c_str(), files);
+  BOOST_CHECK_EQUAL(1, (int) files.size());
+  BOOST_CHECK_EQUAL(0, strcmp(p.c_str(),
+			      files[0].c_str()));
 }
 
 void checkHdfsRelativePath(const URI& p)
@@ -900,10 +947,9 @@ BOOST_AUTO_TEST_CASE(testPagedHashTable)
 
 BOOST_AUTO_TEST_CASE(testBlockBufferStream)
 {
+  test_gz testdata;
   // Try a relatively small block size so we exercise the block management.
-  BlockBufferStream<gzip_file_traits> stream((boost::format("%1%/logs/test.gz") % 
-					      getenv("HOME")).str().c_str(), 
-			   20);
+  BlockBufferStream<gzip_file_traits> stream(testdata.filename.c_str(), 20);
   BOOST_CHECK(NULL == stream.open(0));
   uint8_t * buf = stream.open(10);
   BOOST_CHECK(buf != NULL);
@@ -1344,21 +1390,21 @@ BOOST_AUTO_TEST_CASE(testFifoLargePerfTest)
     bufs.push_back(new TestStruct());
   {
     // Time to enqueue and dequeue to a fifo
-    boost::progress_timer t;
+    boost::timer::auto_cpu_timer t;
     FifoPerfTest<14>::Run(bufs);
   }
   {
     // Time to enqueue and dequeue to a fifo
-    boost::progress_timer t;
+    boost::timer::auto_cpu_timer t;
     FifoPerfTest<30>::Run(bufs);
   }
   {
     // Time to enqueue and dequeue to a fifo
-    boost::progress_timer t;
+    boost::timer::auto_cpu_timer t;
     FifoPerfTest<46>::Run(bufs);
   }
   {
-    boost::progress_timer t;
+    boost::timer::auto_cpu_timer t;
     IntrusiveFifo<TestStruct> fifo;
     int numBufs = (int) bufs.size();
     for(int i=0; i<numBufs; i++) {

@@ -50,7 +50,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/program_options.hpp>
 #include <boost/shared_ptr.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <boost/regex.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <boost/thread.hpp>

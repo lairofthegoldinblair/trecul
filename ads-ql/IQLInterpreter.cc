@@ -47,16 +47,28 @@
 #include <antlr3defs.h>
 
 // LLVM Includes
-#include "llvm/ExecutionEngine/JIT.h"
+// #include "llvm/ExecutionEngine/JIT.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
-#include "llvm/ExecutionEngine/Interpreter.h"
 #include "llvm/ExecutionEngine/GenericValue.h"
+// New ORCJIT stuff
+#include "llvm/ADT/iterator_range.h" // For make_range
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/Orc/CompileUtils.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
+#include "llvm/ExecutionEngine/Orc/LLJIT.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+// End New Stuff
 #include "llvm/IR/Verifier.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/IRReader/IRReader.h"
-#include "llvm/Bitcode/BitstreamWriter.h"
-#include "llvm/Bitcode/ReaderWriter.h"
-#include "llvm/CodeGen/MachineRelocation.h"
+#include "llvm/Bitstream/BitstreamWriter.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/Memory.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -70,8 +82,10 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Mangler.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Object/ObjectFile.h"
 
 #include "md5.h"
 #include "IQLInterpreter.hh"
@@ -91,6 +105,43 @@
 extern "C" {
 #include "decNumberLocal.h"
 }
+
+class OrcJit
+{
+private:
+  std::unique_ptr<llvm::orc::LLJIT> mJIT;
+
+public:
+  OrcJit(std::function<void(llvm::orc::VModuleKey, const llvm::object::ObjectFile &Obj,
+			    const llvm::RuntimeDyld::LoadedObjectInfo &)> notifyLoaded,
+	 std::function<void(llvm::orc::VModuleKey, const llvm::object::ObjectFile &Obj,
+			    const llvm::RuntimeDyld::LoadedObjectInfo &)> notifyFinalized)
+  {
+    auto creator = [notifyLoaded](llvm::orc::ExecutionSession & es, const llvm::Triple & tt) -> std::unique_ptr<llvm::orc::ObjectLayer> {
+	  auto mem = []() { return std::make_unique<llvm::SectionMemoryManager>(); };	  
+	  auto layer = std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(es, std::move(mem));
+	  layer->setNotifyLoaded(notifyLoaded);
+	  return layer;
+    };
+    llvm::ExitOnError exitOnErr;
+    mJIT = exitOnErr(llvm::orc::LLJITBuilder().setObjectLinkingLayerCreator(std::move(creator)).create());
+    // TODO: Best to limit this search to the external functions we define, but this works
+    auto searchGen = exitOnErr(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(mJIT->getDataLayout().getGlobalPrefix()));
+    mJIT->getExecutionSession().getJITDylibByName("main")->addGenerator(std::move(searchGen));
+  }
+
+  llvm::Error addModule(llvm::orc::ThreadSafeModule module) {
+    return mJIT->addIRModule(std::move(module));
+  }
+
+  llvm::Error addObject(std::unique_ptr<llvm::MemoryBuffer> obj) {
+    return mJIT->addObjectFile(std::move(obj));
+  }
+
+  llvm::Expected<llvm::JITEvaluatedSymbol> findSymbol(const std::string Name) {
+    return mJIT->lookup(Name);
+  }
+};
 
 // Forward decls
 extern "C" void InternalInt32FromDate(boost::gregorian::date arg,
@@ -893,7 +944,7 @@ extern "C" void InternalVarcharFromDatetime(boost::posix_time::ptime t,
   boost::gregorian::greg_year_month_day parts = t.date().year_month_day();
   boost::posix_time::time_duration dur = t.time_of_day();
   sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d", (int32_t) parts.year, (int32_t) parts.month,
-	  (int32_t) parts.day, dur.hours(), dur.minutes(), dur.seconds());
+	  (int32_t) parts.day, (int32_t) dur.hours(), (int32_t) dur.minutes(), (int32_t) dur.seconds());
   copyFromString(&buf[0], result, ctxt);
 }
 
@@ -1317,10 +1368,6 @@ llvm::Value * LLVMBase::LoadAndValidateExternalFunction(const char * treculName,
 							const char * implName, 
 							llvm::Type * funTy)
 {
-  void * addr;
-  if (NULL == (addr=llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(implName)))
-    throw std::runtime_error((boost::format("Unable to find symbol for external library function: %1%") % implName).str());
-  mExternalFunctionsIdx[addr] = implName;
   return mContext->addExternalFunction(treculName, implName, funTy);
 }
 
@@ -1346,8 +1393,6 @@ void LLVMBase::CreateMemcpyIntrinsic()
 								/*Linkage=*/llvm::GlobalValue::ExternalLinkage,
 								/*Name=*/"llvm.memcpy.p0i8.p0i8.i64", mod); // (external, no body)
   func_llvm_memcpy_i64->setCallingConv(llvm::CallingConv::C);
-  func_llvm_memcpy_i64->setDoesNotCapture(1);
-  func_llvm_memcpy_i64->setDoesNotCapture(2);
   func_llvm_memcpy_i64->setDoesNotThrow();
 
   mContext->LLVMMemcpyIntrinsic = llvm::wrap(func_llvm_memcpy_i64);
@@ -1375,7 +1420,6 @@ void LLVMBase::CreateMemsetIntrinsic()
     /*Linkage=*/llvm::GlobalValue::ExternalLinkage,
     /*Name=*/"llvm.memset.p0i8.i64", mod); // (external, no body)
   func_llvm_memset_i64->setCallingConv(llvm::CallingConv::C);
-  func_llvm_memset_i64->setDoesNotCapture(1);
   func_llvm_memset_i64->setDoesNotThrow();
 
   mContext->LLVMMemsetIntrinsic = llvm::wrap(func_llvm_memset_i64);
@@ -1401,14 +1445,7 @@ void LLVMBase::CreateMemcmpIntrinsic()
     /*Linkage=*/llvm::GlobalValue::ExternalLinkage,
     /*Name=*/"memcmp", mod); // (external, no body)
   func_memcmp->setCallingConv(llvm::CallingConv::C);
-  func_memcmp->setOnlyReadsMemory(0);
   func_memcmp->setDoesNotThrow();
-
-  // Register symbol for address lookup.
-  void * addr;
-  if (NULL == (addr=llvm::sys::DynamicLibrary::SearchForAddressOfSymbol("memcmp")))
-    throw std::runtime_error("Unable to find symbol for external library function: memcmp");
-  mExternalFunctionsIdx[addr] = "memcmp";
 
   mContext->LLVMMemcmpIntrinsic = llvm::wrap(func_memcmp);
 }
@@ -1418,6 +1455,8 @@ void LLVMBase::InitializeLLVM()
   // We disable this because we want to avoid it's installation of
   // signal handlers.
   llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+  llvm::InitializeNativeTargetAsmParser();
 
   // Compile into an LLVM program
   mContext = new CodeGenerationContext();
@@ -2188,16 +2227,11 @@ void LLVMBase::InitializeLLVM()
   CreateMemsetIntrinsic();
   CreateMemcmpIntrinsic();
 
-  // Create the JIT.  This takes ownership of the module.
-  llvm::EngineBuilder engBuilder(llvm::unwrap(mContext->LLVMModule));
-  std::string ErrStr;
-  engBuilder.setErrorStr(&ErrStr);
-
+  // Compiler for the code
+    
   mFPM = new llvm::legacy::FunctionPassManager(llvm::unwrap(mContext->LLVMModule));
 
   // Set up the optimizer pipeline.
-  // Promote allocas to registers.
-  mFPM->add(llvm::createPromoteMemoryToRegisterPass());
   // Do simple "peephole" optimizations and bit-twiddling optzns.
   mFPM->add(llvm::createInstructionCombiningPass());
   // Reassociate expressions.
@@ -2316,228 +2350,107 @@ void LLVMBase::createUpdate(const std::string & funName,
   createTransferFunction(funName, sources, masks, NULL);
 }
 
-void X86MethodInfo::relocate()
-{
-  for(std::vector<Relocation>::const_iterator reloc = mRelocations.begin();
-      reloc != mRelocations.end();
-      ++reloc) {
-    if (reloc->Symbol.size() == 0) {
-      *((uint8_t **) (mMethodBegin + reloc->MachineCodeOffset)) = 
-	mMethodBegin + reloc->ResultPtrOffset;
-    } else {
-      void * sym = llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(reloc->Symbol.c_str());
-      if (sym == NULL) {
-	throw std::runtime_error((boost::format("Failed to locate symbol %1%"
-						" for relocation in IQL"
-						" expression.  Disable native"
-						" serialization.") % 
-				  reloc->Symbol).str());
-      }
-      *((void **) (mMethodBegin + reloc->MachineCodeOffset)) = sym;
-      // std::cout << "Relocated " << reloc->Symbol.c_str() << " at location 0x" << std::hex << (uint64_t)sym << std::endl;
-    }
-  }
-}
-
-uint8_t * X86MethodInfo::allocateRWX(std::size_t sz, uint8_t alignMod16)
-{
-  std::string errMsg;
-  std::size_t toAlloc=sz+15;
-  llvm::sys::MemoryBlock block = llvm::sys::Memory::AllocateRWX(toAlloc, NULL, &errMsg);
-  if (block.base() == NULL) {
-    throw std::runtime_error(errMsg);
-  }
-  if (block.size() < toAlloc) {
-    throw std::runtime_error("Failed to allocate memory for JIT code");
-  }
-  uint8_t * alignedBase = (uint8_t *) (16*((((uintptr_t)block.base()) + 15 - alignMod16)/16));
-  return alignedBase + alignMod16;
-}
-
-void X86MethodInfo::setMethod(void * methodBegin,
-			      void * methodEnd,
-			      void * codeBegin)
-{
-  mMethodBegin = reinterpret_cast<uint8_t *>(methodBegin);
-  mMethodSize = reinterpret_cast<uint8_t *>(methodEnd) - mMethodBegin;
-  mCodeOffset = reinterpret_cast<uint8_t *>(codeBegin) - mMethodBegin;
-}
-
-void X86MethodInfo::addRelocation(const llvm::MachineRelocation& reloc,
-				  const std::map<void*,std::string>& externalFunctions)
-{
-  uint8_t * ptr = reinterpret_cast<uint8_t*>(reloc.getResultPointer());
-  switch(reloc.getRelocationType()) {
-  case reloc_pcrel_word:
-  case reloc_picrel_word:
-    // Both of these guys are cool in general and don't require
-    // any special work from us because they are position
-    // independent.
-    // In particular we should be seeing these
-    // for branches (basic block relocations in LLVM-speak).
-    // TODO: Should validate that the address is
-    // within the method region.
-    break;
-  case reloc_absolute_word:
-  case reloc_absolute_word_sext:
-    // Be pessimistic about these two: assume they can't
-    // be fixed up.
-    mIsValid = false;
-    break;
-  case reloc_absolute_dword:
-    // The most important case here for our purposes is
-    // references into the constant pool.  The most important
-    // subcase of the important case is floating point constants.
-    if (ptr < mMethodBegin ||
-	ptr >= mMethodBegin+mMethodSize) {
-      // We are pointing to something outside the method region.
-      // TODO: Chances are good that this is an external function.
-      // We can cover this case by saving the fn id and reresolving
-      // on load (dlsym).
-      std::map<void*,std::string>::const_iterator it = externalFunctions.find(ptr);
-      if (externalFunctions.end() != it) {
-	mRelocations.push_back(Relocation(reloc.getMachineCodeOffset(),
-					  it->second));
-      } else {
-	mIsValid = false;
-      }
-    } else {
-      // Save mMethodBegin relative address so we can fix it 
-      // up in another process.
-      mRelocations.push_back(Relocation(reloc.getMachineCodeOffset(), 
-					ptr - mMethodBegin));
-    }
-    break;
-  default:
-    throw std::runtime_error("Unknown X86 Relocation type");
-  }
-}
-
 class IQLRecordBufferMethodHandle 
 {
 private:
   llvm::LLVMContext ctxt;
-  llvm::Module * mModule;
-  llvm::ExecutionEngine * TheExecutionEngine;
-  std::map<std::string, llvm::Function *> funVal;
-  std::map<std::string, boost::shared_ptr<X86MethodInfo> > funInfo;
-  const std::map<void*, std::string> * mExternalFunctions;
-  bool mOwnMap;
+  std::unique_ptr<OrcJit> mJIT;
+  llvm::orc::VModuleKey mModuleKey;
 
   void initialize(const std::string& bitcode, 
-		  const std::vector<std::string>& functionNames);
+		  const std::vector<std::string>& functionNames,
+		  std::string & objectFile);
 public:
   IQLRecordBufferMethodHandle(const std::string& bitcode, 
 			      const std::vector<std::string>& functionNames,
-			      const std::map<void*, std::string>& externalFunctions);
-  IQLRecordBufferMethodHandle(const std::string& bitcode, 
-			      const std::vector<std::string>& functionNames);
+			      std::string & objectFile);
+  IQLRecordBufferMethodHandle(const std::string& objectFile);
   ~IQLRecordBufferMethodHandle();
   void * getFunPtr(const std::string& name);
-  boost::shared_ptr<X86MethodInfo> getFunInfo(const std::string& name) const;
+  static void onObjectLoaded(llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
+			     const llvm::RuntimeDyld::LoadedObjectInfo & objInfo,
+			     std::string & objectFile)
+  {
+    objectFile.assign(obj.getMemoryBufferRef().getBufferStart(), obj.getMemoryBufferRef().getBufferEnd());
+  }
+  void onObjectFinalized(llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
+			 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo)
+  {
+  }
 };
 
 IQLRecordBufferMethodHandle::IQLRecordBufferMethodHandle(const std::string& bitcode, 
-							 const std::vector<std::string>& functionNames)
+							 const std::vector<std::string>& functionNames,
+							 std::string & objectFile)
   :
-  TheExecutionEngine(NULL),
-  mExternalFunctions(new std::map<void*, std::string>()),
-  mOwnMap(true)
+  mModuleKey(std::numeric_limits<llvm::orc::VModuleKey>::max())
 {
-  initialize(bitcode, functionNames);
+  initialize(bitcode, functionNames, objectFile);
 }
 
-IQLRecordBufferMethodHandle::IQLRecordBufferMethodHandle(const std::string& bitcode, 
-							 const std::vector<std::string>& functionNames,
-							 const std::map<void*, std::string>& externalFunctions)
+IQLRecordBufferMethodHandle::IQLRecordBufferMethodHandle(const std::string& objectFile)
   :
-  TheExecutionEngine(NULL),
-  mExternalFunctions(&externalFunctions),
-  mOwnMap(false)
+  mModuleKey(std::numeric_limits<llvm::orc::VModuleKey>::max())
 {
-  initialize(bitcode, functionNames);
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+  llvm::InitializeNativeTargetAsmParser();
+  // Can't create the JIT until after LLVM is initialized
+  mJIT = std::make_unique<OrcJit>([](llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
+					 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo) {
+				  },
+				  [](llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
+					 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo) {
+				  });
+
+  // mModuleKey = mJIT->addObject(llvm::MemoryBuffer::getMemBuffer(objectFile));
+  llvm::cantFail(mJIT->addObject(llvm::MemoryBuffer::getMemBuffer(objectFile)));
 }
 
 IQLRecordBufferMethodHandle::~IQLRecordBufferMethodHandle()
-{
-  delete TheExecutionEngine;
-  if (mOwnMap)
-    delete mExternalFunctions;
+{  
 }
 
 void IQLRecordBufferMethodHandle::initialize(const std::string& bitcode, 
-					     const std::vector<std::string>& functionNames)
-{  
+					     const std::vector<std::string>& functionNames,
+					     std::string & objectFile)
+{
+  std::unique_ptr<llvm::LLVMContext> context(new llvm::LLVMContext());
+  std::unique_ptr<llvm::Module> module;
   llvm::InitializeNativeTarget();
-  llvm::MemoryBuffer * mb = llvm::MemoryBuffer::getMemBuffer(bitcode, "MyModule");
-  if (mb == NULL) 
-    throw std::runtime_error("Failed to create MemoryBuffer");
-  llvm::ErrorOr<llvm::Module*> errOr = llvm::parseBitcodeFile(mb, ctxt);
-  if (errOr.getError()) {
-    throw std::runtime_error((boost::format("Failed to restore LLVM module: %1%") % errOr.getError().message()).str());
+  llvm::InitializeNativeTargetAsmPrinter();
+  llvm::InitializeNativeTargetAsmParser();
+  llvm::MemoryBufferRef mb(bitcode, "MyModule");
+  llvm::Expected<std::unique_ptr<llvm::Module> > errOr = llvm::parseBitcodeFile(mb, *context.get());
+  if (!errOr) {
+    std::string err("Failed to restore LLVM module: ");
+    llvm::raw_string_ostream sstr (err);
+    sstr << errOr.takeError();
+    throw std::runtime_error(sstr.str());
   }
-  mModule = errOr.get();
-  delete mb;
-  // Grab the functions pointers.
-  for(std::vector<std::string>::const_iterator it=functionNames.begin();
-      it != functionNames.end();
-      ++it) {
-    llvm::Function * tmp = mModule->getFunction(*it);
-    if (tmp == NULL) 
-      throw std::runtime_error((boost::format("Failed to retrieve function '%1%' from reconstituted bitcode") % (*it)).str());
-    funVal[*it] = tmp;
-  }
+  module = std::move(errOr.get());
 
-  llvm::EngineBuilder engBuilder(mModule);
-  std::string ErrStr;
-  engBuilder.setErrorStr(&ErrStr);
-  engBuilder.setOptLevel(llvm::CodeGenOpt::Default);
-  TheExecutionEngine = engBuilder.create();
-  if (!TheExecutionEngine) {
-    throw std::runtime_error((boost::format("Could not create ExecutionEngine: %1%\n") % ErrStr).str());
-  }
-  // At this point, the execution engine owns the module
-  // and we don't need the reference any more.
-  mModule = NULL;
+  // Can't create the JIT until after LLVM is initialized
+  mJIT = std::make_unique<OrcJit>([&objectFile](llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
+					 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo) {
+				    IQLRecordBufferMethodHandle::onObjectLoaded(key, obj, objInfo, objectFile);
+				  },
+				  [this](llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
+					 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo) {
+				    this->onObjectFinalized(key, obj, objInfo);
+				  });
+  // mModuleKey = mJIT->addModule(std::move(module));
+  llvm::cantFail(mJIT->addModule(llvm::orc::ThreadSafeModule(std::move(module), std::move(context))));
 }
 
 void * IQLRecordBufferMethodHandle::getFunPtr(const std::string& nm)
 {
-  std::map<std::string, llvm::Function *>::const_iterator it = funVal.find(nm);
-  if (it == funVal.end())
-    throw std::runtime_error((boost::format("Failed to retrieve function '%1%' from reconstituted bitcode") % nm).str());
-  return TheExecutionEngine->getPointerToFunction(it->second);
-}
+  // TODO: Prepend __????
+  auto ExprSymbol = mJIT->findSymbol(nm);
 
-boost::shared_ptr<X86MethodInfo> IQLRecordBufferMethodHandle::getFunInfo(const std::string& nm) const
-{
-  std::map<std::string, boost::shared_ptr<X86MethodInfo> >::const_iterator it = funInfo.find(nm);
-  if (it == funInfo.end())
-    throw std::runtime_error((boost::format("Failed to retrieve function '%1%' from reconstituted bitcode") % nm).str());
-  return it->second;
-}
-
-IQLRecordBufferMethod::IQLRecordBufferMethod(const std::string& bitcode, const std::string& functionName)
-  :
-  mFunction(NULL),
-  mImpl(NULL)
-{
-  std::vector<std::string> tmp;
-  tmp.push_back(functionName);
-  mImpl = new IQLRecordBufferMethodHandle(bitcode, tmp);
-  mFunction = (LLVMFuncType) mImpl->getFunPtr(functionName);
-}
-
-IQLRecordBufferMethod::~IQLRecordBufferMethod()
-{
-  // Pretty sure that mFunction is owned by the ExecutionEngine in the impl.
-  delete mImpl;
-}
-
-
-void Copy(const std::map<std::string, RecordType *> & sources, const std::string& program)
-{
-  // First calculate the 
+  // return reinterpret_cast<void *>(llvm::cantFail(ExprSymbol.getAddress()));
+  llvm::ExitOnError ExitOnErr;
+  return reinterpret_cast<void *>(ExitOnErr(std::move(ExprSymbol)).getAddress());
 }
 
 class IQLParserStuff
@@ -2809,9 +2722,6 @@ RecordTypeTransfer::RecordTypeTransfer(DynamicRecordContext& recCtxt, const std:
   mTarget(NULL),
   mFunName(funName),
   mTransfer(transfer),
-  mCopyFunction(NULL),
-  mMoveFunction(NULL),
-  mImpl(NULL),
   mIsIdentity(false)
 {
   IQLParserStuff p;
@@ -2862,54 +2772,40 @@ RecordTypeTransfer::RecordTypeTransfer(DynamicRecordContext& recCtxt, const std:
 
   // Save the built module as bitcode
   llvm::raw_string_ostream writer(mBitcode);
-  llvm::WriteBitcodeToFile(llvm::unwrap(mContext->LLVMModule), writer);
+  llvm::WriteBitcodeToFile(*llvm::unwrap(mContext->LLVMModule), writer);
   writer.str();
-
-  // TODO: The remaining stuff should be in a separate class because
-  // we really want to be able to push the bitcode over the wire.
-  mImpl = new IQLRecordBufferMethodHandle(mBitcode, funNames, mExternalFunctionsIdx);
-  mCopyFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
-  mMoveFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[1]);
 }
 
 RecordTypeTransfer::~RecordTypeTransfer()
 {
-  delete mImpl;
 }
 
-void RecordTypeTransfer::execute(RecordBuffer & source, RecordBuffer target, class InterpreterContext * ctxt, bool isSourceMove) const
+void RecordTypeTransfer::execute(RecordBuffer & source, RecordBuffer & target, class InterpreterContext * ctxt, bool isSourceMove)
 {
-  if (isSourceMove) {
-    (*mMoveFunction)((char *) source.Ptr, (char *) target.Ptr, ctxt);  
-  } else {
-    (*mCopyFunction)((char *) source.Ptr, (char *) target.Ptr, ctxt);  
+  if (!mModule) {
+    mModule.reset(create());
   }
+  mModule->execute(source, target, ctxt, isSourceMove);
 }
 
-IQLTransferModule * RecordTypeTransfer::create(bool isPIC) const
+IQLTransferModule * RecordTypeTransfer::create() const
 {
-  return new IQLTransferModule(mTarget->getMalloc(), mFunName + "&copy", mFunName + "&move", mBitcode, mExternalFunctionsIdx, isPIC);
+  return new IQLTransferModule(mTarget->getMalloc(), mFunName + "&copy", mFunName + "&move", mBitcode);
 }
-
 
 IQLTransferModule::IQLTransferModule(const RecordTypeMalloc& recordMalloc,
 				     const std::string& copyFunName, 
 				     const std::string& moveFunName, 
-				     const std::string& bitcode,
-				     const std::map<void*,std::string>& externalFunctions,
-				     bool isPIC)
+				     const std::string& bitcode)
   :
   mMalloc(recordMalloc),
   mCopyFunName(copyFunName),
   mMoveFunName(moveFunName),
-  mBitcode(bitcode),
   mCopyFunction(NULL),
   mMoveFunction(NULL),
-  mImpl(NULL),
-  mInfo(NULL),
-  mIsPIC(isPIC)
+  mImpl(NULL)
 {
-  initImpl(externalFunctions);
+  initImpl(bitcode);
 }
 
 IQLTransferModule::~IQLTransferModule()
@@ -2921,22 +2817,23 @@ IQLTransferModule::~IQLTransferModule()
   }
 }
 
-X86MethodInfo * IQLTransferModule::getFunInfo(const std::string& str) const
-{
-  return mImpl->getFunInfo(str).get();
-}
-
-
-void IQLTransferModule::initImpl(const std::map<void*,std::string>& externalFunctions)
+void IQLTransferModule::initImpl(const std::string & bitcode)
 {
   // TODO: The remaining stuff should be in a separate class because
   // we really want to be able to push the bitcode over the wire.
   std::vector<std::string> funNames;
   funNames.push_back(mCopyFunName);
   funNames.push_back(mMoveFunName);
-  mImpl = new IQLRecordBufferMethodHandle(mBitcode, funNames, externalFunctions);
+  mImpl = new IQLRecordBufferMethodHandle(bitcode, funNames, mObjectFile);
   mCopyFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
   mMoveFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[1]);
+}
+
+void IQLTransferModule::initImpl()
+{
+  mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
+  mCopyFunction = (LLVMFuncType) mImpl->getFunPtr(mCopyFunName);
+  mMoveFunction = (LLVMFuncType) mImpl->getFunPtr(mMoveFunName);
 }
 
 void IQLTransferModule::execute(RecordBuffer & source, RecordBuffer & target, class InterpreterContext * ctxt, bool isSourceMove) const
@@ -2959,10 +2856,7 @@ RecordTypeTransfer2::RecordTypeTransfer2(DynamicRecordContext& recCtxt,
   mSources(sources),
   mTarget(NULL),
   mFunName(funName),
-  mTransfer(transfer),
-  mCopyFunction(NULL),
-  mMoveFunction(NULL),
-  mImpl(NULL)
+  mTransfer(transfer)
 {
   // Parse the transfer spec and generate the program to perform the operations.
   // Feed from an in place stream
@@ -3060,31 +2954,24 @@ RecordTypeTransfer2::RecordTypeTransfer2(DynamicRecordContext& recCtxt,
 
   // Save the built module as bitcode
   llvm::raw_string_ostream writer(mBitcode);
-  llvm::WriteBitcodeToFile(llvm::unwrap(mContext->LLVMModule), writer);
+  llvm::WriteBitcodeToFile(*llvm::unwrap(mContext->LLVMModule), writer);
   writer.str();
-
-  // TODO: The remaining stuff should be in a separate class because
-  // we really want to be able to push the bitcode over the wire.
-  mImpl = new IQLRecordBufferMethodHandle(mBitcode, funNames);
-  mCopyFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
-  mMoveFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[1]);
 }
 
 RecordTypeTransfer2::~RecordTypeTransfer2()
 {
-  delete mImpl;
 }
 
 void RecordTypeTransfer2::execute(RecordBuffer * sources, 
 				  bool * isSourceMove, 
 				  int32_t numSources,
-				  RecordBuffer target, 
-				  class InterpreterContext * ctxt) const
+				  RecordBuffer & target, 
+				  class InterpreterContext * ctxt)
 {
-  if (numSources != 2) 
-    throw std::runtime_error("RecordTypeTransfer2::execute : Number of sources must be 2");
-  // TODO: Handle arbitrary number of inputs.
-  (*mCopyFunction)((char *) sources[0].Ptr, (char *) sources[1].Ptr, (char *) target.Ptr, ctxt);  
+  if(!mModule) {
+    mModule.reset(create());
+  }
+  mModule->execute(sources, isSourceMove, numSources, target, ctxt);
 }
 
 IQLTransferModule2 * RecordTypeTransfer2::create() const
@@ -3100,12 +2987,11 @@ IQLTransferModule2::IQLTransferModule2(const RecordTypeMalloc& recordMalloc,
   mMalloc(recordMalloc),
   mCopyFunName(copyFunName),
   mMoveFunName(moveFunName),
-  mBitcode(bitcode),
   mCopyFunction(NULL),
   mMoveFunction(NULL),
   mImpl(NULL)
 {
-  initImpl();
+  initImpl(bitcode);
 }
 
 IQLTransferModule2::~IQLTransferModule2()
@@ -3113,16 +2999,23 @@ IQLTransferModule2::~IQLTransferModule2()
   delete mImpl;
 }
 
-void IQLTransferModule2::initImpl()
+void IQLTransferModule2::initImpl(const std::string & bitcode)
 {
   // TODO: The remaining stuff should be in a separate class because
   // we really want to be able to push the bitcode over the wire.
   std::vector<std::string> funNames;
   funNames.push_back(mCopyFunName);
   funNames.push_back(mMoveFunName);
-  mImpl = new IQLRecordBufferMethodHandle(mBitcode, funNames);
+  mImpl = new IQLRecordBufferMethodHandle(bitcode, funNames, mObjectFile);
   mCopyFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
   mMoveFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[1]);
+}
+
+void IQLTransferModule2::initImpl()
+{
+  mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
+  mCopyFunction = (LLVMFuncType) mImpl->getFunPtr(mCopyFunName);
+  mMoveFunction = (LLVMFuncType) mImpl->getFunPtr(mMoveFunName);
 }
 
 void IQLTransferModule2::execute(RecordBuffer * sources, 
@@ -3146,11 +3039,10 @@ IQLUpdateModule::IQLUpdateModule(const std::string& funName,
 				 const std::string& bitcode)
   :
   mFunName(funName),
-  mBitcode(bitcode),
   mFunction(NULL),
   mImpl(NULL)
 {
-  initImpl();
+  initImpl(bitcode);
 }
 
 IQLUpdateModule::~IQLUpdateModule()
@@ -3158,14 +3050,18 @@ IQLUpdateModule::~IQLUpdateModule()
   delete mImpl;
 }
 
-void IQLUpdateModule::initImpl()
+void IQLUpdateModule::initImpl(const std::string & bitcode)
 {
-  // TODO: The remaining stuff should be in a separate class because
-  // we really want to be able to push the bitcode over the wire.
   std::vector<std::string> funNames;
   funNames.push_back(mFunName);
-  mImpl = new IQLRecordBufferMethodHandle(mBitcode, funNames);
+  mImpl = new IQLRecordBufferMethodHandle(bitcode, funNames, mObjectFile);
   mFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
+}
+
+void IQLUpdateModule::initImpl()
+{
+  mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
+  mFunction = (LLVMFuncType) mImpl->getFunPtr(mFunName);
 }
 
 void IQLUpdateModule::execute(RecordBuffer & source, RecordBuffer target, class InterpreterContext * ctxt) const
@@ -3178,8 +3074,6 @@ RecordTypeInPlaceUpdate::RecordTypeInPlaceUpdate(class DynamicRecordContext& rec
 						 const std::string & funName, 
 						 const std::vector<const RecordType *>& sources, 
 						 const std::string& statements)
-  :
-  mImpl(NULL)
 {
   // By default include all fields in all sources.
   std::vector<boost::dynamic_bitset<> > masks;
@@ -3195,15 +3089,12 @@ RecordTypeInPlaceUpdate::RecordTypeInPlaceUpdate(class DynamicRecordContext& rec
 						 const std::vector<const RecordType *>& sources, 
 						 const std::vector<boost::dynamic_bitset<> >& masks,
 						 const std::string& statements)
-  :
-  mImpl(NULL)
 {
   init(recCtxt, funName, sources, masks, statements);
 }
 
 RecordTypeInPlaceUpdate::~RecordTypeInPlaceUpdate()
 {
-  delete mImpl;
 }
 
 void RecordTypeInPlaceUpdate::init(class DynamicRecordContext& recCtxt, 
@@ -3244,20 +3135,16 @@ void RecordTypeInPlaceUpdate::init(class DynamicRecordContext& recCtxt,
 
   // Save the built module as bitcode
   llvm::raw_string_ostream writer(mBitcode);
-  llvm::WriteBitcodeToFile(llvm::unwrap(mContext->LLVMModule), writer);
+  llvm::WriteBitcodeToFile(*llvm::unwrap(mContext->LLVMModule), writer);
   writer.str();
-
-  // TODO: The remaining stuff should be in a separate class because
-  // we really want to be able to push the bitcode over the wire.
-  std::vector<std::string> funNames;
-  funNames.push_back(mFunName);
-  mImpl = new IQLRecordBufferMethodHandle(mBitcode, funNames);
-  mUpdateFunction = (LLVMFuncType) mImpl->getFunPtr(mFunName);
 }
 
-void RecordTypeInPlaceUpdate::execute(RecordBuffer & source, RecordBuffer target, class InterpreterContext * ctxt) const
+void RecordTypeInPlaceUpdate::execute(RecordBuffer & source, RecordBuffer target, class InterpreterContext * ctxt)
 {
-    (*mUpdateFunction)((char *) source.Ptr, (char *) target.Ptr, ctxt);    
+  if (!mModule) {
+    mModule.reset(create());
+  }
+  mModule->execute(source, target, ctxt);
 }
 
 IQLUpdateModule * RecordTypeInPlaceUpdate::create() const
@@ -3269,11 +3156,10 @@ IQLFunctionModule::IQLFunctionModule(const std::string& funName,
 				     const std::string& bitcode)
   :
   mFunName(funName),
-  mBitcode(bitcode),
   mFunction(NULL),
   mImpl(NULL)
 {
-  initImpl();
+  initImpl(bitcode);
 }
 
 IQLFunctionModule::~IQLFunctionModule()
@@ -3281,12 +3167,18 @@ IQLFunctionModule::~IQLFunctionModule()
   delete mImpl;
 }
 
-void IQLFunctionModule::initImpl()
+void IQLFunctionModule::initImpl(const std::string & bitcode)
 {
   std::vector<std::string> funNames;
   funNames.push_back(mFunName);
-  mImpl = new IQLRecordBufferMethodHandle(mBitcode, funNames);
+  mImpl = new IQLRecordBufferMethodHandle(bitcode, funNames, mObjectFile);
   mFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
+}
+
+void IQLFunctionModule::initImpl()
+{
+  mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
+  mFunction = (LLVMFuncType) mImpl->getFunPtr(mFunName);
 }
 
 int32_t IQLFunctionModule::execute(RecordBuffer sourceA, RecordBuffer sourceB, class InterpreterContext * ctxt) const
@@ -3311,9 +3203,7 @@ RecordTypeFunction::RecordTypeFunction(class DynamicRecordContext& recCtxt,
 				       const std::string& statements)
   :
   mFunName(funName),
-  mStatements(statements),
-  mFunction(NULL),
-  mImpl(NULL)
+  mStatements(statements)
 {
   for(std::vector<const RecordType *>::const_iterator rit = sources.begin();
       rit != sources.end();
@@ -3333,16 +3223,13 @@ RecordTypeFunction::RecordTypeFunction(class DynamicRecordContext& recCtxt,
   :
   mSources(sources),
   mFunName(funName),
-  mStatements(statements),
-  mFunction(NULL),
-  mImpl(NULL)
+  mStatements(statements)
 {
   init(recCtxt);
 }
 
 RecordTypeFunction::~RecordTypeFunction()
 {
-  delete mImpl;
 }
 
 void RecordTypeFunction::init(DynamicRecordContext& recCtxt)
@@ -3431,22 +3318,16 @@ void RecordTypeFunction::init(DynamicRecordContext& recCtxt)
 
   // Save the built module as bitcode
   llvm::raw_string_ostream writer(mBitcode);
-  llvm::WriteBitcodeToFile(llvm::unwrap(mContext->LLVMModule), writer);
+  llvm::WriteBitcodeToFile(*llvm::unwrap(mContext->LLVMModule), writer);
   writer.str();
-
-  // TODO: The remaining stuff should be in a separate class because
-  // we really want to be able to push the bitcode over the wire.
-  std::vector<std::string> funNames;
-  funNames.push_back(mFunName);
-  mImpl = new IQLRecordBufferMethodHandle(mBitcode, funNames);
-  mFunction = (LLVMFuncType) mImpl->getFunPtr(mFunName);
 }
 
-int32_t RecordTypeFunction::execute(RecordBuffer source, RecordBuffer target, class InterpreterContext * ctxt) const
+int32_t RecordTypeFunction::execute(RecordBuffer source, RecordBuffer target, class InterpreterContext * ctxt)
 {
-  int32_t ret;
-  (*mFunction)((char *) source.Ptr, (char *) target.Ptr, &ret, ctxt);    
-  return ret;
+  if (!mModule) {
+    mModule.reset(create());
+  }
+  return mModule->execute(source, target, ctxt);
 }
 
 IQLFunctionModule * RecordTypeFunction::create() const
@@ -3666,7 +3547,7 @@ RecordTypeAggregate::RecordTypeAggregate(DynamicRecordContext& recCtxt,
 
  // Save the built module as bitcode
  llvm::raw_string_ostream writer(mBitcode);
- llvm::WriteBitcodeToFile(llvm::unwrap(mContext->LLVMModule), writer);
+ llvm::WriteBitcodeToFile(*llvm::unwrap(mContext->LLVMModule), writer);
  writer.str();
 }
 
@@ -3822,7 +3703,7 @@ void RecordTypeAggregate::init(class DynamicRecordContext& recCtxt,
 
  // Save the built module as bitcode
  llvm::raw_string_ostream writer(mBitcode);
- llvm::WriteBitcodeToFile(llvm::unwrap(mContext->LLVMModule), writer);
+ llvm::WriteBitcodeToFile(*llvm::unwrap(mContext->LLVMModule), writer);
  writer.str();
 }
 
@@ -3868,14 +3749,13 @@ IQLAggregateModule::IQLAggregateModule(const RecordTypeMalloc& aggregateMalloc,
   mInitName(initName),
   mUpdateName(updateName),
   mTransferName(transferName),
-  mBitcode(bitcode),
   mInitFunction(NULL),
   mUpdateFunction(NULL),
   mTransferFunction(NULL),
   mImpl(NULL),
   mIsTransferIdentity(isTransferIdentity)
 {
-  initImpl();
+  initImpl(bitcode);
 }
 
 IQLAggregateModule::~IQLAggregateModule()
@@ -3883,7 +3763,7 @@ IQLAggregateModule::~IQLAggregateModule()
   delete mImpl;
 }
 
-void IQLAggregateModule::initImpl()
+void IQLAggregateModule::initImpl(const std::string & bitcode)
 {
   // TODO: The remaining stuff should be in a separate class because
   // we really want to be able to push the bitcode over the wire.
@@ -3891,10 +3771,18 @@ void IQLAggregateModule::initImpl()
   funNames.push_back(mInitName);
   funNames.push_back(mUpdateName);
   funNames.push_back(mTransferName);
-  mImpl = new IQLRecordBufferMethodHandle(mBitcode, funNames);
+  mImpl = new IQLRecordBufferMethodHandle(bitcode, funNames, mObjectFile);
   mInitFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
   mUpdateFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[1]);
   mTransferFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[2]);
+}
+
+void IQLAggregateModule::initImpl()
+{
+  mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
+  mInitFunction = (LLVMFuncType) mImpl->getFunPtr(mInitName);
+  mUpdateFunction = (LLVMFuncType) mImpl->getFunPtr(mUpdateName);
+  mTransferFunction = (LLVMFuncType) mImpl->getFunPtr(mTransferName);
 }
 
 void IQLAggregateModule::executeInit(RecordBuffer & source, 

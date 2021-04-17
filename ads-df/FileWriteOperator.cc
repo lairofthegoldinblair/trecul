@@ -38,7 +38,7 @@
 #include <iostream>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <boost/filesystem.hpp>
 
 #include "FileSystem.hh"
