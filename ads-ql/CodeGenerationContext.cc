@@ -45,7 +45,6 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 
@@ -208,7 +207,7 @@ IQLToLLVMLocal::getEntirePointer(CodeGenerationContext * ctxt) const
   if(NULL == mNullBit) {
     return mValue;
   } else {
-    llvm::IRBuilder<> * b = llvm::unwrap(ctxt->LLVMBuilder);
+    llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
     return IQLToLLVMValue::get(ctxt, mValue->getValue(),
 			       b->CreateLoad(mNullBit),
 			       mValue->getValueType());
@@ -223,7 +222,7 @@ llvm::Value * IQLToLLVMLocal::getNullBitPointer() const
 void IQLToLLVMLocal::setNull(CodeGenerationContext * ctxt, bool isNull) const
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(ctxt->LLVMBuilder);
+  llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
   b->CreateStore(isNull ? b->getTrue() : b->getFalse(), mNullBit);
 }
 
@@ -265,10 +264,9 @@ CodeGenerationContext::CodeGenerationContext()
   AggFn(0),
   AllocaCache(NULL)
 {
-  LLVMContext = ::LLVMContextCreate();
-  LLVMModule = ::LLVMModuleCreateWithNameInContext("my cool JIT", 
-						   LLVMContext);
-  llvm::unwrap(LLVMModule)->setDataLayout(llvm::EngineBuilder().selectTarget()->createDataLayout());
+  LLVMContext = new llvm::LLVMContext();
+  LLVMModule = new llvm::Module("my cool JIT", *LLVMContext);
+  LLVMModule->setDataLayout(llvm::EngineBuilder().selectTarget()->createDataLayout());
 }
 
 CodeGenerationContext::~CodeGenerationContext()
@@ -281,7 +279,7 @@ CodeGenerationContext::~CodeGenerationContext()
   }
 
   if (LLVMBuilder) {
-    LLVMDisposeBuilder(LLVMBuilder);
+    delete LLVMBuilder;
     LLVMBuilder = NULL;
   }
   if (mSymbolTable) {
@@ -290,11 +288,11 @@ CodeGenerationContext::~CodeGenerationContext()
   }  
   delete unwrap(IQLRecordArguments);
   if (mOwnsModule && LLVMModule) {
-    LLVMDisposeModule(LLVMModule);
+    delete LLVMModule;
     LLVMModule = NULL;
   }
   if (LLVMContext) {
-    LLVMContextDispose(LLVMContext);
+    delete LLVMContext;
     LLVMContext = NULL;
   }
   while(IQLCase.size()) {
@@ -401,7 +399,7 @@ void CodeGenerationContext::reinitialize()
 
 void CodeGenerationContext::createFunctionContext(const TypeCheckConfiguration & typeCheckConfig)
 {
-  LLVMBuilder = LLVMCreateBuilderInContext(LLVMContext);
+  LLVMBuilder = new llvm::IRBuilder<>(*LLVMContext);
   mSymbolTable = new TreculSymbolTable(typeCheckConfig);
   LLVMFunction = NULL;
   IQLRecordArguments = wrap(new std::map<std::string, std::pair<std::string, const RecordType*> >());
@@ -471,7 +469,7 @@ llvm::Value * CodeGenerationContext::addExternalFunction(const char * treculName
   mTreculNameToSymbol[treculName] = implName;
   return llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(funTy), 
 				llvm::GlobalValue::ExternalLinkage,
-				implName, llvm::unwrap(LLVMModule));
+				implName, LLVMModule);
   
 }
 
@@ -483,7 +481,7 @@ void CodeGenerationContext::buildDeclareLocal(const char * nm, const FieldType *
   // NULL handling
   llvm::Value * nullVal = NULL;
   if (ft->isNullable()) {
-    llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+    llvm::IRBuilder<> * b = LLVMBuilder;
     nullVal = buildEntryBlockAlloca(b->getInt1Ty(), 
 					 (boost::format("%1%NullBit") %
 					  nm).str().c_str());
@@ -516,8 +514,8 @@ void CodeGenerationContext::buildLocalVariable(const char * nm, const IQLToLLVMV
 void CodeGenerationContext::whileBegin()
 {
   // Unwrap to C++
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
   // Create blocks for the condition, loop body and continue.
@@ -537,7 +535,7 @@ void CodeGenerationContext::whileStatementBlock(const IQLToLLVMValue * condVal,
 						const FieldType * condTy)
 {  
   // Test the condition and branch 
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function * f = b->GetInsertBlock()->getParent();
   std::stack<class IQLToLLVMStackRecord* > & stk(IQLStack);
   f->getBasicBlockList().push_back(stk.top()->ElseBB);
@@ -548,7 +546,7 @@ void CodeGenerationContext::whileStatementBlock(const IQLToLLVMValue * condVal,
 void CodeGenerationContext::whileFinish()
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function * f = b->GetInsertBlock()->getParent();
   std::stack<class IQLToLLVMStackRecord* > & stk(IQLStack);
 
@@ -567,8 +565,8 @@ void CodeGenerationContext::conditionalBranch(const IQLToLLVMValue * condVal,
 					      llvm::BasicBlock * trueBranch,
 					      llvm::BasicBlock * falseBranch)
 {
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function * f = b->GetInsertBlock()->getParent();
   
   // Handle ternary logic here
@@ -611,8 +609,8 @@ CodeGenerationContext::buildArray(std::vector<IQLToLLVMTypedValue>& vals,
   // TODO: This is potentially inefficient.  Will LLVM remove the extra copy?
   // Even if it does, how much are we adding to the compilation time while
   // it cleans up our mess.
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Type * retTy = arrayTy->LLVMGetType(this);
   llvm::Value * result = buildEntryBlockAlloca(retTy, "nullableBinOp");    
   llvm::Type * ptrToElmntTy = llvm::cast<llvm::ArrayType>(retTy)->getElementType();
@@ -646,9 +644,9 @@ const IQLToLLVMValue *
 CodeGenerationContext::buildGlobalConstArray(std::vector<IQLToLLVMTypedValue>& vals,
 					     FieldType * arrayTy)
 {
-  llvm::Module * m = llvm::unwrap(LLVMModule);
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::Module * m = LLVMModule;
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::ArrayType * arrayType = 
     llvm::dyn_cast<llvm::ArrayType>(arrayTy->LLVMGetType(this));
   BOOST_ASSERT(arrayType != NULL);
@@ -682,9 +680,9 @@ const IQLToLLVMValue * CodeGenerationContext::buildArrayRef(const char * var,
 const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const char * var,
 								const IQLToLLVMValue * idx)
 {
-  llvm::Module * m = llvm::unwrap(LLVMModule);
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::Module * m = LLVMModule;
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function *f = b->GetInsertBlock()->getParent();
   const IQLToLLVMValue * lvalue = lookupValue(var, NULL);
   llvm::Value * lval = lvalue->getValue();
@@ -752,11 +750,11 @@ CodeGenerationContext::buildCall(const char * treculName,
     throw std::runtime_error((boost::format("Unable to find implementation for "
 					    "function %1%") % treculName).str());
   }
-  llvm::LLVMContext & c(*llvm::unwrap(LLVMContext));
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext & c(*LLVMContext);
+  llvm::IRBuilder<> * b = LLVMBuilder;
 
-  std::vector<LLVMValueRef> callArgs;
-  LLVMValueRef fn = LLVMGetNamedFunction(LLVMModule, it->second.c_str());
+  std::vector<llvm::Value *> callArgs;
+  llvm::Value * fn = LLVMModule->getFunction(it->second.c_str());
   if (fn == NULL) {
     throw std::runtime_error((boost::format("Call to function %1% passed type checking "
 					    "but implementation function %2% does not exist") %
@@ -765,28 +763,28 @@ CodeGenerationContext::buildCall(const char * treculName,
   
   for(std::size_t i=0; i<args.size(); i++) {
     if (args[i].getType()->GetEnum() == FieldType::CHAR) {
-      LLVMValueRef e = llvm::wrap(args[i].getValue()->getValue());
+      llvm::Value * e = args[i].getValue()->getValue();
       // CHAR(N) arg must pass by reference
       // Pass as a pointer to int8.  pointer to char(N) is too specific
       // for a type signature.
-      LLVMTypeRef int8Ptr = LLVMPointerType(LLVMInt8TypeInContext(LLVMContext), 0);
-      LLVMValueRef ptr = LLVMBuildBitCast(LLVMBuilder, e, int8Ptr, "charcnvcasttmp1");
+      llvm::Type * int8Ptr = llvm::PointerType::get(b->getInt8Ty(), 0);
+      llvm::Value * ptr = LLVMBuilder->CreateBitCast(e, int8Ptr, "charcnvcasttmp1");
       callArgs.push_back(ptr);
     } else {
-      callArgs.push_back(llvm::wrap(args[i].getValue()->getValue()));
+      callArgs.push_back(args[i].getValue()->getValue());
     }
   }
   
-  const llvm::Type * unwrapped = llvm::unwrap(LLVMTypeOf(fn));
-  const llvm::PointerType * ptrTy = llvm::dyn_cast<llvm::PointerType>(unwrapped);
-  const llvm::FunctionType * fnTy = llvm::dyn_cast<llvm::FunctionType>(ptrTy->getElementType());
+  llvm::Type * unwrapped = fn->getType();
+  llvm::PointerType * ptrTy = llvm::dyn_cast<llvm::PointerType>(unwrapped);
+  llvm::FunctionType * fnTy = llvm::dyn_cast<llvm::FunctionType>(ptrTy->getElementType());
   if (fnTy->getReturnType() == llvm::Type::getVoidTy(c)) {
     // Validate the calling convention.  If returning void must
     // also take RuntimeContext as last argument and take pointer
     // to return as next to last argument.
     if (callArgs.size() + 2 != fnTy->getNumParams() ||
 	fnTy->getParamType(fnTy->getNumParams()-1) != 
-	llvm::unwrap(LLVMDecContextPtrType) ||
+	LLVMDecContextPtrType ||
 	!fnTy->getParamType(fnTy->getNumParams()-2)->isPointerTy())
       throw std::runtime_error("Internal Error");
 
@@ -798,7 +796,7 @@ CodeGenerationContext::buildCall(const char * treculName,
     // No guarantee that the type of the formal of the function is exactly
     // the same as the LLVM ret type (in particular, CHAR(N) return
     // values will have a int8* formal) so we do a bitcast.
-    LLVMValueRef retVal = llvm::wrap(retTmp);
+    llvm::Value * retVal = retTmp;
     if (retTy != retArgTy) {
       const llvm::ArrayType * arrTy = llvm::dyn_cast<llvm::ArrayType>(retTy);
       if (retArgTy != b->getInt8Ty() ||
@@ -807,30 +805,28 @@ CodeGenerationContext::buildCall(const char * treculName,
 	throw std::runtime_error("INTERNAL ERROR: mismatch between IQL function "
 				 "return type and LLVM formal argument type.");
       }
-      retVal = LLVMBuildBitCast(LLVMBuilder, 
-				retVal,
-				llvm::wrap(llvm::PointerType::get(retArgTy, 0)),
-				"callReturnTempCast");
+      retVal = LLVMBuilder->CreateBitCast(retVal,
+					  llvm::PointerType::get(retArgTy, 0),
+					  "callReturnTempCast");
     }
     callArgs.push_back(retVal);					
     // Also must pass the context for allocating the string memory.
-    callArgs.push_back(LLVMBuildLoad(LLVMBuilder, 
-				     llvm::wrap(getContextArgumentRef()),
-				     "ctxttmp"));    
-    LLVMBuildCall(LLVMBuilder, 
-		  fn, 
-		  &callArgs[0], 
-		  callArgs.size(), 
-		  "");
+    llvm::Value * contextVal = getContextArgumentRef();
+    callArgs.push_back(LLVMBuilder->CreateLoad(llvm::cast<llvm::PointerType>(contextVal->getType())->getElementType(),
+					       contextVal,
+					       "ctxttmp"));    
+    LLVMBuilder->CreateCall(fnTy,
+			    fn, 
+			    llvm::makeArrayRef(&callArgs[0], callArgs.size()),
+			    "");
     // Return was the second to last entry in the arg list.
     return IQLToLLVMValue::eLocal;
   } else {
-    LLVMValueRef r = LLVMBuildCall(LLVMBuilder, 
-				   fn, 
-				   &callArgs[0], 
-				   callArgs.size(), 
-				   "call");
-    b->CreateStore(llvm::unwrap(r), retTmp);
+    llvm::Value * r = LLVMBuilder->CreateCall(fnTy,
+					     fn, 
+					     llvm::makeArrayRef(&callArgs[0], callArgs.size()),
+					     "call");
+    b->CreateStore(r, retTmp);
     return IQLToLLVMValue::eLocal;
   }
 }
@@ -856,7 +852,7 @@ CodeGenerationContext::buildCall(const char * f,
     if (isPointerToValueType(retTmp, retType)) {
       // Unlikely but possible to get here.  Pointers to 
       // value type are almost surely trimmed above.
-      llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+      llvm::IRBuilder<> * b = LLVMBuilder;
       retTmp = b->CreateLoad(retTmp);
     }
     return IQLToLLVMValue::get(this, retTmp, vt);
@@ -870,8 +866,8 @@ CodeGenerationContext::buildCastInt32(const IQLToLLVMValue * e,
 				      const FieldType * retType)
 {
   llvm::Value * e1 = e->getValue();
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   std::vector<IQLToLLVMTypedValue> args;
   args.emplace_back(e, argType);
 
@@ -937,8 +933,8 @@ CodeGenerationContext::buildCastInt64(const IQLToLLVMValue * e,
 				      const FieldType * retType)
 {
   llvm::Value * e1 = e->getValue();
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   std::vector<IQLToLLVMTypedValue> args;
   args.emplace_back(e, argType);
 
@@ -1004,8 +1000,8 @@ CodeGenerationContext::buildCastDouble(const IQLToLLVMValue * e,
 				       const FieldType * retType)
 {
   llvm::Value * e1 = e->getValue();
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   std::vector<IQLToLLVMTypedValue> args;
   args.emplace_back(e, argType);
 
@@ -1063,8 +1059,8 @@ CodeGenerationContext::buildCastDecimal(const IQLToLLVMValue * e,
 				       const FieldType * retType)
 {
   llvm::Value * e1 = e->getValue();
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   std::vector<IQLToLLVMTypedValue> args;
   args.emplace_back(e, argType);
 
@@ -1121,8 +1117,8 @@ CodeGenerationContext::buildCastDate(const IQLToLLVMValue * e,
 				     const FieldType * retType)
 {
   llvm::Value * e1 = e->getValue();
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   std::vector<IQLToLLVMTypedValue> args;
   args.emplace_back(e, argType);
 
@@ -1156,8 +1152,8 @@ CodeGenerationContext::buildCastDatetime(const IQLToLLVMValue * e,
 					 const FieldType * retType)
 {
   llvm::Value * e1 = e->getValue();
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   std::vector<IQLToLLVMTypedValue> args;
   args.emplace_back(e, argType);
 
@@ -1193,7 +1189,7 @@ CodeGenerationContext::buildCastChar(const IQLToLLVMValue * e,
 				     llvm::Value * ret, 
 				     const FieldType * retType)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * e1 = e->getValue();
   // Must bitcast to match calling convention.
   llvm::Type * int8Ptr = llvm::PointerType::get(b->getInt8Ty(), 0);
@@ -1204,7 +1200,7 @@ CodeGenerationContext::buildCastChar(const IQLToLLVMValue * e,
     int32_t toSet=retType->GetSize() - toCopy;
     llvm::Value * args[5];
     if (toCopy > 0) {
-      llvm::Function * fn = llvm::cast<llvm::Function>(llvm::unwrap(LLVMMemcpyIntrinsic));
+      llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemcpyIntrinsic);
       // memcpy arg1 at offset 0
       args[0] = ptr;
       args[1] = b->CreateBitCast(e1, int8Ptr);
@@ -1214,7 +1210,7 @@ CodeGenerationContext::buildCastChar(const IQLToLLVMValue * e,
       b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
     }
     if (toSet > 0) {
-      llvm::Function * fn = llvm::cast<llvm::Function>(llvm::unwrap(LLVMMemsetIntrinsic));
+      llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemsetIntrinsic);
       // memset spaces at offset toCopy
       args[0] = b->CreateGEP(ptr, b->getInt64(toCopy), "");;
       args[1] = b->getInt8(' ');
@@ -1227,7 +1223,7 @@ CodeGenerationContext::buildCastChar(const IQLToLLVMValue * e,
     b->CreateStore(b->getInt8(0), b->CreateGEP(ptr, b->getInt64(retType->GetSize()), ""));
   } else if (argType->GetEnum() == FieldType::VARCHAR) {
     llvm::Value * callArgs[3];
-    llvm::Function * fn = llvm::unwrap(LLVMModule)->getFunction("InternalCharFromVarchar");
+    llvm::Function * fn = LLVMModule->getFunction("InternalCharFromVarchar");
     callArgs[0] = e1;
     callArgs[1] = ptr;
     callArgs[2] = b->getInt32(retType->GetSize());
@@ -1252,8 +1248,8 @@ CodeGenerationContext::buildCastVarchar(const IQLToLLVMValue * e,
 					const FieldType * retType)
 {
   llvm::Value * e1 = e->getValue();
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   std::vector<IQLToLLVMTypedValue> args;
   args.emplace_back(e, argType);
 
@@ -1343,7 +1339,7 @@ CodeGenerationContext::buildAdd(const IQLToLLVMValue * lhs,
 				llvm::Value * ret, 
 				const FieldType * retType)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   if ((lhsType != NULL && lhsType->GetEnum() == FieldType::INTERVAL) ||
       (rhsType != NULL && rhsType->GetEnum() == FieldType::INTERVAL)) {
     // Special case handling of datetime/interval addition.
@@ -1398,7 +1394,7 @@ CodeGenerationContext::buildSub(const IQLToLLVMValue * lhs,
 				llvm::Value * ret, 
 				const FieldType * retType)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   if (lhsType->GetEnum() == FieldType::DATE ||
       lhsType->GetEnum() == FieldType::DATETIME) {
     // Negate the interval value (which is integral)
@@ -1446,7 +1442,7 @@ CodeGenerationContext::buildMul(const IQLToLLVMValue * lhs,
 				llvm::Value * ret, 
 				const FieldType * retType)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   lhs = buildCastNonNullable(lhs, lhsType, retType);
   rhs = buildCastNonNullable(rhs, rhsType, retType);
   llvm::Value * e1 = lhs->getValue();
@@ -1484,7 +1480,7 @@ CodeGenerationContext::buildDiv(const IQLToLLVMValue * lhs,
 				llvm::Value * ret, 
 				const FieldType * retType)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   lhs = buildCastNonNullable(lhs, lhsType, retType);
   rhs = buildCastNonNullable(rhs, rhsType, retType);
   llvm::Value * e1 = lhs->getValue();
@@ -1522,7 +1518,7 @@ CodeGenerationContext::buildMod(const IQLToLLVMValue * lhs,
 				llvm::Value * ret, 
 				const FieldType * retType)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   lhs = buildCastNonNullable(lhs, lhsType, retType);
   rhs = buildCastNonNullable(rhs, rhsType, retType);
   llvm::Value * e1 = lhs->getValue();
@@ -1550,7 +1546,7 @@ CodeGenerationContext::buildNegate(const IQLToLLVMValue * lhs,
 				   llvm::Value * ret,
 				   const FieldType * retTy)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * e1 = lhs->getValue();
   if (retTy->isIntegral()) {
     llvm::Value * r = b->CreateNeg(e1);
@@ -1582,7 +1578,7 @@ CodeGenerationContext::buildDateAdd(const IQLToLLVMValue * lhs,
 				    llvm::Value * retVal, 
 				    const FieldType * retType)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   if (lhsType != NULL && lhsType->GetEnum() == FieldType::INTERVAL) {
     std::swap(lhs, rhs);
     std::swap(lhsType, rhsType);
@@ -1601,7 +1597,7 @@ CodeGenerationContext::buildDateAdd(const IQLToLLVMValue * lhs,
 			  unit == IntervalType::MONTH ? "%1%_add_month" :
 			  unit == IntervalType::SECOND ? "%1%_add_second" :
 			  "%1%_add_year") % ty).str());
-  llvm::Function * fn = llvm::unwrap(LLVMModule)->getFunction(fnName.c_str());
+  llvm::Function * fn = LLVMModule->getFunction(fnName.c_str());
   callArgs[0] = lhs->getValue();
   callArgs[1] = rhs->getValue();
   llvm::Value * ret = b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");
@@ -1617,7 +1613,7 @@ CodeGenerationContext::buildCharAdd(const IQLToLLVMValue * lhs,
 				    llvm::Value * ret, 
 				    const FieldType * retType)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * e1 = lhs->getValue();
   llvm::Value * e2 = rhs->getValue();
 
@@ -1633,7 +1629,7 @@ CodeGenerationContext::buildCharAdd(const IQLToLLVMValue * lhs,
   llvm::Value * tmp1 = b->CreateBitCast(e1, int8Ptr);
   llvm::Value * tmp2 = b->CreateBitCast(e2, int8Ptr);
 
-  llvm::Function * fn = llvm::cast<llvm::Function>(llvm::unwrap(LLVMMemcpyIntrinsic));
+  llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemcpyIntrinsic);
   llvm::Value * args[5];
   // memcpy arg1 at offset 0
   args[0] = retPtrVal;
@@ -1663,7 +1659,7 @@ CodeGenerationContext::buildBitwiseAnd(const IQLToLLVMValue * lhs,
 				       llvm::Value * ret, 
 				       const FieldType * retType)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   lhs = buildCastNonNullable(lhs, lhsType, retType);
   rhs = buildCastNonNullable(rhs, rhsType, retType);
   llvm::Value * e1 = lhs->getValue();
@@ -1694,7 +1690,7 @@ CodeGenerationContext::buildBitwiseOr(const IQLToLLVMValue * lhs,
 				      llvm::Value * ret, 
 				      const FieldType * retType)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   lhs = buildCastNonNullable(lhs, lhsType, retType);
   rhs = buildCastNonNullable(rhs, rhsType, retType);
   llvm::Value * e1 = lhs->getValue();
@@ -1725,7 +1721,7 @@ CodeGenerationContext::buildBitwiseXor(const IQLToLLVMValue * lhs,
 				       llvm::Value * ret, 
 				       const FieldType * retType)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   lhs = buildCastNonNullable(lhs, lhsType, retType);
   rhs = buildCastNonNullable(rhs, rhsType, retType);
   llvm::Value * e1 = lhs->getValue();
@@ -1754,7 +1750,7 @@ CodeGenerationContext::buildBitwiseNot(const IQLToLLVMValue * lhs,
 				llvm::Value * ret,
 				const FieldType * retTy)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * e1 = lhs->getValue();
   llvm::Value * r = b->CreateNot(e1);
   b->CreateStore(r, ret);
@@ -1771,7 +1767,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildBitwiseNot(const IQLToLLVMVal
 llvm::Value * 
 CodeGenerationContext::buildVarcharIsSmall(llvm::Value * varcharPtr)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // Access first bit of the structure to see if large or small.
   llvm::Value * firstByte = 
     b->CreateLoad(b->CreateBitCast(varcharPtr, b->getInt8PtrTy()));
@@ -1784,8 +1780,8 @@ CodeGenerationContext::buildVarcharIsSmall(llvm::Value * varcharPtr)
 llvm::Value * 
 CodeGenerationContext::buildVarcharGetSize(llvm::Value * varcharPtr)
 {
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function * f = b->GetInsertBlock()->getParent();
 
   llvm::Value * ret = b->CreateAlloca(b->getInt32Ty());
@@ -1818,8 +1814,8 @@ CodeGenerationContext::buildVarcharGetSize(llvm::Value * varcharPtr)
 llvm::Value * 
 CodeGenerationContext::buildVarcharGetPtr(llvm::Value * varcharPtr)
 {
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function * f = b->GetInsertBlock()->getParent();
 
   llvm::Value * ret = b->CreateAlloca(b->getInt8PtrTy());
@@ -1844,7 +1840,7 @@ CodeGenerationContext::buildVarcharGetPtr(llvm::Value * varcharPtr)
 
 const IQLToLLVMValue * CodeGenerationContext::buildCompareResult(llvm::Value * boolVal)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);  
+  llvm::IRBuilder<> * b = LLVMBuilder;  
   llvm::Value * int32RetVal = b->CreateZExt(boolVal,
 					    b->getInt32Ty(),
 					    "cmpresultcast");
@@ -1854,7 +1850,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildCompareResult(llvm::Value * b
 IQLToLLVMValue::ValueType CodeGenerationContext::buildCompareResult(llvm::Value * boolVal,
 								    llvm::Value * ret)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);  
+  llvm::IRBuilder<> * b = LLVMBuilder;  
   llvm::Value * int32RetVal = b->CreateZExt(boolVal,
 					    b->getInt32Ty(),
 					    "cmpresultcast");
@@ -1868,8 +1864,8 @@ void CodeGenerationContext::buildMemcpy(llvm::Value * sourcePtr,
 					const FieldAddress& targetOffset,
 					int64_t sz)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
-  llvm::Function * fn = llvm::cast<llvm::Function>(llvm::unwrap(LLVMMemcpyIntrinsic));
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemcpyIntrinsic);
   llvm::Value * args[5];
   args[0] = targetOffset.getPointer("memcpy_tgt", this, targetPtr);
   args[1] = sourceOffset.getPointer("memcpy_src", this, sourcePtr);
@@ -1886,7 +1882,7 @@ void CodeGenerationContext::buildMemcpy(const std::string& sourceArg,
 					const FieldAddress& targetOffset,
 					int64_t sz)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * sourcePtr = b->CreateLoad(lookupBasePointer(sourceArg.c_str())->getValue(),
 					  "srccpy");	
   llvm::Value * targetPtr = b->CreateLoad(lookupBasePointer(targetArg.c_str())->getValue(),
@@ -1899,8 +1895,8 @@ void CodeGenerationContext::buildMemset(llvm::Value * targetPtr,
 					int8_t value,
 					int64_t sz)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
-  llvm::Function * fn = llvm::cast<llvm::Function>(llvm::unwrap(LLVMMemsetIntrinsic));
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemsetIntrinsic);
   llvm::Value * args[5];
   // GEP to get pointers at offsets and then call the intrinsic.
   args[0] = targetOffset.getPointer("memset_tgt", this, targetPtr);
@@ -1918,8 +1914,8 @@ llvm::Value * CodeGenerationContext::buildMemcmp(llvm::Value * sourcePtr,
 						 const FieldAddress& targetOffset,
 						 int64_t sz)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
-  llvm::Function * fn = llvm::cast<llvm::Function>(llvm::unwrap(LLVMMemcmpIntrinsic));
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemcmpIntrinsic);
   // Implement bit casting to the right argument types.
   if (llvm::Type::PointerTyID != sourcePtr->getType()->getTypeID())
     throw std::runtime_error("sourcePtr argument to memcmp not pointer type");
@@ -1950,7 +1946,7 @@ void CodeGenerationContext::buildBitcpy(const BitcpyOp& op,
   // for an appropriate targetMask
 
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   
   // Get int32 ptrs for source and target
   llvm::Type * int32PtrTy = llvm::PointerType::get(b->getInt32Ty(), 0);
@@ -2001,7 +1997,7 @@ void CodeGenerationContext::buildBitset(const BitsetOp& op,
 					llvm::Value * targetPtr)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   
   // Get int32 ptr for target
   llvm::Type * int32PtrTy = llvm::PointerType::get(b->getInt32Ty(), 0);
@@ -2025,7 +2021,7 @@ void CodeGenerationContext::buildSetFieldsRegex(const std::string& sourceName,
 						int * pos)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
 
   llvm::Value * sourcePtr = b->CreateLoad(lookupBasePointer(sourceName.c_str())->getValue());
   llvm::Value * targetPtr = b->CreateLoad(lookupBasePointer("__OutputPointer__")->getValue());
@@ -2075,7 +2071,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildRef(const IQLToLLVMValue * al
 						       const FieldType * resultTy)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   /* Two cases here.  Value types (8 bytes and less) are loaded whereas larger types 
      such as varchar and decimal are passed by reference.  Values that are value are always local */
   if (isPointerToValueType(allocAVal->getValue(), resultTy)) {
@@ -2106,8 +2102,8 @@ const IQLToLLVMValue * CodeGenerationContext::buildNullableUnaryOp(const IQLToLL
 								   UnaryOperatorMemFn unOp)
 {
   // Unwrap to C++
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * n1 = lhs->getNull();
   BOOST_ASSERT((lhsType->isNullable() && n1 != NULL) ||
 	       (!lhsType->isNullable() && n1 == NULL));
@@ -2153,7 +2149,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildNonNullableUnaryOp(const IQLT
 								      UnaryOperatorMemFn unOp)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // Allocate space for a result
   llvm::Type * retTy = resultType->LLVMGetType(this);
   llvm::Value * result = buildEntryBlockAlloca(retTy, "nonNullUnOp");    
@@ -2177,8 +2173,8 @@ const IQLToLLVMValue * CodeGenerationContext::buildNullableBinaryOp(const IQLToL
 								    BinaryOperatorMemFn binOp)
 {
   // Unwrap to C++
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * n1 = lhs->getNull();
   llvm::Value * n2 = rhs->getNull();
   BOOST_ASSERT((lhsType->isNullable() && n1 != NULL) ||
@@ -2302,7 +2298,7 @@ void CodeGenerationContext::returnCachedLocal(llvm::Value * v)
 
 llvm::Value * CodeGenerationContext::buildEntryBlockAlloca(llvm::Type * ty, const char * name) {
   // Create a new builder positioned at the beginning of the entry block of the function
-  llvm::Function* TheFunction = llvm::dyn_cast<llvm::Function>(llvm::unwrap(LLVMFunction));
+  llvm::Function* TheFunction = llvm::dyn_cast<llvm::Function>(LLVMFunction);
   llvm::IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
                  TheFunction->getEntryBlock().begin());
   return TmpB.CreateAlloca(ty, 0, name);
@@ -2312,7 +2308,7 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
 					   const IQLToLLVMValue * iqllvalue,
 					   const FieldType * ft)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * lvalue = iqllvalue->getValue();
   if (NULL == lvalue)
     throw std::runtime_error("Undefined variable ");
@@ -2365,9 +2361,9 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
       // TODO: IF we swap args 1,2 we should be able to use buildCall()
       // Call to copy the varchar before setting.
       llvm::Value * callArgs[4];
-      llvm::Function * fn = llvm::unwrap(LLVMModule)->getFunction("InternalVarcharCopy");
+      llvm::Function * fn = LLVMModule->getFunction("InternalVarcharCopy");
       callArgs[0] = llvmVal;
-      callArgs[1] = buildEntryBlockAlloca(llvm::unwrap(LLVMVarcharType), "");
+      callArgs[1] = buildEntryBlockAlloca(LLVMVarcharType, "");
       callArgs[2] = b->getInt32(iqllvalue->getValueType() == IQLToLLVMValue::eGlobal ? 0 : 1);
       callArgs[3] = b->CreateLoad(getContextArgumentRef());
       b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 4), "");
@@ -2375,7 +2371,7 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
     } else if (iqlVal->getValueType() == IQLToLLVMValue::eLocal &&
 	iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
       llvm::Value * callArgs[2];
-      llvm::Function * fn = llvm::unwrap(LLVMModule)->getFunction("InternalVarcharErase");
+      llvm::Function * fn = LLVMModule->getFunction("InternalVarcharErase");
       callArgs[0] = llvmVal;
       callArgs[1] = b->CreateLoad(getContextArgumentRef());
       b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");
@@ -2403,8 +2399,8 @@ void CodeGenerationContext::buildSetNullableValue(const IQLToLLVMLValue * lval,
   // Check nullability of value and target
   if (lval->isNullable()) {
     // Unwrap to C++
-    llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-    llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+    llvm::LLVMContext * c = LLVMContext;
+    llvm::IRBuilder<> * b = LLVMBuilder;
     if (val->isLiteralNull()) {
       // NULL literal
       lval->setNull(this, true);
@@ -2471,8 +2467,8 @@ void CodeGenerationContext::buildSetValue(const IQLToLLVMValue * iqlVal, const c
 void CodeGenerationContext::buildCaseBlockBegin(const FieldType * caseType)
 {
   // Unwrap to C++
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function *f = b->GetInsertBlock()->getParent();
 
   // Create a merge block with a PHI node 
@@ -2498,8 +2494,8 @@ void CodeGenerationContext::buildCaseBlockBegin(const FieldType * caseType)
 void CodeGenerationContext::buildCaseBlockIf(const IQLToLLVMValue * condVal)
 {
   // Unwrap to C++
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // The function we are working on.
   llvm::Function *f = b->GetInsertBlock()->getParent();
   // Create blocks for the then/value and else (likely to be next conditional).  
@@ -2529,7 +2525,7 @@ void CodeGenerationContext::buildCaseBlockIf(const IQLToLLVMValue * condVal)
 void CodeGenerationContext::buildCaseBlockThen(const IQLToLLVMValue *value, const FieldType * valueType, const FieldType * caseType, bool allowNullToNonNull)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
 
   // Convert to required type 
   const IQLToLLVMValue * cvtVal = buildCast(value, valueType, caseType);
@@ -2558,7 +2554,7 @@ void CodeGenerationContext::buildCaseBlockThen(const IQLToLLVMValue *value, cons
 const IQLToLLVMValue * CodeGenerationContext::buildCaseBlockFinish(const FieldType * caseType)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
 
   // Emit merge block 
   BOOST_ASSERT(IQLCase.size() != 0);
@@ -2695,7 +2691,7 @@ CodeGenerationContext::buildNot(const IQLToLLVMValue * lhs,
 				llvm::Value * ret,
 				const FieldType * retTy)
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * one = b->getInt32(1);
   llvm::Value * e1 = lhs->getValue();
   // TODO: Currently representing booleans as int32_t
@@ -2732,7 +2728,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildIsNull(const IQLToLLVMValue *
   if (nv) {
     // Nullable value.  Must check the null... 
     if (isNotNull) {
-      llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+      llvm::IRBuilder<> * b = LLVMBuilder;
       nv = b->CreateNot(nv);
     }
     return buildCompareResult(nv);
@@ -2764,9 +2760,9 @@ CodeGenerationContext::buildVarcharCompare(llvm::Value * e1,
 			       "varcharletmp",
                                "varcharrliketmp"
   };
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * callArgs[3];
-  llvm::Function * fn = llvm::unwrap(LLVMModule)->getFunction(booleanFuncs[opCode]);
+  llvm::Function * fn = LLVMModule->getFunction(booleanFuncs[opCode]);
   callArgs[0] = e1;
   callArgs[1] = e2;
   callArgs[2] = b->CreateLoad(getContextArgumentRef());
@@ -2785,7 +2781,7 @@ CodeGenerationContext::buildCompare(const IQLToLLVMValue * lhs,
 				    IQLToLLVMPredicate op)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
 
   llvm::CmpInst::Predicate intOp = llvm::CmpInst::ICMP_EQ;
   llvm::CmpInst::Predicate realOp = llvm::CmpInst::FCMP_FALSE;
@@ -2859,7 +2855,7 @@ CodeGenerationContext::buildCompare(const IQLToLLVMValue * lhs,
   } else if (promoted->GetEnum() == FieldType::BIGDECIMAL) {
     // Call decNumberCompare
     llvm::Value * callArgs[4];
-    llvm::Function * fn = llvm::unwrap(LLVMModule)->getFunction("InternalDecimalCmp");
+    llvm::Function * fn = LLVMModule->getFunction("InternalDecimalCmp");
     callArgs[0] = e1;
     callArgs[1] = e2;
     callArgs[2] = buildEntryBlockAlloca(b->getInt32Ty(), "decimalCmpRetPtr");
@@ -2918,9 +2914,9 @@ const IQLToLLVMValue * CodeGenerationContext::buildHash(const std::vector<IQLToL
   // Call out to external function.  The trick is that we always pass a pointer to data.
   // Handle the cases here.  For value types, we must alloca storage so
   // we have a pointer to pass.
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * callArgs[3];
-  llvm::Function * fn = llvm::unwrap(LLVMModule)->getFunction("SuperFastHash");
+  llvm::Function * fn = LLVMModule->getFunction("SuperFastHash");
 
   // Save the previous hash so we can feed it into the next.  
   llvm::Value * previousHash=NULL;
@@ -2977,7 +2973,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildSortPrefix(const IQLToLLVMVal
 							      const FieldType * argTy)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * argVal = arg->getValue();
   llvm::Value * retVal = NULL;
   // 31 bits for the prefix
@@ -3043,8 +3039,8 @@ const IQLToLLVMValue * CodeGenerationContext::buildSortPrefix(const std::vector<
 
 void CodeGenerationContext::buildReturnValue(const IQLToLLVMValue * iqlVal, const FieldType * retType)
 {
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // Due to our uniform implementation of mutable variables, our return location is actually
   // a pointer to a pointer.
   llvm::Value * loc = b->CreateLoad(lookupValue("__ReturnValue__", NULL)->getValue());
@@ -3085,7 +3081,7 @@ void CodeGenerationContext::buildReturnValue(const IQLToLLVMValue * iqlVal, cons
   }
   // The caller expects a BB into which it can insert LLVMBuildRetVoid.
   if (mergeBB) {
-    llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+    llvm::IRBuilder<> * b = LLVMBuilder;
     b->CreateBr(mergeBB);
     b->SetInsertPoint(mergeBB);
   }
@@ -3094,8 +3090,8 @@ void CodeGenerationContext::buildReturnValue(const IQLToLLVMValue * iqlVal, cons
 void CodeGenerationContext::buildBeginIfThenElse(const IQLToLLVMValue * condVal)
 {
   // Unwrap to C++
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
   // Create blocks for the then and else cases.  Insert the 'then' block at the
@@ -3119,7 +3115,7 @@ void CodeGenerationContext::buildBeginIfThenElse(const IQLToLLVMValue * condVal)
 void CodeGenerationContext::buildElseIfThenElse()
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
 
@@ -3138,7 +3134,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildEndIfThenElse(const IQLToLLVM
 								 const FieldType * retTy)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
 
@@ -3182,8 +3178,8 @@ const IQLToLLVMValue * CodeGenerationContext::buildEndIfThenElse(const IQLToLLVM
 void CodeGenerationContext::buildBeginSwitch()
 {
   // Unwrap to C++
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
 
   // Create a new builder for switch
   IQLSwitch.push(new IQLToLLVMSwitchRecord());
@@ -3194,7 +3190,7 @@ void CodeGenerationContext::buildBeginSwitch()
 void CodeGenerationContext::buildEndSwitch(const IQLToLLVMValue * switchExpr)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * v = switchExpr->getValue();
 
   // The function we are working on.
@@ -3227,8 +3223,8 @@ void CodeGenerationContext::buildEndSwitch(const IQLToLLVMValue * switchExpr)
 void CodeGenerationContext::buildBeginSwitchCase(const char * caseVal)
 {
   // Unwrap to C++
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
 
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
@@ -3247,7 +3243,7 @@ void CodeGenerationContext::buildBeginSwitchCase(const char * caseVal)
 void CodeGenerationContext::buildEndSwitchCase()
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // Get switch builder for exit block
   IQLToLLVMSwitchRecord * s = IQLSwitch.top();
   // Unconditional branch to exit block (implicit break).
@@ -3264,7 +3260,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildInterval(const char * interva
 const IQLToLLVMValue * CodeGenerationContext::buildDateLiteral(const char * val)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // Strip quotes
   std::string str(val);
   str = str.substr(1, str.size()-2);
@@ -3280,7 +3276,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildDateLiteral(const char * val)
 const IQLToLLVMValue * CodeGenerationContext::buildDatetimeLiteral(const char * val)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // Strip quotes
   std::string str(val);
   str = str.substr(1, str.size()-2);
@@ -3301,7 +3297,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildDatetimeLiteral(const char * 
 const IQLToLLVMValue * CodeGenerationContext::buildDecimalInt32Literal(const char * val)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   return IQLToLLVMValue::get(this, 
 			     llvm::ConstantInt::get(b->getInt32Ty(), llvm::StringRef(val), 10),
 			     IQLToLLVMValue::eLocal); 
@@ -3310,7 +3306,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildDecimalInt32Literal(const cha
 const IQLToLLVMValue * CodeGenerationContext::buildDecimalInt64Literal(const char * val)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // Peel off the LL suffix
   std::string lit(val);
   lit = lit.substr(0, lit.size()-2);
@@ -3322,7 +3318,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildDecimalInt64Literal(const cha
 const IQLToLLVMValue * CodeGenerationContext::buildDoubleLiteral(const char * val)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   return IQLToLLVMValue::get(this, 
 			     llvm::ConstantFP::get(b->getDoubleTy(), llvm::StringRef(val)), 
 			     IQLToLLVMValue::eLocal); 
@@ -3330,8 +3326,8 @@ const IQLToLLVMValue * CodeGenerationContext::buildDoubleLiteral(const char * va
 
 const IQLToLLVMValue * CodeGenerationContext::buildVarcharLiteral(const char * val)
 {
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   // Strip off quotes
   // TODO: Proper unquotification
   int32_t len = strlen(val);
@@ -3358,7 +3354,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildVarcharLiteral(const char * v
     llvm::StructType * smallVarcharTy =
       llvm::StructType::get(*c, llvm::makeArrayRef(&varcharMembers[0], 2), false);
     // Create the global
-    llvm::GlobalVariable * globalVar = new llvm::GlobalVariable(*llvm::unwrap(LLVMModule), 
+    llvm::GlobalVariable * globalVar = new llvm::GlobalVariable(*LLVMModule, 
 								smallVarcharTy,
 								false, llvm::GlobalValue::ExternalLinkage, 0, "smallVarcharLiteral");    
     // Initialize it
@@ -3381,13 +3377,13 @@ const IQLToLLVMValue * CodeGenerationContext::buildVarcharLiteral(const char * v
     globalVar->setInitializer(globalVal);
     // Cast to varchar type
     llvm::Value * val = 
-      llvm::ConstantExpr::getBitCast(globalVar, llvm::PointerType::get(llvm::unwrap(LLVMVarcharType), 0));
+      llvm::ConstantExpr::getBitCast(globalVar, llvm::PointerType::get(LLVMVarcharType, 0));
     return IQLToLLVMValue::get(this, val, IQLToLLVMValue::eLocal);
   } else {
     // TODO: Remember the string is stored as a global so that we don't create it multiple times...
     // Put the string in as a global variable and then create a struct that references it.  
     // This is the global variable itself
-    llvm::GlobalVariable * globalVar = new llvm::GlobalVariable(*llvm::unwrap(LLVMModule), 
+    llvm::GlobalVariable * globalVar = new llvm::GlobalVariable(*LLVMModule, 
 								llvm::ArrayType::get(int8Ty, str.size() + 1),
 								false, llvm::GlobalValue::ExternalLinkage, 0, "str");
     // This is the string value.  Set it as an initializer.
@@ -3412,7 +3408,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildVarcharLiteral(const char * v
     // The pointer to string
     constStructMembers[2] = llvm::ConstantExpr::getGetElementPtr(nullptr, globalVar, llvm::makeArrayRef(&constGEPIndexes[0], 2));
     llvm::Constant * globalString = llvm::ConstantStruct::getAnon(*c, llvm::makeArrayRef(&constStructMembers[0], 3), false);
-    llvm::Value * globalStringAddr = buildEntryBlockAlloca(llvm::unwrap(LLVMVarcharType), "globalliteral");
+    llvm::Value * globalStringAddr = buildEntryBlockAlloca(LLVMVarcharType, "globalliteral");
     b->CreateStore(globalString, globalStringAddr);
     
     return IQLToLLVMValue::get(this, globalStringAddr, IQLToLLVMValue::eGlobal);
@@ -3421,16 +3417,16 @@ const IQLToLLVMValue * CodeGenerationContext::buildVarcharLiteral(const char * v
 
 const IQLToLLVMValue * CodeGenerationContext::buildDecimalLiteral(const char * val)
 {
-  llvm::LLVMContext * c = llvm::unwrap(LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
   decimal128 dec;
   decContext decCtxt;
   decContextDefault(&decCtxt, DEC_INIT_DECIMAL128); // no traps, please
   decimal128FromString(&dec, val, &decCtxt);
 
   // This is the global variable itself
-  llvm::GlobalVariable * globalVar = new llvm::GlobalVariable(*llvm::unwrap(LLVMModule), 
-						    llvm::unwrap(LLVMDecimal128Type),
+  llvm::GlobalVariable * globalVar = new llvm::GlobalVariable(*LLVMModule, 
+						    LLVMDecimal128Type,
 						    false, llvm::GlobalValue::ExternalLinkage, 0, val);
   // The value to initialize the global
   llvm::Constant * constStructMembers[4];
@@ -3447,21 +3443,21 @@ const IQLToLLVMValue * CodeGenerationContext::buildDecimalLiteral(const char * v
 
 const IQLToLLVMValue * CodeGenerationContext::buildTrue()
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * t = b->getInt32(1);
   return IQLToLLVMValue::get(this, t, IQLToLLVMValue::eLocal);
 }
 
 const IQLToLLVMValue * CodeGenerationContext::buildFalse()
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * t = b->getInt32(0);
   return IQLToLLVMValue::get(this, t, IQLToLLVMValue::eLocal);
 }
 
 const IQLToLLVMValue * CodeGenerationContext::buildNull()
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * t = b->getInt1(0);
   llvm::Value * tmp = NULL;
   return IQLToLLVMValue::get(this, tmp, t, IQLToLLVMValue::eLocal);
@@ -3549,7 +3545,7 @@ void CodeGenerationContext::buildSetField(int * pos, const IQLToLLVMValue * val)
 void CodeGenerationContext::buildSetFields(const char * recordName, int * pos)
 {
   // Unwrap to C++
-  llvm::IRBuilder<> * b = llvm::unwrap(LLVMBuilder);
+  llvm::IRBuilder<> * b = LLVMBuilder;
   typedef std::map<std::string, std::pair<std::string, const RecordType *> > RecordArgs;
   // Copy all fields from the source record to the output.
   const RecordArgs& recordTypes(*unwrap(IQLRecordArguments));
@@ -3676,8 +3672,8 @@ void NullInitializedAggregate::update(CodeGenerationContext * ctxt,
   //        SET old = inc
 
   // Unwrap to C++
-  llvm::LLVMContext * c = llvm::unwrap(ctxt->LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(ctxt->LLVMBuilder);
+  llvm::LLVMContext * c = ctxt->LLVMContext;
+  llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
   // Merge block 
@@ -3828,8 +3824,8 @@ void MaxMinAggregate::updateNotNull(CodeGenerationContext * ctxt,
 				    llvm::BasicBlock * mergeBlock)
 {
   // Unwrap to C++
-  llvm::LLVMContext * c = llvm::unwrap(ctxt->LLVMContext);
-  llvm::IRBuilder<> * b = llvm::unwrap(ctxt->LLVMBuilder);
+  llvm::LLVMContext * c = ctxt->LLVMContext;
+  llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
   // A block in which to do the update 

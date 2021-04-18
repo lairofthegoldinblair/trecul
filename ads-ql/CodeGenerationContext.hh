@@ -38,16 +38,19 @@
 #include <map>
 #include <stack>
 #include <string>
-#include <llvm-c/Core.h>
 
 #include <boost/dynamic_bitset.hpp>
 #include <boost/shared_ptr.hpp>
+
+#include "llvm/IR/IRBuilder.h"
 
 #include "LLVMGen.h"
 
 namespace llvm {
   class BasicBlock;
   class ConstantInt;
+  class Function;
+  class LLVMContext;
   class Type;
   class Value;
 }
@@ -261,9 +264,9 @@ public:
 
 class CodeGenerationFunctionContext {
 public:
-  LLVMBuilderRef Builder;
+  llvm::IRBuilder<> * Builder;
   class TreculSymbolTable * mSymbolTable;
-  LLVMValueRef Function;
+  llvm::Function * Function;
   IQLToLLVMRecordMapRef RecordArguments;
   IQLRecordTypeRef OutputRecord;
   void * AllocaCache;
@@ -405,25 +408,25 @@ private:
   static int32_t getCharArrayLength(llvm::Value * val);
 
 public:
-  LLVMContextRef LLVMContext;
-  LLVMModuleRef LLVMModule;
-  LLVMBuilderRef LLVMBuilder;
-  LLVMTypeRef LLVMDecContextPtrType;
-  LLVMTypeRef LLVMDecimal128Type;
-  LLVMTypeRef LLVMVarcharType;
-  LLVMTypeRef LLVMDatetimeType;
+  llvm::LLVMContext * LLVMContext;
+  llvm::Module * LLVMModule;
+  llvm::IRBuilder<> * LLVMBuilder;
+  llvm::Type * LLVMDecContextPtrType;
+  llvm::Type * LLVMDecimal128Type;
+  llvm::Type * LLVMVarcharType;
+  llvm::Type * LLVMDatetimeType;
   // This is set by the code generator not by the caller
-  LLVMValueRef LLVMFunction;
+  llvm::Function * LLVMFunction;
   // Alias to record type mapping for inputs
   IQLToLLVMRecordMapRef IQLRecordArguments;
   // Output record type for expression lists.
   IQLRecordTypeRef IQLOutputRecord;
   // Memcpy
-  LLVMValueRef LLVMMemcpyIntrinsic;
+  llvm::Value * LLVMMemcpyIntrinsic;
   // Memset
-  LLVMValueRef LLVMMemsetIntrinsic;
+  llvm::Value * LLVMMemsetIntrinsic;
   // Memcmp
-  LLVMValueRef LLVMMemcmpIntrinsic;
+  llvm::Value * LLVMMemcmpIntrinsic;
   // Move or copy semantics
   int32_t IQLMoveSemantics;
   // A stack for constructs like if/then/else

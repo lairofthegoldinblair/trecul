@@ -44,8 +44,6 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Instructions.h"
 
-#include "llvm-c/Core.h"
-
 #include "LLVMGen.h"
 #include "CodeGenerationContext.hh"
 #include "RecordType.hh"
@@ -58,7 +56,7 @@ llvm::Value * FieldAddress::getPointer(const std::string& member,
 				       CodeGenerationContext * ctxt, 
 				       llvm::Value * basePointer) const
 {
-  llvm::IRBuilder<> * builder = llvm::unwrap(ctxt->LLVMBuilder);
+  llvm::IRBuilder<> * builder = ctxt->LLVMBuilder;
   return builder->CreateGEP(basePointer,
 			    builder->getInt64(mOffset),
 			    ("raw" + member).c_str());
@@ -68,7 +66,7 @@ llvm::Value * FieldAddress::isNull(const std::string& member,
 				   CodeGenerationContext * ctxt, 
 				   llvm::Value * basePointer) const
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(ctxt->LLVMBuilder);
+  llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
   if (mPosition != 0xffffffff) {
     // NULL means there is a zero bit
     uint32_t dwordPos = mPosition >> 5;
@@ -96,7 +94,7 @@ void FieldAddress::setNull(const std::string& member,
     throw std::runtime_error("Error trying to set NULL value in non NULLABLE field");
   
   if (mPosition != 0xffffffff) {
-    llvm::IRBuilder<> * b = llvm::unwrap(ctxt->LLVMBuilder);
+    llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
     // NULL means there is a zero bit
     uint32_t dwordPos = mPosition >> 5;
     llvm::ConstantInt * mask = b->getInt32(1U << (mPosition - (dwordPos << 5)));
@@ -169,29 +167,29 @@ llvm::Type * FieldType::LLVMGetType(CodeGenerationContext * ctxt) const
 {
   switch(mType) {
   case VARCHAR:
-    return llvm::unwrap(ctxt->LLVMVarcharType);
+    return ctxt->LLVMVarcharType;
   case CHAR:
-    return llvm::unwrap(LLVMArrayType(LLVMInt8TypeInContext(ctxt->LLVMContext), (unsigned) (mSize + 1)));
+    return llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctxt->LLVMContext), (unsigned) (mSize + 1));
   case BIGDECIMAL:
-    return llvm::unwrap(ctxt->LLVMDecimal128Type);
+    return ctxt->LLVMDecimal128Type;
   case INT32:
-    return llvm::unwrap(LLVMInt32TypeInContext(ctxt->LLVMContext));
+    return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
   case INT64:
-    return llvm::unwrap(LLVMInt64TypeInContext(ctxt->LLVMContext));
+    return llvm::Type::getInt64Ty(*ctxt->LLVMContext);
   case DOUBLE:
-    return llvm::unwrap(LLVMDoubleTypeInContext(ctxt->LLVMContext));
+    return llvm::Type::getDoubleTy(*ctxt->LLVMContext);
   case DATETIME:
     {
       BOOST_STATIC_ASSERT(sizeof(boost::posix_time::ptime) == 8);
-      return llvm::unwrap(LLVMInt64TypeInContext(ctxt->LLVMContext));
+      return llvm::Type::getInt64Ty(*ctxt->LLVMContext);
     }
   case DATE:
     {
       BOOST_STATIC_ASSERT(sizeof(boost::gregorian::date) == 4);
-      return llvm::unwrap(LLVMInt32TypeInContext(ctxt->LLVMContext));
+      return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
     }
   case INTERVAL:
-    return llvm::unwrap(LLVMInt32TypeInContext(ctxt->LLVMContext));
+    return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
   default:
     throw std::runtime_error("Invalid Type value");
   }
@@ -563,9 +561,9 @@ DecimalType::~DecimalType()
 llvm::Value * DecimalType::createGlobalValue(CodeGenerationContext * ctxt,
 					     const decimal128 & dec) const
 {
-  llvm::LLVMContext * c = llvm::unwrap(ctxt->LLVMContext);
-  llvm::Module * m = llvm::unwrap(ctxt->LLVMModule);
-  llvm::Type * ty = llvm::unwrap(ctxt->LLVMDecimal128Type);
+  llvm::LLVMContext * c = ctxt->LLVMContext;
+  llvm::Module * m = ctxt->LLVMModule;
+  llvm::Type * ty = ctxt->LLVMDecimal128Type;
   llvm::GlobalVariable * globalVar = 
     new llvm::GlobalVariable(*m, ty, false, 
 			     llvm::GlobalValue::ExternalLinkage, 
@@ -1678,18 +1676,17 @@ llvm::Value * RecordType::LLVMMemberGetPointer(const std::string& member,
 					       bool populateSymbolTable,
 					       const char * prefix) const
 {
-  llvm::IRBuilder<> * builder = llvm::unwrap(ctxt->LLVMBuilder);
+  llvm::IRBuilder<> * builder = ctxt->LLVMBuilder;
   // Find the member.
   const_member_name_iterator it = mMemberNames.find(member);
   if (it == mMemberNames.end()) {
     throw std::runtime_error((boost::format("Undefined variable: %1%") % member).str());
   }
-  LLVMValueRef memberVal = LLVMBuildBitCast(ctxt->LLVMBuilder,
-					    llvm::wrap(mMemberOffsets[it->second].getPointer(member, 
-											     ctxt, 
-											     builder->CreateLoad(basePointer, "baseref"))),
-					    LLVMPointerType(llvm::wrap(mMembers[it->second].GetType()->LLVMGetType(ctxt)), 0),
-					    member.c_str());
+  llvm::Value * memberVal = ctxt->LLVMBuilder->CreateBitCast(mMemberOffsets[it->second].getPointer(member, 
+												   ctxt, 
+												   builder->CreateLoad(basePointer, "baseref")),
+							    llvm::PointerType::get(mMembers[it->second].GetType()->LLVMGetType(ctxt), 0),
+							    member.c_str());
   if (populateSymbolTable) {
     ctxt->defineFieldVariable(basePointer,
 			      prefix,
@@ -1697,7 +1694,7 @@ llvm::Value * RecordType::LLVMMemberGetPointer(const std::string& member,
 			      this);
   }
 
-  return llvm::unwrap(memberVal);
+  return memberVal;
 }
 
 // Is the LLVM value a pointer to a member of this record?
@@ -1752,7 +1749,7 @@ bool RecordType::operator==(const RecordType & rhs) const
 
 llvm::Value * RecordType::LLVMMemberGetNull(const std::string& member, CodeGenerationContext * ctxt, llvm::Value * basePointer) const
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(ctxt->LLVMBuilder);
+  llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
   // Find the member.
   const_member_name_iterator it = mMemberNames.find(member);
   if (it == mMemberNames.end()) {
@@ -1765,7 +1762,7 @@ llvm::Value * RecordType::LLVMMemberGetNull(const std::string& member, CodeGener
 
 void RecordType::LLVMMemberSetNull(const std::string& member, CodeGenerationContext * ctxt, llvm::Value * basePointer, bool isNull) const
 {
-  llvm::IRBuilder<> * b = llvm::unwrap(ctxt->LLVMBuilder);
+  llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
   // Find the member.
   const_member_name_iterator it = mMemberNames.find(member);
   if (it == mMemberNames.end()) {
