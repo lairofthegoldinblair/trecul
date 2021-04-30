@@ -1303,17 +1303,22 @@ private:
    */
   bool parseRecord(RecordBuffer buf)
   {
-    skipComments();
+    try {
+      skipComments();
 
-    for(typename operator_type::field_importer_const_iterator it = getLogParserType().mImporters.begin();
-	it != getLogParserType().mImporters.end();
-	++it) {
-      if (! it->Import(*mInputBuffer, buf)) {
-	return false;
+      for(typename operator_type::field_importer_const_iterator it = getLogParserType().mImporters.begin();
+	  it != getLogParserType().mImporters.end();
+	  ++it) {
+	if (! it->Import(*mInputBuffer, buf)) {
+	  return false;
+	}
       }
+      // Done cause we had good record
+      return true;
+    } catch (std::exception & ex) {
+      std::cerr << (boost::format("parsing file %1% : %2%") % (*mFileIt)->getFilename() % ex.what()).str() << std::endl;
+      return false;
     }
-    // Done cause we had good record
-    return true;
   }
 
   const operator_type & getLogParserType()
@@ -1385,11 +1390,20 @@ public:
 	}
 	// Try to read a byte so we get a valid report
 	// on EOF for empty files.
-	mInputBuffer->open(1);
+	try {
+	  mInputBuffer->open(1);
+	} catch (std::exception & ex) {
+	  std::cerr << (boost::format("parsing file %1% : %2%") % (*mFileIt)->getFilename() % ex.what()).str() << std::endl;
+	  delete mInputBuffer;
+	  mInputBuffer = NULL;
+	  continue;
+	}
+
 	// Read all of the record in the file.
 	while(!mInputBuffer->isEOF()) {
 	  // This is our actual record.
 	  mOutput = getLogParserType().mMalloc.malloc();
+	  
 	  if (parseRecord(mOutput)) {
 	    mRecordsImported += 1;
 	    requestWrite(0);
