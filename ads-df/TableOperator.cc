@@ -752,8 +752,14 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
 	    LessThanFunction::get(ctxt, ty, sortKeys, "lessThan");
 	}
       }
+    } else {
+      // No sort keys still need to have outputs for each column group
+      for(TableMetadata::column_group_const_iterator cg = mTableMetadata->beginColumnGroups(),
+	    endCg = mTableMetadata->endColumnGroups(); cg != endCg; ++cg) {
+	ColumnGroupOutput * cgo = mTableOutput->create(ctxt, *cg, referencedAndRequired);
+      }
     }
-
+    
     // We are reading from a table/serial structured store.
     // Expand out the serial structure and create an
     // op for each path then merge them with a sort merge
@@ -784,7 +790,22 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
       TableFileMetadata * fileMetadata = NULL;
       TableColumnGroup * cg = NULL;
       mTableMetadata->resolveMetadata(*it, cg, fileMetadata);
+      if (nullptr == cg) {
+	ctxt.logError(*this, (boost::format("Could not resolve column group corresponding to file %1%") %
+			      (*it)->getPath()->toString()).str());
+	return;
+      }
+      if (nullptr == fileMetadata) {
+	ctxt.logError(*this, (boost::format("Could not resolve file metadata corresponding to file %1%") %
+			      (*it)->getPath()->toString()).str());
+	return;
+      }
       ColumnGroupOutput * cgo = mTableOutput->find(cg);
+      if (nullptr == cgo) {
+	ctxt.logError(*this, (boost::format("Could not resolve column group output corresponding to file %1%") %
+			      (*it)->getPath()->toString()).str());
+	return;
+      }
       cgo->addPath(ctxt, fileMetadata, *it);
     } 
     // Check all table and column group outputs
