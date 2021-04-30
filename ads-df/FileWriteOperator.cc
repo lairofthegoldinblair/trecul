@@ -1039,6 +1039,13 @@ RuntimeHdfsWriteOperator::~RuntimeHdfsWriteOperator()
 
 OutputFile * RuntimeHdfsWriteOperator::createFile(PathPtr filePath)
 {
+  // TODO: Create all ancestor directories
+  PathPtr parent = Path::resolveReference(filePath, Path::get("."));
+  if (!getMyOperatorType().mFileFactory->getFileSystem()->exists(parent)) {
+    std::cout << "Creating parent directory " << parent->toString().c_str() << " of file path " << filePath->toString().c_str() << std::endl;
+    getMyOperatorType().mFileFactory->mkdir(parent);
+  }
+  
   // TODO: Check if file exists
   // TODO: Make sure file is cleaned up in case of failure.
   WritableFile * f = getMyOperatorType().mFileFactory->openForWrite(filePath);
