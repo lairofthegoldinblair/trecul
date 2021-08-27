@@ -168,7 +168,9 @@ void RuntimeWriteOperator::start()
 		   O_WRONLY|O_CREAT|O_TRUNC,
 		   S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP);
     if (mFile == -1) {
-      throw std::runtime_error("Couldn't create file");
+      auto err = errno;
+      throw std::runtime_error((boost::format("Couldn't create file %1%: %2% (errno %3%)") % getWriteType().mFile %
+                                ::strerror(err) % err).str());
     }
   }
   // Start a thread that will write

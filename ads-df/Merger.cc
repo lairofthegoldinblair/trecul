@@ -752,7 +752,8 @@ void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
   UriPtr uri = URI::get(mConnect.size() ? mConnect.c_str() : mFile.c_str());
   RuntimeOperatorType * opType = NULL;
   if (isStreamingWrite() ||
-      boost::algorithm::iequals(uri->getScheme(), "hdfs")) {
+      boost::algorithm::iequals(uri->getScheme(), "hdfs") ||
+      mConnect.size()) {
     opType = new RuntimeHdfsWriteOperatorType("write",
 					      getInput(0)->getRecordType(),
 					      getFileFactory(uri),

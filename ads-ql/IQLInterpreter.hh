@@ -59,6 +59,7 @@ class CodeGenerationContext;
 class RecordType;
 
 namespace llvm {
+  class Module;
   class Type;
   class Value;
   namespace legacy {
@@ -131,8 +132,8 @@ private:
   LLVMFuncType mFunction;
   class IQLRecordBufferMethodHandle * mImpl;
 
-  // Create the LLVM module from the bitcode.
-  void initImpl(const std::string & bitcode);
+  // Create the LLVM module from IR
+  void initImpl(std::unique_ptr<llvm::Module> module);
   // Load the object file into the JIT
   void initImpl();
 
@@ -161,7 +162,7 @@ private:
   }
 public:
   IQLUpdateModule(const std::string& funName, 
-		    const std::string& bitcode);
+                  std::unique_ptr<llvm::Module> module);
   ~IQLUpdateModule();
   /**
    * Copy or move the contents of source to target depending on the value
@@ -182,7 +183,6 @@ private:
   std::vector<const RecordType *> mSources;
   std::string mFunName;
   std::string mStatements;
-  std::string mBitcode;
   std::unique_ptr<IQLUpdateModule> mModule;
 
   void init(class DynamicRecordContext& recCtxt, 
@@ -233,8 +233,8 @@ private:
   LLVMFuncType mMoveFunction;
   class IQLRecordBufferMethodHandle * mImpl;
 
-  // Create the LLVM module from the bitcode.
-  void initImpl(const std::string & bitcode);
+  // Create the LLVM module from IR
+  void initImpl(std::unique_ptr<llvm::Module> module);
   // Load the object file into the JIT
   void initImpl();
 
@@ -269,7 +269,7 @@ public:
   IQLTransferModule(const RecordTypeMalloc & targetMalloc,
 		    const std::string& copyFunName, 
 		    const std::string& moveFunName, 
-		    const std::string& bitcode);
+		    std::unique_ptr<llvm::Module> module);
   ~IQLTransferModule();
   /**
    * Copy or move the contents of source to target depending on the value
@@ -291,7 +291,6 @@ private:
   const RecordType * mTarget;
   std::string mFunName;
   std::string mTransfer;
-  std::string mBitcode;
 
   std::unique_ptr<IQLTransferModule> mModule;
   bool mIsIdentity;
@@ -359,8 +358,8 @@ private:
   LLVMFuncType mMoveFunction;
   class IQLRecordBufferMethodHandle * mImpl;
 
-  // Create the LLVM module from the bitcode.
-  void initImpl(const std::string & bitcode);
+  // Create the LLVM module from IR
+  void initImpl(std::unique_ptr<llvm::Module> module);
   // Load the object file into the JIT
   void initImpl();
 
@@ -396,7 +395,7 @@ public:
   IQLTransferModule2(const RecordTypeMalloc & recordMalloc,
 		     const std::string& copyFunName, 
 		     const std::string& moveFunName, 
-		     const std::string& bitcode);
+		     std::unique_ptr<llvm::Module> module);
   ~IQLTransferModule2();
   /**
    * Copy or move the contents of source to target depending on the value
@@ -433,7 +432,6 @@ private:
   const RecordType * mTarget;
   std::string mFunName;
   std::string mTransfer;
-  std::string mBitcode;
 
   std::unique_ptr<IQLTransferModule2> mModule;
 public:
@@ -495,8 +493,8 @@ private:
   LLVMFuncType mFunction;
   class IQLRecordBufferMethodHandle * mImpl;
 
-  // Create the LLVM module from the bitcode.
-  void initImpl(const std::string & bitcode);
+  // Create the LLVM module from IR
+  void initImpl(std::unique_ptr<llvm::Module> module);
   // Load the object file into the JIT
   void initImpl();
 
@@ -525,7 +523,7 @@ private:
   }
 public:
   IQLFunctionModule(const std::string& funName, 
-		    const std::string& bitcode);
+		    std::unique_ptr<llvm::Module> module);
   ~IQLFunctionModule();
   /**
    * Execute the method.
@@ -552,7 +550,6 @@ private:
   std::vector<AliasedRecordType> mSources;
   std::string mFunName;
   std::string mStatements;
-  std::string mBitcode;
 
   std::unique_ptr<IQLFunctionModule> mModule;
 
@@ -609,8 +606,8 @@ private:
   class IQLRecordBufferMethodHandle * mImpl;
   bool mIsTransferIdentity;
 
-  // Create the LLVM module from the bitcode.
-  void initImpl(const std::string & bitcode);
+  // Create the LLVM module from IR
+  void initImpl(std::unique_ptr<llvm::Module> module);
   // Load the object file into the JIT
   void initImpl();
 
@@ -656,7 +653,7 @@ public:
 		     const std::string& initName, 
 		     const std::string& updateName,
 		     const std::string& transferName,
-		     const std::string& bitcode,
+		     std::unique_ptr<llvm::Module> module,
 		     bool isTransferIdentity);
   ~IQLAggregateModule();
 
@@ -691,7 +688,6 @@ private:
   std::string mInitializeFun;
   std::string mUpdateFun;
   std::string mTransferFun;
-  std::string mBitcode;
 
   // Is the transfer the identity?
   bool mIsIdentity;
