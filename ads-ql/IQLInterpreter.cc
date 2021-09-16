@@ -1294,6 +1294,10 @@ extern "C" int32_t InternalIPAddressAddrBlockMatch(const char * prefix_ip,
   return 0 == memcmp(zeroed_prefix_ip, zeroed_ip, 16);
 }
 
+extern "C" int32_t InternalIsV4IPAddress(const char * prefix_ip) {
+  return memcmp(prefix_ip, v4MappedPrefix, sizeof(v4MappedPrefix)) == 0;
+}
+
 extern "C" void InternalArrayException() {
   throw std::runtime_error("Array Bounds Exception");
 }
@@ -2189,6 +2193,11 @@ void LLVMBase::InitializeLLVM()
   // argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
   LoadAndValidateExternalFunction("cidr_ip_address_match", "InternalIPAddressAddrBlockMatch", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  LoadAndValidateExternalFunction("is_v4_ip_address", "InternalIsV4IPAddress", funTy);
 
   numArguments = 0;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);

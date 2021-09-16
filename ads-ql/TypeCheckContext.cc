@@ -549,35 +549,29 @@ void TypeCheckContext::loadBuiltinFunctions()
 					       DateType::Get(drc),
 					       DateType::Get(drc),
 					       Int32Type::Get(drc)));
-  mTypeCheckSymbolTable->add(fnPrefix, "akid16_to_akid64", 
+  mTypeCheckSymbolTable->add(fnPrefix, "ip_address", 
 			     FunctionType::Get(drc, 
-					       CharType::Get(drc, 32),
-					       CharType::Get(drc, 22)));
-  mTypeCheckSymbolTable->add(fnPrefix, "akid64_to_akid16", 
-			     FunctionType::Get(drc, 
-					       CharType::Get(drc, 22),
-					       CharType::Get(drc, 32)));
-  mTypeCheckSymbolTable->add(fnPrefix, "akid64_to_akid16_checksum", 
-			     FunctionType::Get(drc, 
-					       CharType::Get(drc, 22),
-					       CharType::Get(drc, 64)));
-  mTypeCheckSymbolTable->add(fnPrefix, "akid64_get_random", 
-			     FunctionType::Get(drc, 
-					       CharType::Get(drc, 22),
-					       Int32Type::Get(drc)));
-  mTypeCheckSymbolTable->add(fnPrefix, "akid64_get_creation_time", 
-			     FunctionType::Get(drc, 
-					       CharType::Get(drc, 22),
-					       DatetimeType::Get(drc)));
-  mTypeCheckSymbolTable->add(fnPrefix, "akid64_decrypt", 
+					       CharType::Get(drc, 16), 
+					       VarcharType::Get(drc)));
+  mTypeCheckSymbolTable->add(fnPrefix, "parse_ip_address", 
 			     FunctionType::Get(drc, 
 					       VarcharType::Get(drc),
-					       CharType::Get(drc, 22)));
-  mTypeCheckSymbolTable->add(fnPrefix, "akid64_encrypt", 
+					       CharType::Get(drc, 16)));
+  mTypeCheckSymbolTable->add(fnPrefix, "truncate_ip_address", 
 			     FunctionType::Get(drc, 
-					       CharType::Get(drc, 22),
+					       CharType::Get(drc, 16),
 					       Int32Type::Get(drc),
-					       VarcharType::Get(drc)));
+					       CharType::Get(drc, 16)));
+  mTypeCheckSymbolTable->add(fnPrefix, "cidr_ip_address_match", 
+			     FunctionType::Get(drc, 
+					       CharType::Get(drc, 16),
+					       Int32Type::Get(drc),
+					       CharType::Get(drc, 16),
+					       Int32Type::Get(drc)));
+  mTypeCheckSymbolTable->add(fnPrefix, "is_v4_ip_address", 
+			     FunctionType::Get(drc, 
+					       CharType::Get(drc, 16),
+					       Int32Type::Get(drc)));
 }
 
 const RecordType * TypeCheckContext::getAggregateRecord() 
