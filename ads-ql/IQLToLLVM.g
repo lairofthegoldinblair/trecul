@@ -155,17 +155,22 @@ fieldConstructor[IQLCodeGenerationContextRef ctxt, int32_t * fieldPos]
     ;
 
 builtInType [IQLCodeGenerationContextRef ctxt] returns [void * llvmType]
-	: ^(c=TK_INTEGER typeNullability?) { $llvmType = $c->u; }
-	  | ^(c=TK_DOUBLE typeNullability?) { $llvmType = $c->u; }
+	: ^(c=TK_INTEGER arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+	  | ^(c=TK_DOUBLE arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=TK_CHAR DECIMAL_INTEGER_LITERAL typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=TK_VARCHAR typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=TK_NVARCHAR typeNullability?) { $llvmType = $c->u; }
-	  | ^(c=TK_DECIMAL typeNullability?) { $llvmType = $c->u; }
-	  | ^(c=TK_BOOLEAN typeNullability?) { $llvmType = $c->u; }
-	  | ^(c=TK_DATETIME typeNullability?) { $llvmType = $c->u; }
-      | ^(c=TK_BIGINT typeNullability?) { $llvmType = $c->u; }
-	  | ^(c=ID typeNullability?) { $llvmType = $c->u; }
+	  | ^(c=TK_DECIMAL arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+	  | ^(c=TK_BOOLEAN arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+	  | ^(c=TK_DATETIME arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+      | ^(c=TK_BIGINT arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+	  | ^(c=ID arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	;
+
+arrayTypeSpec
+    :
+    ^(ARRAY (DECIMAL_INTEGER_LITERAL)?)
+    ;
 
 typeNullability
     :

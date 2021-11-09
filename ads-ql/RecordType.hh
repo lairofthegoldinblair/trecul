@@ -269,9 +269,17 @@ public:
   {
     return *(boost::posix_time::ptime *) (buffer.Ptr + mOffset);
   }
+  boost::posix_time::ptime getArrayDatetime(RecordBuffer buffer, int idx) const
+  {
+    return ((boost::posix_time::ptime *) (buffer.Ptr + mOffset))[idx];
+  }
   boost::gregorian::date getDate(RecordBuffer buffer) const
   {
     return *(boost::gregorian::date *) (buffer.Ptr + mOffset);
+  }
+  boost::gregorian::date getArrayDate(RecordBuffer buffer, int idx) const
+  {
+    return ((boost::gregorian::date *) (buffer.Ptr + mOffset))[idx];
   }
   void SetFixedLengthString(RecordBuffer buffer, const char * begin, std::size_t sz) const
   {
@@ -299,9 +307,19 @@ public:
     return (int32_t *) (buffer.Ptr + mOffset);
   }
 
+  int32_t * getArrayInt32Ptr(RecordBuffer buffer, int idx) const
+  {
+    return ((int32_t *) (buffer.Ptr + mOffset)) + idx;
+  }
+
   int64_t * getInt64Ptr(RecordBuffer buffer) const
   {
     return (int64_t *) (buffer.Ptr + mOffset);
+  }
+
+  int64_t * getArrayInt64Ptr(RecordBuffer buffer, int idx) const
+  {
+    return ((int64_t *) (buffer.Ptr + mOffset)) + idx;
   }
 
   double * getDoublePtr(RecordBuffer buffer) const
@@ -309,14 +327,29 @@ public:
     return (double *) (buffer.Ptr + mOffset);
   }
 
+  double * getArrayDoublePtr(RecordBuffer buffer, int idx) const
+  {
+    return ((double *) (buffer.Ptr + mOffset)) + idx;
+  }
+
   boost::posix_time::ptime * getDatetimePtr(RecordBuffer buffer) const
   {
     return (boost::posix_time::ptime *) (buffer.Ptr + mOffset);
   }
 
+  boost::posix_time::ptime * getArrayDatetimePtr(RecordBuffer buffer, int idx) const
+  {
+    return ((boost::posix_time::ptime *) (buffer.Ptr + mOffset)) + idx;
+  }
+
   boost::gregorian::date * getDatePtr(RecordBuffer buffer) const
   {
     return (boost::gregorian::date *) (buffer.Ptr + mOffset);
+  }
+
+  boost::gregorian::date * getArrayDatePtr(RecordBuffer buffer, int idx) const
+  {
+    return ((boost::gregorian::date *) (buffer.Ptr + mOffset)) + idx;
   }
 
   Varchar * getVarcharPtr(RecordBuffer buffer) const
@@ -332,6 +365,11 @@ public:
   decimal128 * getDecimalPtr(RecordBuffer buffer) const
   {
     return (decimal128 *) (buffer.Ptr + mOffset);
+  }
+
+  decimal128 * getArrayDecimalPtr(RecordBuffer buffer, int idx) const
+  {
+    return ((decimal128 *) (buffer.Ptr + mOffset)) + idx;
   }
 
   bool operator<(const FieldAddress & rhs) const
@@ -442,6 +480,7 @@ public:
 		       DATE, /* Boost gregorian date */
 		       FUNCTION, /* Function types are NOT allowed as fields at this point. */
 		       FIXED_ARRAY, /* Fixed Length Array. */
+		       VARIABLE_ARRAY, /* Variable Length Array. */
 		       INTERVAL, /* Interval types */
 		       NIL /* Type of literal NULL */
   };
@@ -906,6 +945,57 @@ public:
    */
   std::string toString() const;
 
+  const FieldType * clone(bool nullable) const;
+
+  llvm::Type * LLVMGetType(CodeGenerationContext * ctxt) const;
+};
+
+/**
+ * A variable length array.
+ */
+class VariableArrayType : public FieldType
+{
+private:
+  const FieldType * mElementTy;
+
+  VariableArrayType(DynamicRecordContext& ctxt, 
+                    const FieldType * elementTy,
+                    bool nullable)
+    :
+    FieldType(ctxt, FieldType::VARIABLE_ARRAY, 0, nullable),    
+    mElementTy(elementTy)
+  {
+  }
+  static void AppendTo(const FieldType * element,
+		       bool nullable, struct md5_state_s * md5);
+public:
+  static VariableArrayType * Get(DynamicRecordContext& ctxt, 
+                                 const FieldType * element,
+                                 bool nullable);
+  ~VariableArrayType();
+  const FieldType * getElementType() const 
+  {
+    return mElementTy;
+  }
+  std::size_t GetAlignment() const 
+  {
+    return 8;
+  }
+  std::size_t GetAllocSize() const
+  {
+    return sizeof(Varchar);
+  }
+  /**
+   * Append my state to an md5 hash
+   */
+  void AppendTo(struct md5_state_s * md5) const;
+  /**
+   * Text representation of type.
+   */
+  std::string toString() const;
+
+  const FieldType * clone(bool nullable) const;
+
   llvm::Type * LLVMGetType(CodeGenerationContext * ctxt) const;
 };
 
@@ -978,6 +1068,8 @@ class TaggedFieldAddress
 private:
   FieldAddress mAddress;
   FieldType::FieldTypeEnum mTag;
+  // If non-zero then this is a fixed array of type mTag
+  uint32_t mSize;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
@@ -985,25 +1077,28 @@ private:
   {
     ar & BOOST_SERIALIZATION_NVP(mAddress);
     ar & BOOST_SERIALIZATION_NVP(mTag);
+    ar & BOOST_SERIALIZATION_NVP(mSize);
   }
 
-  static void printEscaped(const char * begin, int32_t sz, 
+  static void printEscaped(const char * begin, int32_t sz,
 			   char escapeChar, std::ostream& ostr);
 
 public:
   TaggedFieldAddress()
     :
-    mTag(FieldType::INT32)
+    mTag(FieldType::INT32),
+    mSize(0)
   {
   }
 
-  TaggedFieldAddress(const FieldAddress& address, FieldType::FieldTypeEnum tag)
+  TaggedFieldAddress(const FieldAddress& address, FieldType::FieldTypeEnum tag, uint32_t sz=0)
     :
     mAddress(address),
-    mTag(tag)
+    mTag(tag),
+    mSize(sz)
   {
   }
-  void print(RecordBuffer buf, char escapeChar, std::ostream& ostr) const;
+  void print(RecordBuffer buf, char arrayDelimiter, char escapeChar, std::ostream& ostr) const;
 };
 
 class RecordTypePrint
@@ -1012,6 +1107,7 @@ private:
   std::vector<TaggedFieldAddress> mFields;
   char mFieldDelimiter;
   char mRecordDelimiter;
+  char mArrayDelimiter;
   char mEscapeChar;
 
   // Serialization
@@ -1022,6 +1118,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mFields);
     ar & BOOST_SERIALIZATION_NVP(mFieldDelimiter);
     ar & BOOST_SERIALIZATION_NVP(mRecordDelimiter);
+    ar & BOOST_SERIALIZATION_NVP(mArrayDelimiter);
     ar & BOOST_SERIALIZATION_NVP(mEscapeChar);
   }
 public:
@@ -1029,12 +1126,13 @@ public:
   RecordTypePrint(const std::vector<TaggedFieldAddress>& fields);
   RecordTypePrint(const std::vector<TaggedFieldAddress>& fields,
 		  char fieldDelimter, char recordDelimiter, 
-		  char escapeChar);
+                  char arrayDelimiter, char escapeChar);
   RecordTypePrint(const TaggedFieldAddress& field)
     :
     mFields(1, field),
     mFieldDelimiter('\t'),
     mRecordDelimiter('\n'),
+    mArrayDelimiter(','),
     mEscapeChar('\\')
   {
   }
@@ -1454,6 +1552,7 @@ public:
 
   // Interpreter methods for getting/setting
   void setInt32(const std::string& field, int32_t val, RecordBuffer buf) const;
+  void setArrayInt32(const std::string& field, int32_t idx, int32_t val, RecordBuffer buf) const;
   void setInt64(const std::string& field, int64_t val, RecordBuffer buf) const;
   void setDouble(const std::string& field, double val, RecordBuffer buf) const;
   void setDatetime(const std::string& field, 

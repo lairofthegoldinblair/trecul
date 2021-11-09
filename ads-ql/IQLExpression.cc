@@ -1125,6 +1125,16 @@ IQLFieldTypeRef IQLBuildInt32Type(IQLTreeFactoryRef ctxtRef, int nullable)
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
   return wrap(Int32Type::Get(ctxt, nullable!=0));  
 }
+IQLFieldTypeRef IQLBuildInt32ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  if (boost::algorithm::iequals("infinity", sz)) {
+    return wrap(VariableArrayType::Get(ctxt, Int32Type::Get(ctxt, false), nullable!=0));
+  } else {
+    int32_t fieldSz = boost::lexical_cast<int32_t> (sz);
+    return wrap(FixedArrayType::Get(ctxt, fieldSz, Int32Type::Get(ctxt, false), nullable!=0));
+  }
+}
 IQLFieldTypeRef IQLBuildInt64Type(IQLTreeFactoryRef ctxtRef, int nullable)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));

@@ -129,8 +129,9 @@ variableDeclaration[IQLTreeFactoryRef ctxt]
 builtInType[IQLTreeFactoryRef ctxt] returns [IQLFieldTypeRef ty]
 @init {
 nullable=0;
+array=NULL;
 }
-	: ^(c=TK_INTEGER (nullable=typeNullability)?) { $ty = IQLBuildInt32Type($ctxt, nullable); }
+	: ^(c=TK_INTEGER (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildInt32ArrayType($ctxt, array, nullable) : IQLBuildInt32Type($ctxt, nullable); }
 	  | ^(c=TK_DOUBLE (nullable=typeNullability)?) { $ty = IQLBuildDoubleType($ctxt, nullable); }
 	  | ^(c=TK_CHAR DECIMAL_INTEGER_LITERAL (nullable=typeNullability)?) { $ty = IQLBuildCharType($ctxt, (const char *) $DECIMAL_INTEGER_LITERAL.text->chars, nullable); }
 	  | ^(c=TK_VARCHAR (nullable=typeNullability)?) { $ty = IQLBuildVarcharType($ctxt, nullable); }
@@ -141,6 +142,14 @@ nullable=0;
       | ^(c=TK_BIGINT (nullable=typeNullability)?) { $ty = IQLBuildInt64Type($ctxt, nullable); }
 	  | ^(c=ID (nullable=typeNullability)?) { $ty = IQLBuildType($ctxt, (const char *) $ID.text->chars, nullable); } 
 	;
+
+arrayTypeSpec returns [const char * sz]
+@init {
+    sz = "infinity";
+}
+    :
+    ^(ARRAY (DECIMAL_INTEGER_LITERAL { sz = (const char *) $DECIMAL_INTEGER_LITERAL.text->chars; })?)
+    ;
 
 typeNullability returns [int nullable]
     :

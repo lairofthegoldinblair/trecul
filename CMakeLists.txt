@@ -90,16 +90,16 @@ endif (HADOOP_FOUND)
 #
 find_package(LLVM REQUIRED)
 
-# What version of LLVM?  We only support LLVM 11.0.1
+# What version of LLVM?  We only support LLVM 13.0
 execute_process(
 COMMAND ${LLVM_CONFIG} --version
 OUTPUT_VARIABLE LLVM_VERSION
 OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-if (NOT ${LLVM_VERSION} VERSION_EQUAL "11.0.1")
-  MESSAGE(FATAL_ERROR "LLVM Version is ${LLVM_VERSION}; only 11.0.1 is supported")
-endif (NOT ${LLVM_VERSION} VERSION_EQUAL "11.0.1")
+if (NOT ${LLVM_VERSION} VERSION_EQUAL "13.0")
+  MESSAGE(FATAL_ERROR "LLVM Version is ${LLVM_VERSION}; only 13.0 is supported")
+endif (NOT ${LLVM_VERSION} VERSION_EQUAL "13.0")
 
 
 # Definitions needed by LLVM headers

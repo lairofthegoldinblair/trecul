@@ -369,41 +369,41 @@ const FieldType * TypeCheckContext::castTo(const FieldType * lhs,
   if (lhs->clone(true)==rhs->clone(true)) return lhs;
 
   // Supported conversions
-  const FieldType * e1 = lhs;
-  const FieldType * e2 = rhs;
-  if (e1->GetEnum() == FieldType::NIL) {
-    return rhs;
-  } else if (e1->GetEnum() == FieldType::INT32) {
-    if (e2->GetEnum() == FieldType::INT32)
-      return rhs;
-    else if (e2->GetEnum() == FieldType::INT64)
-      return rhs;
-    else if (e2->GetEnum() == FieldType::DOUBLE)
-      return rhs;
-    else if (e2->GetEnum() == FieldType::BIGDECIMAL)
-      return rhs;
+  const FieldType * from_type = lhs;
+  const FieldType * to_type = rhs;
+  if (from_type->GetEnum() == FieldType::NIL) {
+    return to_type;
+  } else if (from_type->GetEnum() == FieldType::INT32) {
+    if (to_type->GetEnum() == FieldType::INT32)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::INT64)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::DOUBLE)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::BIGDECIMAL)
+      return to_type;
     else 
       return NULL;
-  } else if (e1->GetEnum() == FieldType::INT64) {
-    if (e2->GetEnum() == FieldType::INT64)
-      return rhs;
-    else if (e2->GetEnum() == FieldType::DOUBLE)
-      return rhs;
-    else if (e2->GetEnum() == FieldType::BIGDECIMAL)
-      return rhs;
+  } else if (from_type->GetEnum() == FieldType::INT64) {
+    if (to_type->GetEnum() == FieldType::INT64)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::DOUBLE)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::BIGDECIMAL)
+      return to_type;
     else 
       return NULL;
-  } else if (e1->GetEnum() == FieldType::BIGDECIMAL) {
-    if (e2->GetEnum() == FieldType::BIGDECIMAL)
-      return rhs;
-    else if (e2->GetEnum() == FieldType::DOUBLE)
-      return rhs;
+  } else if (from_type->GetEnum() == FieldType::BIGDECIMAL) {
+    if (to_type->GetEnum() == FieldType::BIGDECIMAL)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::DOUBLE)
+      return to_type;
     else 
       return NULL;
-  } else if (e1->GetEnum() == FieldType::CHAR) {
+  } else if (from_type->GetEnum() == FieldType::CHAR) {
     // TODO: What about sizes of these types?
-    if (e2->GetEnum() == FieldType::VARCHAR)
-      return rhs;
+    if (to_type->GetEnum() == FieldType::VARCHAR)
+      return to_type;
     else 
       return NULL;    
   } else {
@@ -628,7 +628,7 @@ const FieldType * TypeCheckContext::buildArray(const std::vector<const FieldType
   if (elmntTy->isNullable()) {
     throw std::runtime_error("Not yet supporting arrays of nullable types");
   }
-  return FixedArrayType::Get(mContext, (int32_t) e.size(), elmntTy, false);
+  return buildFixedArrayType(e.size(), elmntTy, false);
 }
 
 const FieldType * TypeCheckContext::buildArrayRef(const char * nm,
@@ -642,6 +642,9 @@ const FieldType * TypeCheckContext::buildArrayRef(const char * nm,
   const FieldType * arrayTy = lookupType(nm, NULL);
   if (arrayTy->GetEnum() == FieldType::FIXED_ARRAY) {
     const FieldType * elementTy = static_cast<const FixedArrayType *>(arrayTy)->getElementType();
+    return elementTy;
+  } else if (arrayTy->GetEnum() == FieldType::VARIABLE_ARRAY) {
+    const FieldType * elementTy = static_cast<const VariableArrayType *>(arrayTy)->getElementType();
     return elementTy;
   } else {
     // For backward compatibility we are supporting a hack in which
@@ -921,6 +924,26 @@ const FieldType * TypeCheckContext::buildType(const char * typeName, bool nullab
     throw std::runtime_error((boost::format("Invalid type: %1%") %
 			      typeName).str());
   }
+}
+
+const FieldType * TypeCheckContext::buildArrayType(const char * sz, const FieldType * elt, bool nullable)
+{
+  if (boost::algorithm::iequals(sz, "infinity")) {
+    return buildVariableArrayType(elt, nullable);
+  } else {
+    int32_t fieldSz = boost::lexical_cast<int32_t> (sz);
+    return buildFixedArrayType(fieldSz, elt, nullable);
+  }
+}
+
+const FieldType * TypeCheckContext::buildFixedArrayType(int32_t sz, const FieldType * elt, bool nullable)
+{
+  return FixedArrayType::Get(mContext, sz, elt, nullable);
+}
+
+const FieldType * TypeCheckContext::buildVariableArrayType(const FieldType * elt, bool nullable)
+{
+  return VariableArrayType::Get(mContext, elt, nullable);
 }
 
 const FieldType * TypeCheckContext::internalBuildInterval(const FieldType * ty, int32_t u)

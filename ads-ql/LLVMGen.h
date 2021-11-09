@@ -447,6 +447,7 @@ extern "C" {
   IQLFieldTypeRef IQLTypeCheckRLike(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
   IQLFieldTypeRef IQLTypeCheckNot(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs);
   IQLFieldTypeRef IQLTypeCheckBuildInt32Type(IQLTypeCheckContextRef ctxt, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildInt32ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildInt64Type(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildDoubleType(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildDecimalType(IQLTypeCheckContextRef ctxt, int nullable);

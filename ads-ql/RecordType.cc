@@ -839,6 +839,12 @@ std::string FixedArrayType::toString() const
   return (boost::format("%1%[%2%]") % mElementTy->toString() % GetSize()).str();
 }
 
+const FieldType * FixedArrayType::clone(bool nullable) const
+{
+  if (nullable == isNullable()) return this;
+  return FixedArrayType::Get(getContext(), GetSize(), mElementTy, nullable);
+}
+
 FixedArrayType * FixedArrayType::Get(DynamicRecordContext& ctxt, 
 				     int32_t sz,
 				     const FieldType * element,
@@ -864,6 +870,64 @@ llvm::Type * FixedArrayType::LLVMGetType(CodeGenerationContext * ctxt) const
 }
 
 FixedArrayType::~FixedArrayType()
+{
+}
+
+void VariableArrayType::AppendTo(struct md5_state_s * md5) const
+{
+  AppendTo(mElementTy, isNullable(), md5);
+}
+
+void VariableArrayType::AppendTo(const FieldType * element,
+                                 bool nullable, struct md5_state_s * md5)
+{
+  FieldType::FieldTypeEnum f=FieldType::VARIABLE_ARRAY;
+  md5_append(md5, (const md5_byte_t *) &f, sizeof(f));
+  element->AppendTo(md5);
+  md5_append(md5, (const md5_byte_t *) &nullable, sizeof(nullable));
+}
+
+std::string VariableArrayType::toString() const
+{
+  return (boost::format("%1%[]") % mElementTy->toString()).str();
+}
+
+const FieldType * VariableArrayType::clone(bool nullable) const
+{
+  if (nullable == isNullable()) return this;
+  return VariableArrayType::Get(getContext(), mElementTy, nullable);
+}
+
+VariableArrayType * VariableArrayType::Get(DynamicRecordContext& ctxt, 
+                                           const FieldType * element,
+                                           bool nullable)
+{
+  FieldType * ft = NULL;
+  md5_state_t md5;
+  md5_init(&md5);
+  AppendTo(element, nullable, &md5);
+  md5_byte_t digest[16];
+  md5_finish(&md5, digest);
+  Digest d(digest);
+  if ((ft=ctxt.lookup(d)) == NULL) {
+    ft = new VariableArrayType(ctxt, element, nullable);
+    ctxt.add(d, ft);
+  }
+  return (VariableArrayType *)ft;
+}
+
+llvm::Type * VariableArrayType::LLVMGetType(CodeGenerationContext * ctxt) const
+{
+  llvm::Type * vararrayMembers[3];
+  vararrayMembers[0] = llvm::Type::getInt32Ty(*ctxt->LLVMContext);
+  vararrayMembers[1] = llvm::Type::getInt32Ty(*ctxt->LLVMContext);
+  vararrayMembers[2] = llvm::PointerType::get(mElementTy->LLVMGetType(ctxt), 0);
+  return llvm::StructType::get(*ctxt->LLVMContext,
+                               llvm::makeArrayRef(&vararrayMembers[0], 3),
+                               0);
+}
+
+VariableArrayType::~VariableArrayType()
 {
 }
 
@@ -1218,6 +1282,7 @@ void TaggedFieldAddress::printEscaped(const char * begin, int32_t sz,
 }
 
 void TaggedFieldAddress::print(RecordBuffer buf, 
+			       char arrayDelimiter,
 			       char escapeChar,
 			       std::ostream& ostr) const
 {
@@ -1246,30 +1311,108 @@ void TaggedFieldAddress::print(RecordBuffer buf,
   case FieldType::BIGDECIMAL:
     {
       char buffer[DECIMAL128_String];
-      decimal128ToString(mAddress.getDecimalPtr(buf), &buffer[0]);
-      ostr << buffer;
+      if(0 == mSize) {
+        decimal128ToString(mAddress.getDecimalPtr(buf), &buffer[0]);
+        ostr << buffer;
+      } else {
+        ostr << "[";
+        for(uint32_t i=0; i<mSize; ++i) {
+          if (i>0) {
+            ostr << ",";
+          }
+          decimal128ToString(mAddress.getArrayDecimalPtr(buf, i), &buffer[0]);
+          ostr << buffer;
+        }
+        ostr << "]";
+      }
       break;
     }
   case FieldType::INT32:
-    ostr << mAddress.getInt32(buf);
+    if(0 == mSize) {
+      ostr << mAddress.getInt32(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayInt32(buf, i);
+      }
+      ostr << "]";
+    }
     break;
   case FieldType::INT64:
-    ostr << mAddress.getInt64(buf);
+    if(0 == mSize) {
+      ostr << mAddress.getInt64(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayInt64(buf, i);
+      }
+      ostr << "]";
+    }
     break;
   case FieldType::DOUBLE:
-    ostr << mAddress.getDouble(buf);
+    if(0 == mSize) {
+      ostr << mAddress.getDouble(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayDouble(buf, i);
+      }
+      ostr << "]";
+    }
     break;
   case FieldType::DATETIME:
-    ostr << mAddress.getDatetime(buf);
+    if(0 == mSize) {
+      ostr << mAddress.getDatetime(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayDatetime(buf, i);
+      }
+      ostr << "]";
+    }
     break;
   case FieldType::DATE:
-    ostr << mAddress.getDate(buf);
+    if(0 == mSize) {
+      ostr << mAddress.getDate(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayDate(buf, i);
+      }
+      ostr << "]";
+    }
     break;
   case FieldType::NIL:
     ostr << "NULL";
     break;
   case FieldType::INTERVAL:
-    ostr << mAddress.getInt32(buf);
+    if(0 == mSize) {
+      ostr << mAddress.getInt32(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayInt32(buf, i);
+      }
+      ostr << "]";
+    }
     break;
   default:
     break;
@@ -1281,17 +1424,19 @@ RecordTypePrint::RecordTypePrint(const std::vector<TaggedFieldAddress>& fields)
   mFields(fields),
   mFieldDelimiter('\t'),
   mRecordDelimiter('\n'),
+  mArrayDelimiter(','),
   mEscapeChar('\\')
 {
 }
 
 RecordTypePrint::RecordTypePrint(const std::vector<TaggedFieldAddress>& fields,
 				 char fieldDelimiter, char recordDelimiter,
-				 char escapeChar)
+				 char arrayDelimiter, char escapeChar)
   :
   mFields(fields),
   mFieldDelimiter(fieldDelimiter),
   mRecordDelimiter(recordDelimiter),
+  mArrayDelimiter(arrayDelimiter),
   mEscapeChar(escapeChar)
 {
 }
@@ -1325,7 +1470,7 @@ void RecordTypePrint::print(RecordBuffer buf, std::ostream& ostr, bool emitNewLi
       it != mFields.end();
       ++it) {
     if (mFields.begin() != it) ostr << mFieldDelimiter;
-    it->print(buf, mEscapeChar, ostr);    
+    it->print(buf, mArrayDelimiter, mEscapeChar, ostr);    
   }
   if (emitNewLine)
     ostr << mRecordDelimiter;
@@ -1783,6 +1928,12 @@ void RecordType::setInt32(const std::string& field, int32_t val, RecordBuffer bu
 {
   const_member_name_iterator it = mMemberNames.find(field);
   mMemberOffsets[it->second].setInt32(val, buf);
+}
+
+void RecordType::setArrayInt32(const std::string& field, int32_t idx, int32_t val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  *mMemberOffsets[it->second].getArrayInt32Ptr(buf, idx) = val;
 }
 
 void RecordType::setInt64(const std::string& field, int64_t val, RecordBuffer buf) const

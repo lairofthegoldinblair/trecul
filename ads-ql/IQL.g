@@ -153,7 +153,7 @@ variableDeclaration
 	;
 
 builtInTypeNoNull
-	: (TK_INTEGER^ 
+	: (TK_INTEGER^ ('['! DECIMAL_INTEGER_LITERAL ']'!)? 
 	  | TK_DOUBLE^ (TK_PRECISION!) 
 	  | TK_CHAR^ '('! DECIMAL_INTEGER_LITERAL ')'!
 	  | TK_VARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? 
@@ -167,7 +167,7 @@ builtInTypeNoNull
 	;
 
 builtInType
-	: (TK_INTEGER^ 
+	: (TK_INTEGER^ (arrayTypeSpec)? 
 	  | TK_DOUBLE^ (TK_PRECISION!) 
 	  | TK_CHAR^ '('! DECIMAL_INTEGER_LITERAL ')'!
 	  | TK_VARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? 
@@ -179,6 +179,11 @@ builtInType
 	  | ID^ 
         ) typeNullability?
 	;
+
+arrayTypeSpec
+    :
+    '[' sz=DECIMAL_INTEGER_LITERAL? ']' -> ^(ARRAY $sz?)
+    ;
 
 typeNullability
     :

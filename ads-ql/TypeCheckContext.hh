@@ -329,6 +329,13 @@ public:
   const FieldType * buildType(const char * typeName, bool nullable);
 
   /**
+   * Array types
+   */
+  const FieldType * buildArrayType(const char * sz, const FieldType * elt, bool nullable = false);
+  const FieldType * buildFixedArrayType(int32_t sz, const FieldType * elt, bool nullable = false);
+  const FieldType * buildVariableArrayType(const FieldType * elt, bool nullable = false);
+  
+  /**
    * Interval types.
    */
   const FieldType * buildIntervalDay(const FieldType * ty);

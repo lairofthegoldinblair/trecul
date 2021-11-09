@@ -75,17 +75,22 @@ fieldConstructor[IQLGetVariablesContextRef ctxt]
     ;
 
 builtInType[IQLGetVariablesContextRef ctxt] 
-	: ^(TK_INTEGER typeNullability?)
-	  | ^(TK_DOUBLE typeNullability?)
+	: ^(TK_INTEGER arrayTypeSpec? typeNullability?)
+	  | ^(TK_DOUBLE arrayTypeSpec? typeNullability?)
 	  | ^(TK_CHAR DECIMAL_INTEGER_LITERAL typeNullability?)
 	  | ^(TK_VARCHAR typeNullability?)
 	  | ^(TK_NVARCHAR typeNullability?)
-	  | ^(TK_DECIMAL typeNullability?)
-	  | ^(TK_BOOLEAN typeNullability?)
-	  | ^(TK_DATETIME typeNullability?)
-      | ^(TK_BIGINT typeNullability?)
-	  | ^(ID typeNullability?)
+	  | ^(TK_DECIMAL arrayTypeSpec? typeNullability?)
+	  | ^(TK_BOOLEAN arrayTypeSpec? typeNullability?)
+	  | ^(TK_DATETIME arrayTypeSpec? typeNullability?)
+      | ^(TK_BIGINT arrayTypeSpec? typeNullability?)
+	  | ^(ID arrayTypeSpec? typeNullability?)
 	;
+
+arrayTypeSpec
+    :
+    ^(ARRAY (DECIMAL_INTEGER_LITERAL)?)
+    ;
 
 typeNullability
     :

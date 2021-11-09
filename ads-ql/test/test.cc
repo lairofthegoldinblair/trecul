@@ -806,9 +806,10 @@ BOOST_AUTO_TEST_CASE(testRecordTypeBuilder)
 					       ", f BIGINT"
 					       ", g DATETIME"
 					       ", h DATE"
+					       ", i INTEGER[3]"
 					       , false).getProduct();
 
-  BOOST_CHECK_EQUAL(rt->size(), 8U);
+  BOOST_CHECK_EQUAL(rt->size(), 9U);
   BOOST_CHECK(rt->hasMember("a"));
   BOOST_CHECK(rt->hasMember("b"));
   BOOST_CHECK(rt->hasMember("c"));
@@ -817,6 +818,9 @@ BOOST_AUTO_TEST_CASE(testRecordTypeBuilder)
   BOOST_CHECK(rt->hasMember("f"));
   BOOST_CHECK(rt->hasMember("g"));
   BOOST_CHECK(rt->hasMember("h"));
+  BOOST_CHECK(rt->hasMember("i"));
+  BOOST_CHECK(FieldType::FIXED_ARRAY == rt->getMember("i").GetType()->GetEnum());
+  BOOST_CHECK_EQUAL(3, rt->getMember("i").GetType()->GetSize());
 }
 
 void testTreculSymbolTableDriver(bool caseInsensitive)
@@ -1092,6 +1096,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordHash)
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("f", VarcharType::Get(ctxt)));
+  members.push_back(RecordMember("g", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
   RecordType recTy(members);
   std::vector<RecordMember> emptyMembers;
   RecordType emptyTy(emptyMembers);
@@ -1106,6 +1111,9 @@ BOOST_AUTO_TEST_CASE(testIQLRecordHash)
   recTy.setInt64("d", 1239923432, inputBuf);
   recTy.setDouble("e", 8234.24344, inputBuf);
   recTy.setVarchar("f", "abcd", inputBuf);
+  recTy.setArrayInt32("g", 0, 8632, inputBuf);
+  recTy.setArrayInt32("g", 1, 863200, inputBuf);
+  recTy.setArrayInt32("g", 2, 8632923, inputBuf);
 
   {
     RecordTypeFunction hasher(ctxt, "charhash", types, "#(a)");
@@ -1149,6 +1157,13 @@ BOOST_AUTO_TEST_CASE(testIQLRecordHash)
     BOOST_CHECK_EQUAL(val, expected);
   }
   {
+    RecordTypeFunction hasher(ctxt, "fixedintarrayhash", types, "#(g)");
+    uint32_t val = (uint32_t) hasher.execute(inputBuf, RecordBuffer(NULL), &runtimeCtxt);
+    std::array<int32_t,3> arr = { 8632, 863200, 8632923 };
+    uint32_t expected = SuperFastHash((char *) &arr[0], sizeof(arr), sizeof(arr));
+    BOOST_CHECK_EQUAL(val, expected);
+  }
+  {
     RecordTypeFunction hasher(ctxt, "int64hash", types, "#(d,a)");
     uint32_t val = (uint32_t) hasher.execute(inputBuf, RecordBuffer(NULL), &runtimeCtxt);
     int64_t tmp = 1239923432;
@@ -1171,6 +1186,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("y", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("w", VarcharType::Get(ctxt)));
+  members.push_back(RecordMember("u", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
   RecordType recTy(members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
@@ -1182,6 +1198,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   rhsMembers.push_back(RecordMember("h", Int64Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("z", DoubleType::Get(ctxt)));
   rhsMembers.push_back(RecordMember("x", VarcharType::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("v", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
   RecordType rhsTy(rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
@@ -1194,6 +1211,9 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   recTy.setInt64("d", 1239923432, lhs);
   recTy.setDouble("y", 88823.23433, lhs);
   recTy.setVarchar("w", "abcd", lhs);
+  recTy.setArrayInt32("u", 0, 8632, lhs);
+  recTy.setArrayInt32("u", 1, 863200, lhs);
+  recTy.setArrayInt32("u", 2, 8632923, lhs);
 
   RecordBuffer rhs1 = rhsTy.GetMalloc()->malloc();
   rhsTy.setInt32("dummy", 0, rhs1);
@@ -1203,6 +1223,9 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   rhsTy.setInt64("h", 1239923433, rhs1);
   rhsTy.setDouble("z", 62344.23411, rhs1);
   rhsTy.setVarchar("x", "abce", rhs1);
+  rhsTy.setArrayInt32("v", 0, 8632, rhs1);
+  rhsTy.setArrayInt32("v", 1, 863201, rhs1);
+  rhsTy.setArrayInt32("v", 2, 8632923, rhs1);
 
   RecordBuffer rhs2 = rhsTy.GetMalloc()->malloc();
   rhsTy.setInt32("dummy", 0, rhs2);
@@ -1212,6 +1235,9 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   rhsTy.setInt64("h", 1239923432, rhs2);
   rhsTy.setDouble("z", 88823.23433, rhs2);
   rhsTy.setVarchar("x", "abcd", rhs2);
+  rhsTy.setArrayInt32("v", 0, 8632, rhs2);
+  rhsTy.setArrayInt32("v", 1, 863200, rhs2);
+  rhsTy.setArrayInt32("v", 2, 8632923, rhs2);
 
   {
     RecordTypeFunction equals(ctxt, "chareq", types, "a = e");
@@ -1264,6 +1290,13 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   }
   {
     RecordTypeFunction equals(ctxt, "varchareq", types, "w = f");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "fixedarrayeq", types, "u = v");
     int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
     BOOST_CHECK_EQUAL(val, 0);
     val = equals.execute(lhs, rhs2, &runtimeCtxt);
@@ -1751,6 +1784,191 @@ BOOST_AUTO_TEST_CASE(testIQLLiteralCompares)
     int32_t val = equals.execute(lhs, NULL, &runtimeCtxt);
     BOOST_CHECK_EQUAL(val, 1);
   }
+}
+
+BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32SingleElementCompare)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 1, Int32Type::Get(ctxt), false)));
+  RecordType recTy(members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", FixedArrayType::Get(ctxt, 1, Int32Type::Get(ctxt), false)));
+  RecordType rhsTy(rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("a", 0, 23542, lhs);
+
+  RecordBuffer rhs = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs);
+  rhsTy.setArrayInt32("e", 0, 23543, rhs);
+
+  RecordTypeFunction lt(ctxt, "arrlt", types, "a < e");
+  RecordTypeFunction gt(ctxt, "arrgt", types, "a > e");
+  RecordTypeFunction le(ctxt, "arrle", types, "a <= e");
+  RecordTypeFunction ge(ctxt, "arrge", types, "a >= e");
+  RecordTypeFunction ne(ctxt, "arrne", types, "a <> e");
+  int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ne.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLFixedArrayCompareProgram)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("lhs", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
+  members.push_back(RecordMember("rhs", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
+  members.push_back(RecordMember("lastNotDone", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("lastRet", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("lastIndex", Int32Type::Get(ctxt)));
+  RecordType recTy(members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("lhs", 0, 3, lhs);
+  recTy.setArrayInt32("lhs", 1, 4, lhs);
+  recTy.setArrayInt32("lhs", 2, 5, lhs);
+  recTy.setArrayInt32("rhs", 0, 3, lhs);
+  recTy.setArrayInt32("rhs", 1, 4, lhs);
+  recTy.setArrayInt32("rhs", 2, 6, lhs);
+  recTy.setInt32("lastNotDone", 1, lhs);
+  recTy.setInt32("lastRet", 0, lhs);
+  recTy.setInt32("lastIndex", 0, lhs);
+
+  RecordTypeInPlaceUpdate up(ctxt, 
+                             "xfer5up", 
+                             types, 
+                             "DECLARE i INTEGER;\n"
+                             "SET i = 0;"
+                             "DECLARE notDone INTEGER;\n"
+                             "SET notDone = 1;"
+                             "DECLARE ret INTEGER;\n"
+                             "SET ret = 0;"
+                             "WHILE notDone AND i<3 DO\n"
+                             "SET ret = CASE WHEN notDone AND rhs[i] < lhs[i] THEN 0 ELSE ret END;\n" 
+                             "SET notDone = CASE WHEN notDone AND rhs[i] < lhs[i] THEN 0 ELSE notDone END;\n" 
+                             "SET ret = CASE WHEN notDone AND lhs[i] < rhs[i] THEN 1 ELSE ret END;\n" 
+                             "SET notDone = CASE WHEN notDone AND lhs[i] < rhs[i] THEN 0 ELSE notDone END;\n" 
+                             "SET i = i + 1;\n"
+                             "END WHILE\n"
+                             "SET lastNotDone = notDone;\n"
+                             "SET lastRet = ret;\n"
+                             "SET lastIndex = i;\n"
+                             );
+  {
+    RecordBuffer outputBuf;
+    up.execute(lhs, outputBuf, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("lastNotDone", lhs));
+    BOOST_CHECK_EQUAL(1, recTy.getInt32("lastRet", lhs));
+    BOOST_CHECK_EQUAL(3, recTy.getInt32("lastIndex", lhs));
+  }  
+  {
+    recTy.setArrayInt32("rhs", 1, 2, lhs);
+    RecordBuffer outputBuf;
+    up.execute(lhs, outputBuf, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("lastNotDone", lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("lastRet", lhs));
+    BOOST_CHECK_EQUAL(2, recTy.getInt32("lastIndex", lhs));
+  }  
+}
+
+BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32Compare)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
+  RecordType recTy(members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
+  RecordType rhsTy(rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("a", 0, 23542, lhs);
+  recTy.setArrayInt32("a", 1, 88354, lhs);
+  recTy.setArrayInt32("a", 2, 23543, lhs);
+
+  RecordBuffer rhs = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs);
+  rhsTy.setArrayInt32("e", 0, 23542, rhs);
+  rhsTy.setArrayInt32("e", 1, 88354, rhs);
+  rhsTy.setArrayInt32("e", 2, 23544, rhs);
+
+  std::array<int32_t, 3> a = { 23542, 88354, 23543 };
+  std::array<int32_t, 3> b = { 23541, 88354, 23544 };
+  int32_t ret = ((a[0] < b[0]) || (a[0] == b[0] && a[1]<b[1]) || (a[0] == b[0] && a[1] == b[1] && a[2] < b[2]));
+  int32_t expected = a < b;
+  BOOST_CHECK_EQUAL(expected, ret);
+
+  RecordTypeFunction lt(ctxt, "arrlt", types, "a < e");
+  RecordTypeFunction gt(ctxt, "arrgt", types, "a > e");
+  RecordTypeFunction le(ctxt, "arrle", types, "a <= e");
+  RecordTypeFunction ge(ctxt, "arrge", types, "a >= e");
+  RecordTypeFunction ne(ctxt, "arrne", types, "a <> e");
+  int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ne.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  
+  rhsTy.setArrayInt32("e", 2, 23543, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ne.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+
+  recTy.setArrayInt32("a", 0, 23543, lhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ne.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs);
 }
 
 void testRecordLogicalOps(bool isNullable)
@@ -2442,6 +2660,7 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("f", VarcharType::Get(ctxt)));
+  members.push_back(RecordMember("g", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
   RecordType recTy(members);
   std::vector<RecordMember> emptyMembers;
   RecordType emptyTy(emptyMembers);
@@ -2456,6 +2675,9 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
   recTy.setInt64("d", 1239923432, inputBuf);
   recTy.setDouble("e", 8234.24344, inputBuf);
   recTy.setVarchar("f", "small", inputBuf);
+  recTy.setArrayInt32("g", 0, 6234, inputBuf);
+  recTy.setArrayInt32("g", 1, 6235, inputBuf);
+  recTy.setArrayInt32("g", 2, 6236, inputBuf);
 
   // Give a big buffer where serialization succeeds in a single pass
   uint8_t bigBuf[128];
@@ -2464,13 +2686,13 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
   recIt.init(inputBuf);
   bool ret = recTy.getSerialize().doit(bufPtr, bigBuf+128, recIt, inputBuf);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(&bigBuf[81], bufPtr);
+  BOOST_CHECK_EQUAL(&bigBuf[93], bufPtr);
 
   // Deserialize and make sure all is well
   RecordBuffer outputBuf = recTy.GetMalloc()->malloc();
   recIt.init(outputBuf);
   bufPtr = &bigBuf[0];
-  ret = recTy.getDeserialize().Do(bufPtr, &bigBuf[81], recIt, outputBuf);
+  ret = recTy.getDeserialize().Do(bufPtr, &bigBuf[93], recIt, outputBuf);
   BOOST_CHECK(ret);
   BOOST_CHECK(boost::algorithm::equals("123456",
 				       recTy.getFieldAddress("a").getCharPtr(outputBuf)));
@@ -2481,6 +2703,9 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
   BOOST_CHECK_EQUAL(8234.24344, recTy.getFieldAddress("e").getDouble(outputBuf));
   BOOST_CHECK(boost::algorithm::equals("small",
 				       recTy.getFieldAddress("f").getVarcharPtr(outputBuf)->c_str()));
+  BOOST_CHECK_EQUAL(6234, recTy.getFieldAddress("g").getArrayInt32(outputBuf, 0));
+  BOOST_CHECK_EQUAL(6235, recTy.getFieldAddress("g").getArrayInt32(outputBuf, 1));
+  BOOST_CHECK_EQUAL(6236, recTy.getFieldAddress("g").getArrayInt32(outputBuf, 2));
 }
 
 BOOST_AUTO_TEST_CASE(testRecordTypeNullBitmap)

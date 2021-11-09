@@ -867,6 +867,12 @@ IQLFieldTypeRef IQLTypeCheckBuildInt32Type(IQLTypeCheckContextRef ctxtRef, int n
   return wrap(ctxt->buildInt32Type(nullable != 0));
 }
 
+IQLFieldTypeRef IQLTypeCheckBuildInt32ArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildInt32Type(), nullable != 0));
+}
+
 IQLFieldTypeRef IQLTypeCheckBuildInt64Type(IQLTypeCheckContextRef ctxtRef, int nullable)
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);

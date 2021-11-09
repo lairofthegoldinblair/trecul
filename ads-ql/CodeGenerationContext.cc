@@ -312,6 +312,7 @@ bool CodeGenerationContext::isValueType(const FieldType * ft)
   case FieldType::VARCHAR:
   case FieldType::CHAR:
   case FieldType::FIXED_ARRAY:
+  case FieldType::VARIABLE_ARRAY:
   case FieldType::BIGDECIMAL:
   case FieldType::FUNCTION:
   case FieldType::NIL:
@@ -677,15 +678,28 @@ const IQLToLLVMValue * CodeGenerationContext::buildArrayRef(const char * var,
   return buildRef(allocAVal->getEntirePointer(this), elementTy);
 }
 
+const IQLToLLVMValue * CodeGenerationContext::buildArrayRef(const IQLToLLVMValue * val,
+							    const IQLToLLVMValue * idx,
+							    const FieldType * elementTy)
+{
+  const IQLToLLVMLValue * allocAVal=buildArrayLValue(val, idx);
+  return buildRef(allocAVal->getEntirePointer(this), elementTy);
+}
+
 const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const char * var,
+								const IQLToLLVMValue * idx)
+{
+  return buildArrayLValue(lookupValue(var, NULL), idx);
+}
+
+const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const IQLToLLVMValue * val,
 								const IQLToLLVMValue * idx)
 {
   llvm::Module * m = LLVMModule;
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function *f = b->GetInsertBlock()->getParent();
-  const IQLToLLVMValue * lvalue = lookupValue(var, NULL);
-  llvm::Value * lval = lvalue->getValue();
+  llvm::Value * lval = val->getValue();
 
   // Convert index to int64
   // TODO: Not handling NULL so type check should be enforcing this!
@@ -1289,6 +1303,90 @@ const IQLToLLVMValue * CodeGenerationContext::buildCastVarchar(const IQLToLLVMVa
   return buildNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCastVarchar);
 }
 
+IQLToLLVMValue::ValueType 
+CodeGenerationContext::buildCastFixedArray(const IQLToLLVMValue * e, 
+				     const FieldType * argType, 
+				     llvm::Value * ret, 
+				     const FieldType * retType)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Value * e1 = e->getValue();
+  // Must bitcast to match calling convention.
+  llvm::Type * int8Ptr = llvm::PointerType::get(b->getInt8Ty(), 0);
+  llvm::Value * ptr = b->CreateBitCast(ret, int8Ptr);
+
+  if (argType->GetEnum() == FieldType::FIXED_ARRAY) {
+    int32_t toCopy=argType->GetSize() < retType->GetSize() ? argType->GetSize() : retType->GetSize();
+    int32_t toSet=retType->GetSize() - toCopy;
+    llvm::Value * args[5];
+    if (toCopy > 0) {
+      llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemcpyIntrinsic);
+      // memcpy arg1 at offset 0
+      args[0] = ptr;
+      args[1] = b->CreateBitCast(e1, int8Ptr);
+      args[2] = b->getInt64(toCopy);
+      args[3] = b->getInt32(1);
+      args[4] = b->getInt1(0);
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+    }
+    // TODO: Need to set these to NULL instead
+    if (toSet > 0) {
+      llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemsetIntrinsic);
+      // memset 0 at offset toCopy
+      args[0] = b->CreateGEP(ptr, b->getInt64(toCopy), "");;
+      args[1] = b->getInt8(0);
+      args[2] = b->getInt64(toSet);
+      args[3] = b->getInt32(1);
+      args[4] = b->getInt1(0);
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+    }
+  } else {
+    throw std::runtime_error("Only supporting CAST from fixed array to fixed array");
+  }
+  return IQLToLLVMValue::eLocal;
+}
+
+const IQLToLLVMValue * CodeGenerationContext::buildCastFixedArray(const IQLToLLVMValue * e, 
+							    const FieldType * argType, 
+							    const FieldType * retType)
+{
+  return buildNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCastFixedArray);
+}
+
+IQLToLLVMValue::ValueType 
+CodeGenerationContext::buildCastVariableArray(const IQLToLLVMValue * e, 
+				     const FieldType * argType, 
+				     llvm::Value * ret, 
+				     const FieldType * retType)
+{
+  llvm::Value * e1 = e->getValue();
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  std::vector<IQLToLLVMTypedValue> args;
+  args.emplace_back(e, argType);
+
+  switch(argType->GetEnum()) {
+  case FieldType::VARIABLE_ARRAY:
+    {
+      // Identity
+      const IQLToLLVMValue * tgt = IQLToLLVMValue::get(this, ret, IQLToLLVMValue::eLocal);
+      buildSetValue2(e, tgt, retType);
+      return IQLToLLVMValue::eLocal;
+    }
+  default:
+    throw std::runtime_error ((boost::format("Cast to VARIABLE_ARRAY from %1% not "
+  					     "implemented.") % 
+  			       retType->toString()).str());
+  }
+}
+
+const IQLToLLVMValue * CodeGenerationContext::buildCastVariableArray(const IQLToLLVMValue * e, 
+							    const FieldType * argType, 
+							    const FieldType * retType)
+{
+  return buildNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCastVariableArray);
+}
+
 IQLToLLVMValue::ValueType CodeGenerationContext::buildCast(const IQLToLLVMValue * e, 
 							   const FieldType * argType, 
 							   llvm::Value * ret, 
@@ -1311,6 +1409,10 @@ IQLToLLVMValue::ValueType CodeGenerationContext::buildCast(const IQLToLLVMValue 
     return buildCastDatetime(e, argType, ret, retType);
   case FieldType::DATE:
     return buildCastDate(e, argType, ret, retType);
+  case FieldType::FIXED_ARRAY:
+    return buildCastFixedArray(e, argType, ret, retType);
+  case FieldType::VARIABLE_ARRAY:
+    return buildCastVariableArray(e, argType, ret, retType);
   default:
     // Programming error; this should have been caught during type check.
     throw std::runtime_error("Invalid type cast");    
@@ -1321,14 +1423,14 @@ const IQLToLLVMValue * CodeGenerationContext::buildCast(const IQLToLLVMValue * e
 							const FieldType * argType, 
 							const FieldType * retType)
 {
-  return buildNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCast);
+  return argType == retType ? e : buildNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCast);
 }
 
 const IQLToLLVMValue * CodeGenerationContext::buildCastNonNullable(const IQLToLLVMValue * e, 
 								   const FieldType * argType, 
 								   const FieldType * retType)
 {
-  return buildNonNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCast);
+  return argType == retType ? e : buildNonNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCast);
 }
 
 IQLToLLVMValue::ValueType 
@@ -1765,7 +1867,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildBitwiseNot(const IQLToLLVMVal
 }
 
 llvm::Value * 
-CodeGenerationContext::buildVarcharIsSmall(llvm::Value * varcharPtr)
+CodeGenerationContext::buildVarArrayIsSmall(llvm::Value * varcharPtr)
 {
   llvm::IRBuilder<> * b = LLVMBuilder;
   // Access first bit of the structure to see if large or small.
@@ -1778,7 +1880,7 @@ CodeGenerationContext::buildVarcharIsSmall(llvm::Value * varcharPtr)
 }
 
 llvm::Value * 
-CodeGenerationContext::buildVarcharGetSize(llvm::Value * varcharPtr)
+CodeGenerationContext::buildVarArrayGetSize(llvm::Value * varcharPtr)
 {
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
@@ -1790,7 +1892,7 @@ CodeGenerationContext::buildVarcharGetSize(llvm::Value * varcharPtr)
   llvm::BasicBlock * largeBB = llvm::BasicBlock::Create(*c, "large", f);
   llvm::BasicBlock * contBB = llvm::BasicBlock::Create(*c, "cont", f);
   
-  b->CreateCondBr(buildVarcharIsSmall(varcharPtr), smallBB, largeBB);
+  b->CreateCondBr(buildVarArrayIsSmall(varcharPtr), smallBB, largeBB);
   b->SetInsertPoint(smallBB);
   llvm::Value * firstByte = 
     b->CreateLoad(b->CreateBitCast(varcharPtr, b->getInt8PtrTy()));
@@ -1812,22 +1914,28 @@ CodeGenerationContext::buildVarcharGetSize(llvm::Value * varcharPtr)
 }
 
 llvm::Value * 
-CodeGenerationContext::buildVarcharGetPtr(llvm::Value * varcharPtr)
+CodeGenerationContext::buildVarcharGetSize(llvm::Value * varcharPtr)
+{
+  return buildVarArrayGetSize(varcharPtr);
+}
+
+llvm::Value * 
+CodeGenerationContext::buildVarArrayGetPtr(llvm::Value * varcharPtr, llvm::Type * retTy)
 {
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function * f = b->GetInsertBlock()->getParent();
 
-  llvm::Value * ret = b->CreateAlloca(b->getInt8PtrTy());
+  llvm::Value * ret = b->CreateAlloca(retTy);
   
   llvm::BasicBlock * smallBB = llvm::BasicBlock::Create(*c, "small", f);
   llvm::BasicBlock * largeBB = llvm::BasicBlock::Create(*c, "large", f);
   llvm::BasicBlock * contBB = llvm::BasicBlock::Create(*c, "cont", f);
   
-  b->CreateCondBr(buildVarcharIsSmall(varcharPtr), smallBB, largeBB);
+  b->CreateCondBr(buildVarArrayIsSmall(varcharPtr), smallBB, largeBB);
   b->SetInsertPoint(smallBB);
   b->CreateStore(b->CreateConstGEP1_64(b->CreateBitCast(varcharPtr, 
-							b->getInt8PtrTy()), 
+							retTy), 
 				       1),
 		 ret);
   b->CreateBr(contBB);
@@ -1836,6 +1944,12 @@ CodeGenerationContext::buildVarcharGetPtr(llvm::Value * varcharPtr)
   b->CreateBr(contBB);
   b->SetInsertPoint(contBB);
   return b->CreateLoad(ret);
+}
+
+llvm::Value * 
+CodeGenerationContext::buildVarcharGetPtr(llvm::Value * varcharPtr)
+{
+  buildVarArrayGetPtr(varcharPtr, LLVMBuilder->getInt8PtrTy());
 }
 
 const IQLToLLVMValue * CodeGenerationContext::buildCompareResult(llvm::Value * boolVal)
@@ -2378,6 +2492,8 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
     }
     // Load before store since we have a pointer to the Varchar.
     llvmVal = b->CreateLoad(llvmVal);    
+  } else if (ft->GetEnum() == FieldType::VARIABLE_ARRAY) {
+    throw std::runtime_error("CodeGenerationContext::buildSetValue2 not implemented for variable length arrays");
   } 
 
   // Finally we can just issue the store.
@@ -2771,6 +2887,96 @@ CodeGenerationContext::buildVarcharCompare(llvm::Value * e1,
   return IQLToLLVMValue::eLocal;
 }
 
+const IQLToLLVMValue *
+CodeGenerationContext::buildArrayElementwiseCompare(const IQLToLLVMValue * lhs, 
+                                                    const IQLToLLVMValue * rhs,
+                                                    std::size_t index,
+                                                    const FieldType * promoted,
+                                                    const FieldType * retType,
+                                                    IQLToLLVMPredicate op)
+{
+  // Unwrap to C++
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  const FieldType * eltType = reinterpret_cast<const FixedArrayType*>(promoted)->getElementType();
+  const IQLToLLVMValue *  sz = IQLToLLVMValue::get(this, b->getInt32(promoted->GetSize()), IQLToLLVMValue::eLocal);
+
+  // Constants zero and one are used frequently
+  const IQLToLLVMValue * zero = buildFalse();
+  const IQLToLLVMValue * one  = buildTrue();
+  // INTEGER type used frequently in this method
+  FieldType * int32Type = Int32Type::Get(promoted->getContext());
+
+  // DECLARE ret = false
+  // Allocate return value and initialize to false
+  const IQLToLLVMValue * ret = IQLToLLVMValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(), "ret"), nullptr, IQLToLLVMValue::eLocal);
+  IQLToLLVMLocal * retLValue = new IQLToLLVMLocal(ret, nullptr);
+  buildSetNullableValue(retLValue, zero, int32Type, int32Type);
+  
+  // DECLARE idx = 0
+  // Allocate and initialize counter
+  llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
+  const IQLToLLVMValue * counter = IQLToLLVMValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
+  IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(counter, nullptr);
+  buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
+
+  // DECLARE notDone = true
+  // notDone flag is a hack since I haven't implemented IF and BREAK.   Initialize to true.
+  const IQLToLLVMValue * notDone = IQLToLLVMValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(),"notDone"), IQLToLLVMValue::eLocal);
+  IQLToLLVMLocal * notDoneLValue = new IQLToLLVMLocal(notDone, nullptr);
+  buildSetNullableValue(notDoneLValue, one, int32Type, int32Type);
+
+  whileBegin();
+
+  // while (notDone AND i < sz)
+  buildBeginAnd(int32Type);
+  buildAddAnd(buildRef(notDone, int32Type), int32Type, int32Type);
+  const IQLToLLVMValue * pred = buildAnd(buildCompare(buildRef(counter, int32Type), int32Type, sz, int32Type, int32Type, IQLToLLVMOpLT), int32Type, int32Type);
+  whileStatementBlock(pred, int32Type);
+
+  // TODO: Add IF and BREAK to language to simplify this
+  const IQLToLLVMValue * idx = buildRef(counter, int32Type);
+
+  // SET ret = CASE WHEN notDone AND rhs[idx] < lhs[idx] THEN 0 ELSE ret END
+  buildBeginAnd(int32Type);
+  buildAddAnd(buildRef(notDone, int32Type), int32Type, int32Type);
+  pred = buildAnd(buildCompare(buildArrayRef(rhs, idx, eltType), eltType, buildArrayRef(lhs, idx, eltType), eltType, int32Type, op), int32Type, int32Type);
+  // buildCaseBlockBegin(int32Type);
+  // buildCaseBlockIf(pred);
+  // buildCaseBlockThen(zero, int32Type, int32Type, false);
+  // buildCaseBlockThen(buildRef(ret, int32Type), int32Type, int32Type, false);
+  // buildSetNullableValue(retLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
+  
+  // SET notDone = CASE WHEN notDone AND rhs[idx] < lhs[idx] THEN 0 ELSE notDone END
+  buildCaseBlockBegin(int32Type);
+  buildCaseBlockIf(pred);
+  buildCaseBlockThen(zero, int32Type, int32Type, false);
+  buildCaseBlockThen(buildRef(notDone, int32Type), int32Type, int32Type, false);
+  buildSetNullableValue(notDoneLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
+
+  // // SET ret = CASE WHEN notDone AND lhs[idx] < rhs[idx] THEN 1 ELSE ret END
+  // buildBeginAnd(int32Type);
+  // buildAddAnd(buildRef(notDone, int32Type), int32Type, int32Type);
+  // pred = buildAnd(buildCompare(buildArrayRef(lhs, idx, eltType), eltType, buildArrayRef(rhs, idx, eltType), eltType, int32Type, op), int32Type, int32Type);
+  // buildCaseBlockBegin(int32Type);
+  // buildCaseBlockIf(pred);
+  // buildCaseBlockThen(one, int32Type, int32Type, false);
+  // buildCaseBlockThen(buildRef(ret, int32Type), int32Type, int32Type, false);
+  // buildSetNullableValue(retLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
+  
+  // // SET notDone = CASE WHEN notDone AND lhs[idx] < rhs[idx] THEN 0 ELSE notDone END
+  // buildCaseBlockBegin(int32Type);
+  // buildCaseBlockIf(pred);
+  // buildCaseBlockThen(zero, int32Type, int32Type, false);
+  // buildCaseBlockThen(buildRef(notDone, int32Type), int32Type, int32Type, false);
+  // buildSetNullableValue(notDoneLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
+
+  // SET idx = idx + 1
+  buildSetNullableValue(counterLValue, buildAdd(buildRef(counter, int32Type), int32Type, one, int32Type, int32Type), int32Type, int32Type);  
+  whileFinish();
+
+  return buildRef(ret, int32Type);
+}
+
 IQLToLLVMValue::ValueType 
 CodeGenerationContext::buildCompare(const IQLToLLVMValue * lhs, 
 				    const FieldType * lhsType, 
@@ -2845,6 +3051,7 @@ CodeGenerationContext::buildCompare(const IQLToLLVMValue * lhs,
     // For now I am draconian and say they are never equal????  
     if (getCharArrayLength(e1) != getCharArrayLength(e2)) {
       r = b->getInt32(0);
+      b->CreateStore(r, ret);
       return IQLToLLVMValue::eLocal;
     } else {
       llvm::Value * m = buildMemcmp(e1, FieldAddress(), e2, FieldAddress(), getCharArrayLength(e1));
@@ -2865,6 +3072,59 @@ CodeGenerationContext::buildCompare(const IQLToLLVMValue * lhs,
     // Compare result to zero and return
     return buildCompareResult(b->CreateICmp(intOp, b->getInt32(0), b->CreateLoad(callArgs[2])),
 			      ret);
+  } else if (promoted->GetEnum() == FieldType::FIXED_ARRAY) {
+
+    // TODO: I don't really know what the semantics of ARRAY[N] equality are (e.g. when the sizes aren't equal).
+    // FWIW, semantics of char(N) equality is that one compares assuming
+    // space padding to MAX(M,N)
+    // For now I am draconian and say they are never equal????  
+    if (getCharArrayLength(e1) != getCharArrayLength(e2)) {
+      r = b->getInt32(0);
+      b->CreateStore(r, ret);
+      return IQLToLLVMValue::eLocal;
+    } else {
+      const FieldType * eltType = reinterpret_cast<const FixedArrayType*>(promoted)->getElementType();
+      auto idx = IQLToLLVMValue::get(this, b->getInt32(0), IQLToLLVMValue::eLocal); 
+      const IQLToLLVMValue * cmp = nullptr;
+      switch(op) {
+      case IQLToLLVMOpEQ:
+      case IQLToLLVMOpNE:
+        cmp = buildCompare(buildArrayRef(lhs, idx, eltType), eltType, buildArrayRef(rhs, idx, eltType), eltType, retType, IQLToLLVMOpEQ);
+        for(std::size_t i=1; i<promoted->GetSize(); ++i) {
+          buildBeginAnd(retType);
+          buildAddAnd(cmp, retType, retType);
+          idx = IQLToLLVMValue::get(this, b->getInt32(i), IQLToLLVMValue::eLocal); 
+          cmp = buildAnd(buildCompare(buildArrayRef(lhs, idx, eltType), eltType, buildArrayRef(rhs, idx, eltType), eltType, retType, IQLToLLVMOpEQ), retType, retType);
+        }
+        if (IQLToLLVMOpNE == op) {
+          cmp = buildNot(cmp, retType, retType);
+        }
+        BOOST_ASSERT(cmp->getValueType() == IQLToLLVMValue::eLocal);
+        b->CreateStore(cmp->getValue(), ret);
+        return IQLToLLVMValue::eLocal;
+        break;
+      case IQLToLLVMOpGT:
+      case IQLToLLVMOpLE:
+        cmp = buildArrayElementwiseCompare(lhs, rhs, 0, promoted, retType, IQLToLLVMOpGT);
+        if (IQLToLLVMOpLE == op) {
+          cmp = buildNot(cmp, retType, retType);
+        }
+        BOOST_ASSERT(cmp->getValueType() == IQLToLLVMValue::eLocal);
+        b->CreateStore(cmp->getValue(), ret);
+        return IQLToLLVMValue::eLocal;
+        break;
+      case IQLToLLVMOpGE:
+      case IQLToLLVMOpLT:
+        cmp = buildArrayElementwiseCompare(lhs, rhs, 0, promoted, retType, IQLToLLVMOpLT);
+        if (IQLToLLVMOpGE == op) {
+          cmp = buildNot(cmp, retType, retType);
+        }
+        BOOST_ASSERT(cmp->getValueType() == IQLToLLVMValue::eLocal);
+        b->CreateStore(cmp->getValue(), ret);
+        return IQLToLLVMValue::eLocal;
+        break;
+      }
+    }
   } else {
     throw std::runtime_error("CodeGenerationContext::buildCompare unexpected type");
   }
@@ -2942,6 +3202,16 @@ const IQLToLLVMValue * CodeGenerationContext::buildHash(const std::vector<IQLToL
       callArgs[0] = buildVarcharGetPtr(argVal);
       callArgs[1] = buildVarcharGetSize(argVal);
       callArgs[2] = i==0 ? callArgs[1] : previousHash;
+    } else if (args[i].getType()->GetEnum() == FieldType::VARIABLE_ARRAY) {
+      auto arrayTy = dynamic_cast<const VariableArrayType*>(args[i].getType());
+      auto eltPtrType = arrayTy->getElementType()->LLVMGetType(this)->getPointerTo(0);
+      callArgs[0] = buildVarArrayGetPtr(argVal, eltPtrType);
+      callArgs[1] = b->CreateMul(buildVarArrayGetSize(argVal), b->getInt32(arrayTy->getElementType()->GetSize()));
+      callArgs[2] = i==0 ? callArgs[1] : previousHash;
+    } else if (args[i].getType()->GetEnum() == FieldType::FIXED_ARRAY) {
+      callArgs[0] = b->CreateBitCast(argVal, argTy);
+      callArgs[1] = b->getInt32(args[i].getType()->GetAllocSize());
+      callArgs[2] = i==0 ? callArgs[1] : previousHash;    
     } else if (isChar(argVal)) {
       // Hash on array length - 1 for CHAR types because of trailing null char and we want
       // consistency with varchar hashing.

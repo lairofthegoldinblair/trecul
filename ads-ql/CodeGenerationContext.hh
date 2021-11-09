@@ -202,6 +202,8 @@ class IQLToLLVMLocal : public IQLToLLVMLValue
 private:
   const IQLToLLVMValue * mValue;
   // Pointer to alloca'd i1 (will likely be lowered to an i8).
+  // Note that IQLToLLVMValue::mNullBit is a value not a pointer/memory location
+  // which is why this is here and not inside IQLToLLVMLocal::mValue.
   llvm::Value * mNullBit;
 public:
   IQLToLLVMLocal(const IQLToLLVMValue * lval,
@@ -308,9 +310,9 @@ private:
   std::map<std::string, std::string> mTreculNameToSymbol;
 
   /**
-   * Private Interface to the VARCHAR datatype.
+   * Private Interface to the variable length datatype (including VARCHAR)
    */
-  llvm::Value * buildVarcharIsSmall(llvm::Value * varcharPtr);
+  llvm::Value * buildVarArrayIsSmall(llvm::Value * varcharPtr);
 
   /**
    * Add INTERVAL and DATE/DATETIME.  Put return value in ret.
@@ -601,10 +603,15 @@ public:
   const IQLToLLVMValue * buildArrayRef(const char * var,
 				       const IQLToLLVMValue * idx,
 				       const FieldType * elementTy);
+  const IQLToLLVMValue * buildArrayRef(const IQLToLLVMValue * val,
+				       const IQLToLLVMValue * idx,
+				       const FieldType * elementTy);
   /**
    * Build an lvalue from a position in an array.
    */
   const IQLToLLVMLValue * buildArrayLValue(const char * var,
+					   const IQLToLLVMValue * idx);
+  const IQLToLLVMLValue * buildArrayLValue(const IQLToLLVMValue * val,
 					   const IQLToLLVMValue * idx);
 
   /**
@@ -704,6 +711,28 @@ public:
   const IQLToLLVMValue * buildCastVarchar(const IQLToLLVMValue * e, 
 					  const FieldType * argType, 
 					  const FieldType * retType);
+
+  /**
+   * Cast non null value to FIXED_ARRAY.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastFixedArray(const IQLToLLVMValue * e, 
+                                                const FieldType * argType, 
+                                                llvm::Value * ret, 
+                                                const FieldType * retType);
+  const IQLToLLVMValue * buildCastFixedArray(const IQLToLLVMValue * e, 
+                                             const FieldType * argType, 
+                                             const FieldType * retType);
+
+  /**
+   * Cast non null value to VARIABLE_ARRAY.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastVariableArray(const IQLToLLVMValue * e, 
+                                                   const FieldType * argType, 
+                                                   llvm::Value * ret, 
+                                                   const FieldType * retType);
+  const IQLToLLVMValue * buildCastVariableArray(const IQLToLLVMValue * e, 
+                                                const FieldType * argType, 
+                                                const FieldType * retType);
 
   /**
    * Cast non null value from one type to another.  Put return value in ret.
@@ -875,6 +904,12 @@ public:
   llvm::Value * buildVarcharGetSize(llvm::Value * varcharPtr);
   llvm::Value * buildVarcharGetPtr(llvm::Value * varcharPtr);
 
+  /**
+   * Interface to the VARIABLE_ARRAY datatype.
+   */
+  llvm::Value * buildVarArrayGetSize(llvm::Value * varcharPtr);
+  llvm::Value * buildVarArrayGetPtr(llvm::Value * varcharPtr, llvm::Type * retTy);
+
 
   /**
    * Reuse of local variables so that we don't put too much pressure
@@ -1005,6 +1040,13 @@ public:
 				      const FieldType * resultType,
 				      IQLToLLVMPredicate op);
 
+  const IQLToLLVMValue *
+  buildArrayElementwiseCompare(const IQLToLLVMValue * lhs, 
+                               const IQLToLLVMValue * rhs,
+                               std::size_t index,
+                               const FieldType * promoted,
+                               const FieldType * retType,
+                               IQLToLLVMPredicate op);
   /**
    * Hash a sequence of values
    */

@@ -36,6 +36,7 @@ extern "C" {
 					 IQLFieldConstructorListRef fields);
 
   IQLFieldTypeRef IQLBuildInt32Type(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildInt32ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildInt64Type(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildDoubleType(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildDecimalType(IQLTreeFactoryRef ctxtRef, int nullable);

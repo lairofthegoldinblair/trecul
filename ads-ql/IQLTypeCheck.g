@@ -195,8 +195,9 @@ whileStatement[IQLTypeCheckContextRef ctxt]
 builtInType[IQLTypeCheckContextRef ctxt] returns [IQLFieldTypeRef ty]
 @init {
 nullable=0;
+array=NULL;
 }
-	: ^(c=TK_INTEGER (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildInt32Type($ctxt, nullable); $c->u = $ty; }
+	: ^(c=TK_INTEGER (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildInt32ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildInt32Type($ctxt, nullable); $c->u = $ty; }
 	  | ^(c=TK_DOUBLE (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildDoubleType($ctxt, nullable); $c->u = $ty; }
 	  | ^(c=TK_CHAR DECIMAL_INTEGER_LITERAL (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildCharType($ctxt, (const char *) $DECIMAL_INTEGER_LITERAL.text->chars, nullable); $c->u = $ty; }
 	  | ^(c=TK_VARCHAR (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildVarcharType($ctxt, nullable); $c->u = $ty; }
@@ -207,6 +208,14 @@ nullable=0;
       | ^(c=TK_BIGINT (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildInt64Type($ctxt, nullable); $c->u = $ty; }
 	  | ^(c=ID (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildType($ctxt, (const char *) $ID.text->chars, nullable); $c->u = $ty; } 
 	;
+
+arrayTypeSpec returns [const char * sz]
+@init {
+    sz = "infinity";
+}
+    :
+    ^(ARRAY (DECIMAL_INTEGER_LITERAL { sz = (const char *) $DECIMAL_INTEGER_LITERAL.text->chars; })?)
+    ;
 
 typeNullability returns [int nullable]
     :
