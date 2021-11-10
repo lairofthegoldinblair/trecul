@@ -1300,7 +1300,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
     int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
     BOOST_CHECK_EQUAL(val, 0);
     val = equals.execute(lhs, rhs2, &runtimeCtxt);
-    BOOST_CHECK_EQUAL(val, 0);    
+    BOOST_CHECK_EQUAL(val, 1);    
   }
 
   recTy.GetFree()->free(lhs);

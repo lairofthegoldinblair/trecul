@@ -3259,7 +3259,7 @@ void RecordTypeFunction::init(DynamicRecordContext& recCtxt)
   mContext->LLVMBuilder->CreateRetVoid();
 
   llvm::verifyFunction(*mContext->LLVMFunction);
-  llvm::outs() << "We just constructed this LLVM module:\n\n" << *mContext->LLVMModule;
+  // llvm::outs() << "We just constructed this LLVM module:\n\n" << *mContext->LLVMModule;
   // Now run optimizer over the IR
   mFPM->run(*mContext->LLVMFunction);
   // llvm::outs() << "We just optimized this LLVM module:\n\n" << *mContext->LLVMModule;

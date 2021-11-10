@@ -1331,11 +1331,11 @@ CodeGenerationContext::buildCastFixedArray(const IQLToLLVMValue * e,
       args[4] = b->getInt1(0);
       b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
     }
-    // TODO: Need to set these to NULL instead
+    // DBTODO: Need to set these to NULL instead
     if (toSet > 0) {
       llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemsetIntrinsic);
       // memset 0 at offset toCopy
-      args[0] = b->CreateGEP(ptr, b->getInt64(toCopy), "");;
+      args[0] = b->CreateGEP(b->getInt8Ty(), ptr, b->getInt64(toCopy), "");;
       args[1] = b->getInt8(0);
       args[2] = b->getInt64(toSet);
       args[3] = b->getInt32(1);
@@ -2956,11 +2956,11 @@ CodeGenerationContext::buildArrayElementwiseCompare(const IQLToLLVMValue * lhs,
   buildBeginAnd(int32Type);
   buildAddAnd(buildRef(notDone, int32Type), int32Type, int32Type);
   pred = buildAnd(buildCompare(buildArrayRef(rhs, idx, eltType), eltType, buildArrayRef(lhs, idx, eltType), eltType, int32Type, op), int32Type, int32Type);
-  // buildCaseBlockBegin(int32Type);
-  // buildCaseBlockIf(pred);
-  // buildCaseBlockThen(zero, int32Type, int32Type, false);
-  // buildCaseBlockThen(buildRef(ret, int32Type), int32Type, int32Type, false);
-  // buildSetNullableValue(retLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
+  buildCaseBlockBegin(int32Type);
+  buildCaseBlockIf(pred);
+  buildCaseBlockThen(zero, int32Type, int32Type, false);
+  buildCaseBlockThen(buildRef(ret, int32Type), int32Type, int32Type, false);
+  buildSetNullableValue(retLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
   
   // SET notDone = CASE WHEN notDone AND rhs[idx] < lhs[idx] THEN 0 ELSE notDone END
   buildCaseBlockBegin(int32Type);
@@ -2969,22 +2969,22 @@ CodeGenerationContext::buildArrayElementwiseCompare(const IQLToLLVMValue * lhs,
   buildCaseBlockThen(buildRef(notDone, int32Type), int32Type, int32Type, false);
   buildSetNullableValue(notDoneLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
 
-  // // SET ret = CASE WHEN notDone AND lhs[idx] < rhs[idx] THEN 1 ELSE ret END
-  // buildBeginAnd(int32Type);
-  // buildAddAnd(buildRef(notDone, int32Type), int32Type, int32Type);
-  // pred = buildAnd(buildCompare(buildArrayRef(lhs, idx, eltType), eltType, buildArrayRef(rhs, idx, eltType), eltType, int32Type, op), int32Type, int32Type);
-  // buildCaseBlockBegin(int32Type);
-  // buildCaseBlockIf(pred);
-  // buildCaseBlockThen(one, int32Type, int32Type, false);
-  // buildCaseBlockThen(buildRef(ret, int32Type), int32Type, int32Type, false);
-  // buildSetNullableValue(retLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
+  // SET ret = CASE WHEN notDone AND lhs[idx] < rhs[idx] THEN 1 ELSE ret END
+  buildBeginAnd(int32Type);
+  buildAddAnd(buildRef(notDone, int32Type), int32Type, int32Type);
+  pred = buildAnd(buildCompare(buildArrayRef(lhs, idx, eltType), eltType, buildArrayRef(rhs, idx, eltType), eltType, int32Type, op), int32Type, int32Type);
+  buildCaseBlockBegin(int32Type);
+  buildCaseBlockIf(pred);
+  buildCaseBlockThen(one, int32Type, int32Type, false);
+  buildCaseBlockThen(buildRef(ret, int32Type), int32Type, int32Type, false);
+  buildSetNullableValue(retLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
   
-  // // SET notDone = CASE WHEN notDone AND lhs[idx] < rhs[idx] THEN 0 ELSE notDone END
-  // buildCaseBlockBegin(int32Type);
-  // buildCaseBlockIf(pred);
-  // buildCaseBlockThen(zero, int32Type, int32Type, false);
-  // buildCaseBlockThen(buildRef(notDone, int32Type), int32Type, int32Type, false);
-  // buildSetNullableValue(notDoneLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
+  // SET notDone = CASE WHEN notDone AND lhs[idx] < rhs[idx] THEN 0 ELSE notDone END
+  buildCaseBlockBegin(int32Type);
+  buildCaseBlockIf(pred);
+  buildCaseBlockThen(zero, int32Type, int32Type, false);
+  buildCaseBlockThen(buildRef(notDone, int32Type), int32Type, int32Type, false);
+  buildSetNullableValue(notDoneLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
 
   // SET idx = idx + 1
   buildSetNullableValue(counterLValue, buildAdd(buildRef(counter, int32Type), int32Type, one, int32Type, int32Type), int32Type, int32Type);  
