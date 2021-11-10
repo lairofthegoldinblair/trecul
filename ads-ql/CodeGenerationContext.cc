@@ -209,7 +209,7 @@ IQLToLLVMLocal::getEntirePointer(CodeGenerationContext * ctxt) const
   } else {
     llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
     return IQLToLLVMValue::get(ctxt, mValue->getValue(),
-			       b->CreateLoad(mNullBit),
+			       b->CreateLoad(mNullBit->getType()->getPointerElementType(), mNullBit),
 			       mValue->getValueType());
   }
 }
@@ -613,8 +613,8 @@ CodeGenerationContext::buildArray(std::vector<IQLToLLVMTypedValue>& vals,
   llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Type * retTy = arrayTy->LLVMGetType(this);
   llvm::Value * result = buildEntryBlockAlloca(retTy, "nullableBinOp");    
-  llvm::Type * ptrToElmntTy = llvm::cast<llvm::ArrayType>(retTy)->getElementType();
-  ptrToElmntTy = llvm::PointerType::get(ptrToElmntTy, 0);
+  llvm::Type * elmntTy = llvm::cast<llvm::ArrayType>(retTy)->getElementType();
+  llvm::Type * ptrToElmntTy = llvm::PointerType::get(elmntTy, 0);
   llvm::Value * ptrToElmnt = b->CreateBitCast(result, ptrToElmntTy);
   // TODO: We are not allowing nullable element types for arrays at this point.
   int32_t sz = arrayTy->GetSize();
@@ -624,7 +624,7 @@ CodeGenerationContext::buildArray(std::vector<IQLToLLVMTypedValue>& vals,
 
     // GEP to get pointer to the correct offset.
     llvm::Value * gepIndexes[1] = { b->getInt64(i) };
-    llvm::Value * lval = b->CreateInBoundsGEP(ptrToElmnt, 
+    llvm::Value * lval = b->CreateInBoundsGEP(elmntTy, ptrToElmnt, 
 					      llvm::ArrayRef<llvm::Value*>(&gepIndexes[0], 
 									   &gepIndexes[1]));
     const IQLToLLVMValue * slot = IQLToLLVMValue::get(this, 
@@ -698,6 +698,7 @@ const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const char * var
   // with for the moment that allows one to array reference a scalar
   // which is already a pointer to element type!
   const llvm::PointerType * ptrType = llvm::dyn_cast<llvm::PointerType>(lval->getType());
+  llvm::Type * lvalType = ptrType->getPointerElementType();
   BOOST_ASSERT(ptrType != NULL);
   const llvm::ArrayType * arrayType = llvm::dyn_cast<llvm::ArrayType>(ptrType->getElementType());
   if (arrayType) {    
@@ -725,13 +726,14 @@ const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const char * var
     // b->CreateBr(goodBlock);
 
     // // Array check good: emit the value.
-    // b->SetInsertPoint(goodBlock);  
-    lval = b->CreateBitCast(lval, llvm::PointerType::get(arrayType->getElementType(),0));
+    // b->SetInsertPoint(goodBlock);
+    lvalType = arrayType->getElementType();
+    lval = b->CreateBitCast(lval, llvm::PointerType::get(lvalType,0));
   }
   
   // GEP to get pointer to the correct offset.
   llvm::Value * gepIndexes[1] = { idxVal };
-  lval = b->CreateInBoundsGEP(lval, llvm::ArrayRef<llvm::Value*>(&gepIndexes[0], &gepIndexes[1]));
+  lval = b->CreateInBoundsGEP(lvalType, lval, llvm::ArrayRef<llvm::Value*>(&gepIndexes[0], &gepIndexes[1]));
   return new IQLToLLVMLocal(IQLToLLVMValue::get(this, 
 						lval,
 						IQLToLLVMValue::eLocal),
@@ -853,7 +855,7 @@ CodeGenerationContext::buildCall(const char * f,
       // Unlikely but possible to get here.  Pointers to 
       // value type are almost surely trimmed above.
       llvm::IRBuilder<> * b = LLVMBuilder;
-      retTmp = b->CreateLoad(retTmp);
+      retTmp = b->CreateLoad(retTy, retTmp);
     }
     return IQLToLLVMValue::get(this, retTmp, vt);
   }
@@ -1086,7 +1088,7 @@ CodeGenerationContext::buildCastDecimal(const IQLToLLVMValue * e,
       return buildCall("InternalDecimalFromVarchar", args, ret, retType);
     }
   case FieldType::BIGDECIMAL:
-    b->CreateStore(b->CreateLoad(e1), ret);
+    b->CreateStore(b->CreateLoad(e1->getType()->getPointerElementType(), e1), ret);
     return e->getValueType();
   case FieldType::DATE:
     {
@@ -1212,7 +1214,7 @@ CodeGenerationContext::buildCastChar(const IQLToLLVMValue * e,
     if (toSet > 0) {
       llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemsetIntrinsic);
       // memset spaces at offset toCopy
-      args[0] = b->CreateGEP(ptr, b->getInt64(toCopy), "");;
+      args[0] = b->CreateGEP(b->getInt8Ty(), ptr, b->getInt64(toCopy), "");;
       args[1] = b->getInt8(' ');
       args[2] = b->getInt64(toSet);
       args[3] = b->getInt32(1);
@@ -1220,7 +1222,7 @@ CodeGenerationContext::buildCastChar(const IQLToLLVMValue * e,
       b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
     }
     // Null terminate the string
-    b->CreateStore(b->getInt8(0), b->CreateGEP(ptr, b->getInt64(retType->GetSize()), ""));
+    b->CreateStore(b->getInt8(0), b->CreateGEP(b->getInt8Ty(), ptr, b->getInt64(retType->GetSize()), ""));
   } else if (argType->GetEnum() == FieldType::VARCHAR) {
     llvm::Value * callArgs[3];
     llvm::Function * fn = LLVMModule->getFunction("InternalCharFromVarchar");
@@ -1640,7 +1642,7 @@ CodeGenerationContext::buildCharAdd(const IQLToLLVMValue * lhs,
   args[4] = b->getInt1(0);
   b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
   // memcpy arg2 at offset lhsSz (be sure to copy the trailing 0 to null terminate).
-  args[0] = b->CreateGEP(retPtrVal, b->getInt64(lhsSz), "");
+  args[0] = b->CreateGEP(b->getInt8Ty(), retPtrVal, b->getInt64(lhsSz), "");
   args[1] = tmp2;
   args[2] = b->getInt64(rhsSz+1);
   // TODO: Make use of alignment info to speed this up.  This assumption of 1 is pessimistics.
@@ -1770,7 +1772,7 @@ CodeGenerationContext::buildVarcharIsSmall(llvm::Value * varcharPtr)
   llvm::IRBuilder<> * b = LLVMBuilder;
   // Access first bit of the structure to see if large or small.
   llvm::Value * firstByte = 
-    b->CreateLoad(b->CreateBitCast(varcharPtr, b->getInt8PtrTy()));
+    b->CreateLoad(b->getInt8Ty(), b->CreateBitCast(varcharPtr, b->getInt8PtrTy()));
   return 
     b->CreateICmpEQ(b->CreateAnd(b->getInt8(1U),
 				 firstByte),
@@ -1793,7 +1795,7 @@ CodeGenerationContext::buildVarcharGetSize(llvm::Value * varcharPtr)
   b->CreateCondBr(buildVarcharIsSmall(varcharPtr), smallBB, largeBB);
   b->SetInsertPoint(smallBB);
   llvm::Value * firstByte = 
-    b->CreateLoad(b->CreateBitCast(varcharPtr, b->getInt8PtrTy()));
+    b->CreateLoad(b->getInt8Ty(), b->CreateBitCast(varcharPtr, b->getInt8PtrTy()));
   b->CreateStore(b->CreateSExt(b->CreateAShr(b->CreateAnd(b->getInt8(0xfe),
 							  firstByte),  
 					     b->getInt8(1U)),
@@ -1801,14 +1803,15 @@ CodeGenerationContext::buildVarcharGetSize(llvm::Value * varcharPtr)
 		 ret);
   b->CreateBr(contBB);
   b->SetInsertPoint(largeBB);
-  llvm::Value * firstDWord = b->CreateLoad(b->CreateStructGEP(varcharPtr, 0));
+  llvm::Value * firstDWord = b->CreateLoad(b->getInt32Ty(),
+                                           b->CreateStructGEP(LLVMVarcharType, varcharPtr, 0));
   b->CreateStore(b->CreateAShr(b->CreateAnd(b->getInt32(0xfffffffe),
 					    firstDWord),  
 			       b->getInt32(1U)),
 		 ret);
   b->CreateBr(contBB);
   b->SetInsertPoint(contBB);
-  return b->CreateLoad(ret);
+  return b->CreateLoad(b->getInt32Ty(), ret);
 }
 
 llvm::Value * 
@@ -1826,16 +1829,19 @@ CodeGenerationContext::buildVarcharGetPtr(llvm::Value * varcharPtr)
   
   b->CreateCondBr(buildVarcharIsSmall(varcharPtr), smallBB, largeBB);
   b->SetInsertPoint(smallBB);
-  b->CreateStore(b->CreateConstGEP1_64(b->CreateBitCast(varcharPtr, 
+  b->CreateStore(b->CreateConstGEP1_64(b->getInt8Ty(),
+                                       b->CreateBitCast(varcharPtr, 
 							b->getInt8PtrTy()), 
 				       1),
 		 ret);
   b->CreateBr(contBB);
   b->SetInsertPoint(largeBB);
-  b->CreateStore(b->CreateLoad(b->CreateStructGEP(varcharPtr, 2)), ret);
+  b->CreateStore(b->CreateLoad(b->getInt8PtrTy(),
+                               b->CreateStructGEP(LLVMVarcharType, varcharPtr, 2)),
+                 ret);
   b->CreateBr(contBB);
   b->SetInsertPoint(contBB);
-  return b->CreateLoad(ret);
+  return b->CreateLoad(b->getInt8PtrTy(), ret);
 }
 
 const IQLToLLVMValue * CodeGenerationContext::buildCompareResult(llvm::Value * boolVal)
@@ -1883,9 +1889,11 @@ void CodeGenerationContext::buildMemcpy(const std::string& sourceArg,
 					int64_t sz)
 {
   llvm::IRBuilder<> * b = LLVMBuilder;
-  llvm::Value * sourcePtr = b->CreateLoad(lookupBasePointer(sourceArg.c_str())->getValue(),
+  llvm::Value * sourcePtr = b->CreateLoad(b->getInt8PtrTy(),
+                                          lookupBasePointer(sourceArg.c_str())->getValue(),
 					  "srccpy");	
-  llvm::Value * targetPtr = b->CreateLoad(lookupBasePointer(targetArg.c_str())->getValue(),
+  llvm::Value * targetPtr = b->CreateLoad(b->getInt8PtrTy(),
+                                          lookupBasePointer(targetArg.c_str())->getValue(),
 					  "tgtcpy");
   buildMemcpy(sourcePtr, sourceOffset, targetPtr, targetOffset, sz);
 }
@@ -1949,7 +1957,8 @@ void CodeGenerationContext::buildBitcpy(const BitcpyOp& op,
   llvm::IRBuilder<> * b = LLVMBuilder;
   
   // Get int32 ptrs for source and target
-  llvm::Type * int32PtrTy = llvm::PointerType::get(b->getInt32Ty(), 0);
+  llvm::Type * int32Ty = b->getInt32Ty();
+  llvm::Type * int32PtrTy = llvm::Type::getInt32PtrTy(*LLVMContext, 0);
   llvm::Value * source = op.mSourceOffset.getPointer("bitcpySource", this, 
 						     sourcePtr);
   source = b->CreateBitCast(source, int32PtrTy);
@@ -1964,9 +1973,9 @@ void CodeGenerationContext::buildBitcpy(const BitcpyOp& op,
     // negating.
     int32_t sourceShift = -op.mShift;
     uint32_t targetMask = ~((op.mSourceBitmask) >> sourceShift);
-    llvm::Value * maskedTgt = b->CreateAnd(b->CreateLoad(target),
+    llvm::Value * maskedTgt = b->CreateAnd(b->CreateLoad(int32Ty, target),
 					   b->getInt32(targetMask));
-    llvm::Value * maskedSource = b->CreateAnd(b->CreateLoad(source),
+    llvm::Value * maskedSource = b->CreateAnd(b->CreateLoad(int32Ty, source),
 					      b->getInt32(op.mSourceBitmask));
     maskedSource = b->CreateLShr(maskedSource, sourceShift);
     b->CreateStore(b->CreateOr(maskedTgt, maskedSource),
@@ -1975,18 +1984,18 @@ void CodeGenerationContext::buildBitcpy(const BitcpyOp& op,
     // We are shift source to the left
     int32_t sourceShift = op.mShift;
     uint32_t targetMask = ~((op.mSourceBitmask) << sourceShift);
-    llvm::Value * maskedTgt = b->CreateAnd(b->CreateLoad(target),
+    llvm::Value * maskedTgt = b->CreateAnd(b->CreateLoad(int32Ty, target),
 					   b->getInt32(targetMask));
-    llvm::Value * maskedSource = b->CreateAnd(b->CreateLoad(source),
+    llvm::Value * maskedSource = b->CreateAnd(b->CreateLoad(int32Ty, source),
 					      b->getInt32(op.mSourceBitmask));
     maskedSource = b->CreateShl(maskedSource, sourceShift);
     b->CreateStore(b->CreateOr(maskedTgt, maskedSource),
 		   target);
   } else {
     uint32_t targetMask = ~op.mSourceBitmask;
-    llvm::Value * maskedTgt = b->CreateAnd(b->CreateLoad(target),
+    llvm::Value * maskedTgt = b->CreateAnd(b->CreateLoad(int32Ty, target),
 					   b->getInt32(targetMask));
-    llvm::Value * maskedSource = b->CreateAnd(b->CreateLoad(source),
+    llvm::Value * maskedSource = b->CreateAnd(b->CreateLoad(int32Ty, source),
 					      b->getInt32(op.mSourceBitmask));
     b->CreateStore(b->CreateOr(maskedTgt, maskedSource),
 		   target);
@@ -2000,14 +2009,15 @@ void CodeGenerationContext::buildBitset(const BitsetOp& op,
   llvm::IRBuilder<> * b = LLVMBuilder;
   
   // Get int32 ptr for target
-  llvm::Type * int32PtrTy = llvm::PointerType::get(b->getInt32Ty(), 0);
+  llvm::Type * int32Ty = b->getInt32Ty();
+  llvm::Type * int32PtrTy = llvm::Type::getInt32PtrTy(*LLVMContext, 0);
   llvm::Value * target = op.mTargetOffset.getPointer("bitsetTarget", this, 
 						     targetPtr);
   target = b->CreateBitCast(target, int32PtrTy);
 
   // Set bits in bitmask preserving any bits outside mask that
   // are already set.
-  llvm::Value * tgt = b->CreateLoad(target);
+  llvm::Value * tgt = b->CreateLoad(int32Ty, target);
   llvm::Value * newBits = b->getInt32(op.mTargetBitmask);
   b->CreateStore(b->CreateOr(tgt, newBits),
 		 target);
@@ -2023,8 +2033,8 @@ void CodeGenerationContext::buildSetFieldsRegex(const std::string& sourceName,
   // Unwrap to C++
   llvm::IRBuilder<> * b = LLVMBuilder;
 
-  llvm::Value * sourcePtr = b->CreateLoad(lookupBasePointer(sourceName.c_str())->getValue());
-  llvm::Value * targetPtr = b->CreateLoad(lookupBasePointer("__OutputPointer__")->getValue());
+  llvm::Value * sourcePtr = b->CreateLoad(b->getInt8PtrTy(), lookupBasePointer(sourceName.c_str())->getValue());
+  llvm::Value * targetPtr = b->CreateLoad(b->getInt8PtrTy(), lookupBasePointer("__OutputPointer__")->getValue());
 			       
   RecordTypeCopy c(sourceType,
 		   unwrap(IQLOutputRecord),
@@ -2077,7 +2087,8 @@ const IQLToLLVMValue * CodeGenerationContext::buildRef(const IQLToLLVMValue * al
   if (isPointerToValueType(allocAVal->getValue(), resultTy)) {
     //std::cout << "Loading variable " << var << "\n";
     return IQLToLLVMValue::get(this, 
-			       b->CreateLoad(allocAVal->getValue()),
+			       b->CreateLoad(allocAVal->getValue()->getType()->getPointerElementType(),
+                                             allocAVal->getValue()),
 			       allocAVal->getNull(),
 			       IQLToLLVMValue::eLocal);
   } else {
@@ -2138,7 +2149,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildNullableUnaryOp(const IQLToLL
   }
   // Return either pointer or value
   if (isPointerToValueType(result, resultType)) {
-    result = b->CreateLoad(result);
+    result = b->CreateLoad(retTy, result);
   }
   return IQLToLLVMValue::get(this, result, nv, vt);
 }
@@ -2159,7 +2170,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildNonNullableUnaryOp(const IQLT
   result = trimAlloca(result, resultType);
   // Return either pointer or value
   if (isPointerToValueType(result, resultType)) {
-    result = b->CreateLoad(result);
+    result = b->CreateLoad(retTy, result);
   }
   // Just propagate the null value of the incoming arg
   return IQLToLLVMValue::get(this, result, lhs->getNull(), vt);
@@ -2212,7 +2223,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildNullableBinaryOp(const IQLToL
   }
   // Return either pointer or value
   if (isPointerToValueType(result, resultType)) {
-    result = b->CreateLoad(result);
+    result = b->CreateLoad(retTy, result);
   }
   return IQLToLLVMValue::get(this, result, nv, vt);
 }
@@ -2333,7 +2344,7 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
       ft->GetEnum() == FieldType::CHAR ||
       ft->GetEnum() == FieldType::FIXED_ARRAY) {
     // TODO: Should probably use memcpy rather than load/store
-    llvmVal = b->CreateLoad(llvmVal);
+    llvmVal = b->CreateLoad(ft->LLVMGetType(this), llvmVal);
   } else if (ft->GetEnum() == FieldType::VARCHAR) {
     // TODO:
     // Four cases here depending on the global/local dichotomy for the source
@@ -2365,7 +2376,7 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
       callArgs[0] = llvmVal;
       callArgs[1] = buildEntryBlockAlloca(LLVMVarcharType, "");
       callArgs[2] = b->getInt32(iqllvalue->getValueType() == IQLToLLVMValue::eGlobal ? 0 : 1);
-      callArgs[3] = b->CreateLoad(getContextArgumentRef());
+      callArgs[3] = b->CreateLoad(LLVMDecContextPtrType, getContextArgumentRef());
       b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 4), "");
       llvmVal = callArgs[1];
     } else if (iqlVal->getValueType() == IQLToLLVMValue::eLocal &&
@@ -2373,11 +2384,11 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
       llvm::Value * callArgs[2];
       llvm::Function * fn = LLVMModule->getFunction("InternalVarcharErase");
       callArgs[0] = llvmVal;
-      callArgs[1] = b->CreateLoad(getContextArgumentRef());
+      callArgs[1] = b->CreateLoad(LLVMDecContextPtrType, getContextArgumentRef());
       b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");
     }
     // Load before store since we have a pointer to the Varchar.
-    llvmVal = b->CreateLoad(llvmVal);    
+    llvmVal = b->CreateLoad(ft->LLVMGetType(this), llvmVal);    
   } 
 
   // Finally we can just issue the store.
@@ -2573,7 +2584,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildCaseBlockFinish(const FieldTy
     // The pointer to the local will not be used beyond this point,
     // so it may be reused.
     returnCachedLocal(result);
-    result = b->CreateLoad(result);
+    result = b->CreateLoad(caseType->LLVMGetType(this), result);
   }
   // Done with this CASE so pop off.
   delete IQLCase.top();
@@ -2765,7 +2776,7 @@ CodeGenerationContext::buildVarcharCompare(llvm::Value * e1,
   llvm::Function * fn = LLVMModule->getFunction(booleanFuncs[opCode]);
   callArgs[0] = e1;
   callArgs[1] = e2;
-  callArgs[2] = b->CreateLoad(getContextArgumentRef());
+  callArgs[2] = b->CreateLoad(LLVMDecContextPtrType, getContextArgumentRef());
   llvm::Value * cmp = b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 3), tmpNames[opCode]);
   b->CreateStore(cmp, ret);
   return IQLToLLVMValue::eLocal;
@@ -2859,11 +2870,11 @@ CodeGenerationContext::buildCompare(const IQLToLLVMValue * lhs,
     callArgs[0] = e1;
     callArgs[1] = e2;
     callArgs[2] = buildEntryBlockAlloca(b->getInt32Ty(), "decimalCmpRetPtr");
-    callArgs[3] = b->CreateLoad(getContextArgumentRef());
+    callArgs[3] = b->CreateLoad(LLVMDecContextPtrType, getContextArgumentRef());
     b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 4), "");
     
     // Compare result to zero and return
-    return buildCompareResult(b->CreateICmp(intOp, b->getInt32(0), b->CreateLoad(callArgs[2])),
+    return buildCompareResult(b->CreateICmp(intOp, b->getInt32(0), b->CreateLoad(b->getInt32Ty(), callArgs[2])),
 			      ret);
   } else {
     throw std::runtime_error("CodeGenerationContext::buildCompare unexpected type");
@@ -2999,7 +3010,8 @@ const IQLToLLVMValue * CodeGenerationContext::buildSortPrefix(const IQLToLLVMVal
     int numBytes = getCharArrayLength(argVal) >= 4 ? 
       4 : (int) getCharArrayLength(argVal);
     for(int i = 0; i<numBytes; ++i) {
-      llvm::Value * tmp = b->CreateLoad(b->CreateConstInBoundsGEP2_64(argVal, 0, i));
+      llvm::Value * tmp = b->CreateLoad(b->getInt8Ty(),
+                                        b->CreateConstInBoundsGEP2_64(argTy->LLVMGetType(this), argVal, 0, i));
       tmp = b->CreateShl(b->CreateZExt(tmp, b->getInt32Ty()),
 			 b->getInt32(8*(3-i)));
       retVal = b->CreateOr(retVal, tmp, "a");
@@ -3042,8 +3054,9 @@ void CodeGenerationContext::buildReturnValue(const IQLToLLVMValue * iqlVal, cons
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
   // Due to our uniform implementation of mutable variables, our return location is actually
-  // a pointer to a pointer.
-  llvm::Value * loc = b->CreateLoad(lookupValue("__ReturnValue__", NULL)->getValue());
+  // a pointer to a pointer (should be pointer to retType)
+  llvm::Value * locOfLoc = lookupValue("__ReturnValue__", NULL)->getValue();
+  llvm::Value * loc = b->CreateLoad(locOfLoc->getType()->getPointerElementType(), locOfLoc);
 
   llvm::Value * llvmVal = iqlVal->getValue();
 
@@ -3072,7 +3085,7 @@ void CodeGenerationContext::buildReturnValue(const IQLToLLVMValue * iqlVal, cons
   if (isValueType(retType)) {
     b->CreateStore(llvmVal, loc); 
   } else {
-    llvm::Value * val = b->CreateLoad(llvmVal);
+    llvm::Value * val = b->CreateLoad(retType->LLVMGetType(this), llvmVal);
     llvm::PointerType * st = llvm::dyn_cast<llvm::PointerType>(loc->getType());
     if (st == NULL || st->getElementType() != val->getType()) {
       throw std::runtime_error("Type mismatch with return value");
@@ -3383,8 +3396,9 @@ const IQLToLLVMValue * CodeGenerationContext::buildVarcharLiteral(const char * v
     // TODO: Remember the string is stored as a global so that we don't create it multiple times...
     // Put the string in as a global variable and then create a struct that references it.  
     // This is the global variable itself
+    llvm::Type * globalVarTy = llvm::ArrayType::get(int8Ty, str.size() + 1);
     llvm::GlobalVariable * globalVar = new llvm::GlobalVariable(*LLVMModule, 
-								llvm::ArrayType::get(int8Ty, str.size() + 1),
+								globalVarTy,
 								false, llvm::GlobalValue::ExternalLinkage, 0, "str");
     // This is the string value.  Set it as an initializer.
     llvm::Constant * constStr = llvm::ConstantDataArray::getString(*c,
@@ -3406,7 +3420,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildVarcharLiteral(const char * v
     constGEPIndexes[0] = llvm::ConstantInt::get(b->getInt64Ty(), llvm::StringRef("0"), 10);
     constGEPIndexes[1] = llvm::ConstantInt::get(b->getInt64Ty(), llvm::StringRef("0"), 10);
     // The pointer to string
-    constStructMembers[2] = llvm::ConstantExpr::getGetElementPtr(nullptr, globalVar, llvm::makeArrayRef(&constGEPIndexes[0], 2));
+    constStructMembers[2] = llvm::ConstantExpr::getGetElementPtr(globalVarTy, globalVar, llvm::makeArrayRef(&constGEPIndexes[0], 2));
     llvm::Constant * globalString = llvm::ConstantStruct::getAnon(*c, llvm::makeArrayRef(&constStructMembers[0], 3), false);
     llvm::Value * globalStringAddr = buildEntryBlockAlloca(LLVMVarcharType, "globalliteral");
     b->CreateStore(globalString, globalStringAddr);
@@ -3583,7 +3597,7 @@ void CodeGenerationContext::buildSetFields(const char * recordName, int * pos)
     for(std::vector<MemsetOp>::const_iterator opit = mv.getMemset().begin();
 	opit != mv.getMemset().end();
 	++opit) {
-      buildMemset(b->CreateLoad(lookupBasePointer(it->second.first.c_str())->getValue()),
+      buildMemset(b->CreateLoad(b->getInt8PtrTy(), lookupBasePointer(it->second.first.c_str())->getValue()),
 			  opit->mSourceOffset,
 			  0,
 			  opit->mSize);

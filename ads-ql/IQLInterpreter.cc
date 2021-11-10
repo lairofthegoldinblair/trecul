@@ -53,7 +53,6 @@
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
@@ -108,9 +107,9 @@ private:
   std::unique_ptr<llvm::orc::LLJIT> mJIT;
 
 public:
-  OrcJit(std::function<void(llvm::orc::VModuleKey, const llvm::object::ObjectFile &Obj,
+  OrcJit(std::function<void(llvm::orc::MaterializationResponsibility &, const llvm::object::ObjectFile &Obj,
 			    const llvm::RuntimeDyld::LoadedObjectInfo &)> notifyLoaded,
-	 std::function<void(llvm::orc::VModuleKey, const llvm::object::ObjectFile &Obj,
+	 std::function<void(llvm::orc::MaterializationResponsibility &, const llvm::object::ObjectFile &Obj,
 			    const llvm::RuntimeDyld::LoadedObjectInfo &)> notifyFinalized)
   {
     auto creator = [notifyLoaded](llvm::orc::ExecutionSession & es, const llvm::Triple & tt) -> std::unique_ptr<llvm::orc::ObjectLayer> {
@@ -2349,13 +2348,13 @@ public:
   IQLRecordBufferMethodHandle(const std::string& objectFile);
   ~IQLRecordBufferMethodHandle();
   void * getFunPtr(const std::string& name);
-  static void onObjectLoaded(llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
+  static void onObjectLoaded(llvm::orc::MaterializationResponsibility & mr, const llvm::object::ObjectFile &obj,
 			     const llvm::RuntimeDyld::LoadedObjectInfo & objInfo,
 			     std::string & objectFile)
   {
     objectFile.assign(obj.getMemoryBufferRef().getBufferStart(), obj.getMemoryBufferRef().getBufferEnd());
   }
-  void onObjectFinalized(llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
+  void onObjectFinalized(llvm::orc::MaterializationResponsibility & mr, const llvm::object::ObjectFile &obj,
 			 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo)
   {
   }
@@ -2374,10 +2373,10 @@ IQLRecordBufferMethodHandle::IQLRecordBufferMethodHandle(const std::string& obje
   llvm::InitializeNativeTargetAsmPrinter();
   llvm::InitializeNativeTargetAsmParser();
   // Can't create the JIT until after LLVM is initialized
-  mJIT = std::make_unique<OrcJit>([](llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
+  mJIT = std::make_unique<OrcJit>([](llvm::orc::MaterializationResponsibility & mr, const llvm::object::ObjectFile &obj,
 					 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo) {
 				  },
-				  [](llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
+				  [](llvm::orc::MaterializationResponsibility & mr, const llvm::object::ObjectFile &obj,
 					 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo) {
 				  });
 
@@ -2398,13 +2397,15 @@ void IQLRecordBufferMethodHandle::initialize(std::unique_ptr<llvm::Module> modul
   llvm::InitializeNativeTargetAsmParser();
 
   // Can't create the JIT until after LLVM is initialized
-  mJIT = std::make_unique<OrcJit>([&objectFile](llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
-					 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo) {
-				    IQLRecordBufferMethodHandle::onObjectLoaded(key, obj, objInfo, objectFile);
+  mJIT = std::make_unique<OrcJit>([&objectFile](llvm::orc::MaterializationResponsibility & mr,
+                                                const llvm::object::ObjectFile &obj,
+                                                const llvm::RuntimeDyld::LoadedObjectInfo & objInfo) {
+				    IQLRecordBufferMethodHandle::onObjectLoaded(mr, obj, objInfo, objectFile);
 				  },
-				  [this](llvm::orc::VModuleKey key, const llvm::object::ObjectFile &obj,
+				  [this](llvm::orc::MaterializationResponsibility & mr,
+                                         const llvm::object::ObjectFile &obj,
 					 const llvm::RuntimeDyld::LoadedObjectInfo & objInfo) {
-				    this->onObjectFinalized(key, obj, objInfo);
+				    this->onObjectFinalized(mr, obj, objInfo);
 				  });
   llvm::cantFail(mJIT->addModule(llvm::orc::ThreadSafeModule(std::move(module), std::move(context))));
 }

@@ -57,7 +57,8 @@ llvm::Value * FieldAddress::getPointer(const std::string& member,
 				       llvm::Value * basePointer) const
 {
   llvm::IRBuilder<> * builder = ctxt->LLVMBuilder;
-  return builder->CreateGEP(basePointer,
+  return builder->CreateGEP(builder->getInt8Ty(),
+                            basePointer,
 			    builder->getInt64(mOffset),
 			    ("raw" + member).c_str());
 }
@@ -71,12 +72,13 @@ llvm::Value * FieldAddress::isNull(const std::string& member,
     // NULL means there is a zero bit
     uint32_t dwordPos = mPosition >> 5;
     llvm::ConstantInt * mask = b->getInt32(1U << (mPosition - (dwordPos << 5)));
-    llvm::Value * dwordPtr = b->CreateGEP(basePointer,
+    llvm::Value * dwordPtr = b->CreateGEP(b->getInt8Ty(),
+                                          basePointer,
 					  b->getInt64(dwordPos*sizeof(uint32_t)),
 					  ("isNull" + member).c_str());
     dwordPtr = b->CreateBitCast(dwordPtr, 
 				llvm::PointerType::get(b->getInt32Ty(),0));
-    llvm::Value * v = b->CreateAnd(b->CreateLoad(dwordPtr), mask);
+    llvm::Value * v = b->CreateAnd(b->CreateLoad(b->getInt32Ty(), dwordPtr), mask);
     return b->CreateICmpEQ(v, b->getInt32(0));
   } else {
     return b->getFalse();
@@ -98,14 +100,15 @@ void FieldAddress::setNull(const std::string& member,
     // NULL means there is a zero bit
     uint32_t dwordPos = mPosition >> 5;
     llvm::ConstantInt * mask = b->getInt32(1U << (mPosition - (dwordPos << 5)));
-    llvm::Value * dwordPtr = b->CreateGEP(basePointer,
+    llvm::Value * dwordPtr = b->CreateGEP(b->getInt8Ty(),
+                                          basePointer,
 					  b->getInt64(dwordPos*sizeof(uint32_t)),
 					  ("isNull" + member).c_str());
     dwordPtr = b->CreateBitCast(dwordPtr, 
 				llvm::PointerType::get(b->getInt32Ty(),0));
     llvm::Value * val = isNull ?
-      b->CreateAnd(b->CreateLoad(dwordPtr), b->CreateNot(mask)) :
-      b->CreateOr(b->CreateLoad(dwordPtr), mask);
+      b->CreateAnd(b->CreateLoad(b->getInt32Ty(), dwordPtr), b->CreateNot(mask)) :
+      b->CreateOr(b->CreateLoad(b->getInt32Ty(), dwordPtr), mask);
     b->CreateStore(val, dwordPtr);
   }   
 }
@@ -1684,7 +1687,7 @@ llvm::Value * RecordType::LLVMMemberGetPointer(const std::string& member,
   }
   llvm::Value * memberVal = ctxt->LLVMBuilder->CreateBitCast(mMemberOffsets[it->second].getPointer(member, 
 												   ctxt, 
-												   builder->CreateLoad(basePointer, "baseref")),
+												   builder->CreateLoad(builder->getInt8PtrTy(), basePointer, "baseref")),
 							    llvm::PointerType::get(mMembers[it->second].GetType()->LLVMGetType(ctxt), 0),
 							    member.c_str());
   if (populateSymbolTable) {
@@ -1757,7 +1760,7 @@ llvm::Value * RecordType::LLVMMemberGetNull(const std::string& member, CodeGener
   }
   return mMemberOffsets[it->second].isNull(member, 
 					   ctxt, 
-					   b->CreateLoad(basePointer, "baseref"));
+					   b->CreateLoad(b->getInt8PtrTy(), basePointer, "baseref"));
 }
 
 void RecordType::LLVMMemberSetNull(const std::string& member, CodeGenerationContext * ctxt, llvm::Value * basePointer, bool isNull) const
@@ -1770,7 +1773,7 @@ void RecordType::LLVMMemberSetNull(const std::string& member, CodeGenerationCont
   }
   return mMemberOffsets[it->second].setNull(member, 
 					    ctxt, 
-					    b->CreateLoad(basePointer, "baseref"),
+					    b->CreateLoad(b->getInt8PtrTy(), basePointer, "baseref"),
 					    isNull);
 }
 
