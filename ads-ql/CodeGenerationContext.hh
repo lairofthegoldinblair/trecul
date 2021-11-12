@@ -197,6 +197,30 @@ public:
   bool isNullable() const;
 };
 
+/**
+ * LValue abstraction around an element in a Trecul array.
+ * These guys have an ordinary pointer to the data value
+ * and the null bit (if present) is a pointer to int8 with an
+ * offset to the null bit.
+ */
+class IQLToLLVMArrayElement : public IQLToLLVMLValue
+{
+private:
+  const IQLToLLVMValue * mValue;
+  llvm::Value * mNullBytePtr;
+  llvm::Value * mNullByteMask;
+public:
+  IQLToLLVMArrayElement(const IQLToLLVMValue * val,
+                        llvm::Value * nullBytePtr,
+                        llvm::Value * nullByteMask);
+  IQLToLLVMArrayElement(const IQLToLLVMValue * val);
+  ~IQLToLLVMArrayElement();
+  const IQLToLLVMValue * getValuePointer(CodeGenerationContext * ctxt) const;
+  const IQLToLLVMValue * getEntirePointer(CodeGenerationContext * ctxt) const;
+  void setNull(CodeGenerationContext * ctxt, bool isNull) const;
+  bool isNullable() const;
+};
+
 class IQLToLLVMLocal : public IQLToLLVMLValue
 {
 private:
@@ -600,19 +624,19 @@ public:
   /**
    * Reference an element of an array
    */
-  const IQLToLLVMValue * buildArrayRef(const char * var,
-				       const IQLToLLVMValue * idx,
-				       const FieldType * elementTy);
-  const IQLToLLVMValue * buildArrayRef(const IQLToLLVMValue * val,
-				       const IQLToLLVMValue * idx,
-				       const FieldType * elementTy);
+  const IQLToLLVMValue * buildArrayRef(const IQLToLLVMValue * arr,
+                                       const FieldType * arrType,
+                                       const IQLToLLVMValue * idx,
+                                       const FieldType * idxType,
+                                       const FieldType * retType);
   /**
    * Build an lvalue from a position in an array.
    */
-  const IQLToLLVMLValue * buildArrayLValue(const char * var,
-					   const IQLToLLVMValue * idx);
-  const IQLToLLVMLValue * buildArrayLValue(const IQLToLLVMValue * val,
-					   const IQLToLLVMValue * idx);
+  const IQLToLLVMLValue * buildArrayLValue(const IQLToLLVMValue * arr,
+                                           const FieldType * arrType,
+					   const IQLToLLVMValue * idx,
+                                           const FieldType * idxType,
+                                           const FieldType * retType);
 
   /**
    * Call a function.
@@ -910,7 +934,12 @@ public:
   llvm::Value * buildVarArrayGetSize(llvm::Value * varcharPtr);
   llvm::Value * buildVarArrayGetPtr(llvm::Value * varcharPtr, llvm::Type * retTy);
 
-
+  /**
+   * Interface to the FIXED_ARRAY datatype.
+   */
+  llvm::Value * getFixedArrayData(const IQLToLLVMValue * e, const FieldType * ty);
+  llvm::Value * getFixedArrayNull(const IQLToLLVMValue * e, const FieldType * ty);
+  
   /**
    * Reuse of local variables so that we don't put too much pressure
    * on mem2reg to eliminate them.

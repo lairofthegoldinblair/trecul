@@ -98,6 +98,62 @@ BOOST_AUTO_TEST_CASE(testVarcharDataType)
   }
 }
 
+BOOST_AUTO_TEST_CASE(testFixedArrayFieldType)
+{
+  {
+    DynamicRecordContext ctxt;
+    FieldType * eltTy = Int32Type::Get(ctxt, false);
+    FixedArrayType * ty = FixedArrayType::Get(ctxt, 8, eltTy, false);
+    BOOST_CHECK(!ty->isNullable());
+    BOOST_CHECK_EQUAL(eltTy, ty->getElementType());
+    BOOST_CHECK_EQUAL(32U, ty->GetAllocSize());
+    BOOST_CHECK_EQUAL(4U, ty->GetAlignment());
+    BOOST_CHECK_EQUAL(32U, ty->GetDataSize());
+    BOOST_CHECK_EQUAL(0U, ty->GetDataOffset());
+    BOOST_CHECK_EQUAL(0U, ty->GetNullSize());
+    BOOST_CHECK_EQUAL(32U, ty->GetNullOffset());
+  }
+  for(std::size_t i=0; i<2; ++i) {
+    DynamicRecordContext ctxt;
+    FieldType * eltTy = Int32Type::Get(ctxt, true);
+    FixedArrayType * ty = FixedArrayType::Get(ctxt, 8, eltTy, i==1);
+    BOOST_CHECK_EQUAL(i==1, ty->isNullable());
+    BOOST_CHECK_EQUAL(eltTy, ty->getElementType());
+    BOOST_CHECK_EQUAL(36U, ty->GetAllocSize());
+    BOOST_CHECK_EQUAL(4U, ty->GetAlignment());
+    BOOST_CHECK_EQUAL(32U, ty->GetDataSize());
+    BOOST_CHECK_EQUAL(0U, ty->GetDataOffset());
+    BOOST_CHECK_EQUAL(1U, ty->GetNullSize());
+    BOOST_CHECK_EQUAL(32U, ty->GetNullOffset());
+  }
+  for(std::size_t i=0; i<2; ++i) {
+    DynamicRecordContext ctxt;
+    FieldType * eltTy = Int32Type::Get(ctxt, true);
+    FixedArrayType * ty = FixedArrayType::Get(ctxt, 9, eltTy, i==1);
+    BOOST_CHECK_EQUAL(i==1, ty->isNullable());
+    BOOST_CHECK_EQUAL(eltTy, ty->getElementType());
+    BOOST_CHECK_EQUAL(40U, ty->GetAllocSize());
+    BOOST_CHECK_EQUAL(4U, ty->GetAlignment());
+    BOOST_CHECK_EQUAL(36U, ty->GetDataSize());
+    BOOST_CHECK_EQUAL(0U, ty->GetDataOffset());
+    BOOST_CHECK_EQUAL(2U, ty->GetNullSize());
+    BOOST_CHECK_EQUAL(36U, ty->GetNullOffset());
+  }
+  for(std::size_t i=0; i<2; ++i) {
+    DynamicRecordContext ctxt;
+    FieldType * eltTy = FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt, true), true);
+    FixedArrayType * ty = FixedArrayType::Get(ctxt, 8, eltTy, i==1);
+    BOOST_CHECK_EQUAL(i==1, ty->isNullable());
+    BOOST_CHECK_EQUAL(eltTy, ty->getElementType());
+    BOOST_CHECK_EQUAL(132U, ty->GetAllocSize());
+    BOOST_CHECK_EQUAL(4U, ty->GetAlignment());
+    BOOST_CHECK_EQUAL(128U, ty->GetDataSize());
+    BOOST_CHECK_EQUAL(0U, ty->GetDataOffset());
+    BOOST_CHECK_EQUAL(1U, ty->GetNullSize());
+    BOOST_CHECK_EQUAL(128U, ty->GetNullOffset());
+  }
+}
+
 BOOST_AUTO_TEST_CASE(testTransferStringLiteral)
 {
   DynamicRecordContext ctxt;
@@ -910,6 +966,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
     BOOST_CHECK_EQUAL(2, ty->GetSize());
     const FixedArrayType * arrTy = static_cast<const FixedArrayType *>(ty);
     BOOST_CHECK_EQUAL(FieldType::INT32, arrTy->getElementType()->GetEnum());    
+    BOOST_CHECK(!arrTy->getElementType()->isNullable());
     RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(2*9923432, t1.getTarget()->getMemberOffset("f").getArrayInt32(outputBuf,0));
@@ -926,6 +983,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
     BOOST_CHECK_EQUAL(2, ty->GetSize());
     const FixedArrayType * arrTy = static_cast<const FixedArrayType *>(ty);
     BOOST_CHECK_EQUAL(FieldType::INT32, arrTy->getElementType()->GetEnum());    
+    BOOST_CHECK(!arrTy->getElementType()->isNullable());
     RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL(2*9923432, t1.getTarget()->getMemberOffset("f").getArrayInt32(outputBuf,0));
@@ -983,15 +1041,53 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
   recTy.GetFree()->free(inputBuf);
 }
 
+BOOST_AUTO_TEST_CASE(testIQLArrayConstructorNullableElement)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", CharType::Get(ctxt, 6)));
+  members.push_back(RecordMember("b", VarcharType::Get(ctxt)));
+  members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("d", Int64Type::Get(ctxt, true)));
+  members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
+  RecordType recTy(members);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setChar("a", "123456", inputBuf);
+  recTy.setVarchar("b", "abcdefghijklmnop", inputBuf);
+  recTy.setInt32("c", 9923432, inputBuf);
+  recTy.setInt64("d", 1239923432, inputBuf);
+  recTy.setDouble("e", 8234.24344, inputBuf);
+
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			  "[2*c, NULL, 3*c] AS f");
+    const FieldType * ty = t1.getTarget()->getMember("f").GetType();
+    BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, ty->GetEnum());
+    BOOST_CHECK_EQUAL(3, ty->GetSize());
+    const FixedArrayType * arrTy = static_cast<const FixedArrayType *>(ty);
+    BOOST_CHECK_EQUAL(FieldType::INT32, arrTy->getElementType()->GetEnum());    
+    BOOST_CHECK(arrTy->getElementType()->isNullable());
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK_EQUAL(2*9923432, t1.getTarget()->getMemberOffset("f").getArrayInt32(outputBuf,0));
+    BOOST_CHECK(!t1.getTarget()->getMemberOffset("f").isArrayNull(outputBuf,arrTy,0));
+    BOOST_CHECK(t1.getTarget()->getMemberOffset("f").isArrayNull(outputBuf,arrTy,1));
+    BOOST_CHECK_EQUAL(3*9923432, t1.getTarget()->getMemberOffset("f").getArrayInt32(outputBuf,2));
+    BOOST_CHECK(!t1.getTarget()->getMemberOffset("f").isArrayNull(outputBuf,arrTy,2));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+
+  recTy.GetFree()->free(inputBuf);
+}
+
 BOOST_AUTO_TEST_CASE(testIQLArrayDotProduct)
 {
   DynamicRecordContext ctxt;
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
-  members.push_back(RecordMember("a", DoubleType::Get(ctxt)));
-  members.push_back(RecordMember("b", DoubleType::Get(ctxt)));
-  members.push_back(RecordMember("c", DoubleType::Get(ctxt)));
-  members.push_back(RecordMember("d", DoubleType::Get(ctxt)));
+  members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 4, DoubleType::Get(ctxt), false)));
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
   RecordType recTy(members);
   std::vector<RecordMember> rhsMembers;
@@ -1001,10 +1097,10 @@ BOOST_AUTO_TEST_CASE(testIQLArrayDotProduct)
   types.push_back(&rhsTy);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
-  recTy.setDouble("a", 0.1223, inputBuf);
-  recTy.setDouble("b", 0.5623, inputBuf);
-  recTy.setDouble("c", 0.1111, inputBuf);
-  recTy.setDouble("d", 8234.24344, inputBuf);
+  recTy.setArrayDouble("a", 0, 0.1223, inputBuf);
+  recTy.setArrayDouble("a", 1, 0.5623, inputBuf);
+  recTy.setArrayDouble("a", 2, 0.1111, inputBuf);
+  recTy.setArrayDouble("a", 3, 8234.24344, inputBuf);
   recTy.setDouble("e", 8234.24344, inputBuf);
 
   // Should the be the EXACT same?
@@ -2161,11 +2257,7 @@ BOOST_AUTO_TEST_CASE(testIQLArray)
   DynamicRecordContext ctxt;
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
-  members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
-  members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
-  members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  members.push_back(RecordMember("d", Int32Type::Get(ctxt)));
-  members.push_back(RecordMember("y", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt), false)));
   RecordType recTy(members);
   std::vector<RecordMember> rhsMembers;
   RecordType rhsTy(rhsMembers);
@@ -2174,27 +2266,27 @@ BOOST_AUTO_TEST_CASE(testIQLArray)
   types.push_back(&rhsTy);
 
   RecordBuffer lhs = recTy.GetMalloc()->malloc();
-  recTy.setInt32("a", 123456, lhs);
-  recTy.setInt32("b", 88311, lhs);
-  recTy.setInt32("c", 9923432, lhs);
-  recTy.setInt32("d", 12431, lhs);
-  recTy.setInt32("y", 88823, lhs);
+  recTy.setArrayInt32("a", 0, 123456, lhs);
+  recTy.setArrayInt32("a", 1, 88311, lhs);
+  recTy.setArrayInt32("a", 2, 9923432, lhs);
+  recTy.setArrayInt32("a", 3, 12431, lhs);
+  recTy.setArrayInt32("a", 4, 88823, lhs);
 
   {
     RecordTypeInPlaceUpdate up(ctxt, 
 			       "xfer5up", 
 			       types, 
-			       "SET a[2] = d");
+			       "SET a[2] = a[3]");
     up.execute(lhs, NULL, &runtimeCtxt);
-    BOOST_CHECK_EQUAL(12431, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(12431, recTy.getArrayInt32("a", 2, lhs));
   }
   {
     RecordTypeInPlaceUpdate up(ctxt, 
 			       "xfer5up", 
 			       types, 
-			       "SET c = a[1]");
+			       "SET a[2] = a[1]");
     up.execute(lhs, NULL, &runtimeCtxt);
-    BOOST_CHECK_EQUAL(88311, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(88311, recTy.getArrayInt32("a", 2, lhs));
   }
 }
 

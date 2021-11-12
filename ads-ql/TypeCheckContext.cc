@@ -625,21 +625,16 @@ const FieldType * TypeCheckContext::buildArray(const std::vector<const FieldType
     }
     elmntTy = tmp;
   }
-  if (elmntTy->isNullable()) {
-    throw std::runtime_error("Not yet supporting arrays of nullable types");
-  }
   return buildFixedArrayType(e.size(), elmntTy, false);
 }
 
-const FieldType * TypeCheckContext::buildArrayRef(const char * nm,
+const FieldType * TypeCheckContext::buildArrayRef(const FieldType * arrayTy,
 						  const FieldType * idx)
 {
   if (idx != Int32Type::Get(mContext) &&
       idx != Int64Type::Get(mContext))
     throw std::runtime_error("Array index must be integer");
 
-  // TODO: Support compound name son arrays.
-  const FieldType * arrayTy = lookupType(nm, NULL);
   if (arrayTy->GetEnum() == FieldType::FIXED_ARRAY) {
     const FieldType * elementTy = static_cast<const FixedArrayType *>(arrayTy)->getElementType();
     return elementTy;
@@ -647,10 +642,7 @@ const FieldType * TypeCheckContext::buildArrayRef(const char * nm,
     const FieldType * elementTy = static_cast<const VariableArrayType *>(arrayTy)->getElementType();
     return elementTy;
   } else {
-    // For backward compatibility we are supporting a hack in which
-    // one is allowed to array ref an arbitrary scalar variable.
-    // This is used in the anrec calculation and should be removed ASAP. 
-    return arrayTy;
+    throw std::runtime_error("Can only reference fixed or variable length array");
   }
 }
 

@@ -259,7 +259,7 @@ public:
    * Array reference expression.
    */
   const FieldType * buildArray(const std::vector<const FieldType *>& e);
-  const FieldType * buildArrayRef(const char * nm,
+  const FieldType * buildArrayRef(const FieldType * arrayTy,
 				  const FieldType * idx);
 
   /**

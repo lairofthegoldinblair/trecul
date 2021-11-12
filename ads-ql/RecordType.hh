@@ -211,6 +211,11 @@ public:
       return false;
     }
   }
+  // Nullity of elements of an array
+  void setArrayNull(RecordBuffer buffer, const class FixedArrayType * ty, int32_t idx) const;
+  void clearArrayNull(RecordBuffer buffer, const class FixedArrayType * ty, int32_t idx) const;
+  bool isArrayNull(RecordBuffer buffer, const class FixedArrayType * ty, int32_t idx) const;
+  
   void setInt32(int32_t val, RecordBuffer buffer) const
   {
     clearNull(buffer);
@@ -552,6 +557,7 @@ public:
       throw std::runtime_error((boost::format("Invalid Type value: %1%") % mType).str());
     }
   }
+  // Size in bytes of successive objects of this type in memory accounting for alignment
   virtual std::size_t GetAllocSize() const
   {
     switch(mType) {
@@ -579,7 +585,7 @@ public:
       throw std::runtime_error("Invalid Type value");
     }
   }
-
+  
   virtual llvm::Type * LLVMGetType(CodeGenerationContext * ctxt) const;
 
   /**
@@ -934,7 +940,25 @@ public:
   }
   std::size_t GetAllocSize() const
   {
+    // TODO: Should assert that AllocSize is a multiple of alignment
+    return  GetAlignment()*((GetDataSize() + GetNullSize() + GetAlignment() - 1)/GetAlignment());
+  }
+  std::size_t GetDataSize() const
+  {
     return mElementTy->GetAllocSize()*((std::size_t)GetSize());
+  }
+  std::size_t GetDataOffset() const
+  {
+    return 0;
+  }
+  std::size_t GetNullSize() const
+  {
+    // Divide by 8 and round up to nearest integer.
+    return getElementType()->isNullable() ? (GetSize()+7)/8 : 0;
+  }
+  std::size_t GetNullOffset() const
+  {
+    return GetDataSize();
   }
   /**
    * Append my state to an md5 hash
@@ -1554,7 +1578,9 @@ public:
   void setInt32(const std::string& field, int32_t val, RecordBuffer buf) const;
   void setArrayInt32(const std::string& field, int32_t idx, int32_t val, RecordBuffer buf) const;
   void setInt64(const std::string& field, int64_t val, RecordBuffer buf) const;
+  void setArrayInt64(const std::string& field, int32_t idx, int64_t val, RecordBuffer buf) const;
   void setDouble(const std::string& field, double val, RecordBuffer buf) const;
+  void setArrayDouble(const std::string& field, int32_t idx, double val, RecordBuffer buf) const;
   void setDatetime(const std::string& field, 
 		   boost::posix_time::ptime val, 
 		   RecordBuffer buf) const;
@@ -1566,6 +1592,7 @@ public:
   void setChar(const std::string& field, const char* val, RecordBuffer buf) const;
 
   int32_t getInt32(const std::string& field, RecordBuffer buf) const;
+  int32_t getArrayInt32(const std::string& field, int32_t idx, RecordBuffer buf) const;
   int64_t getInt64(const std::string& field, RecordBuffer buf) const;
   double getDouble(const std::string& field, RecordBuffer buf) const;
   Varchar * getVarcharPtr(const std::string& field, RecordBuffer buf) const;

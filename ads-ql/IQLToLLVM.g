@@ -84,7 +84,7 @@ variableReference[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMLValueRef 
     :
     ID { $lhs = IQLToLLVMBuildLValue(ctxt, (char *)$ID.text->chars); }
     |
-    ^('[' ID e = expression[$ctxt] { $lhs = IQLToLLVMBuildArrayLValue(ctxt, (char *)$ID.text->chars, e.llvmVal); })
+    ^(c='[' e1 = expression[$ctxt] e2 = expression[$ctxt] { $lhs = IQLToLLVMBuildArrayLValue(ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
     ;
 
 switchStatement[IQLCodeGenerationContextRef ctxt]
@@ -240,7 +240,7 @@ expression[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMValueRef llvmVal,
 	| TK_TRUE { $llvmVal = IQLToLLVMBuildTrue($ctxt); }
 	| TK_FALSE { $llvmVal = IQLToLLVMBuildFalse($ctxt); }
 	| ^(id=ID (fun=ID {isBinary=1;})?) { $llvmVal = IQLToLLVMBuildVariableRef($ctxt, (const char *) $id.text->chars, isBinary ? (const char *) $fun.text->chars : 0, $id->u); }
-	| ^(c='[' id=ID e1 = expression[$ctxt]) { $llvmVal = IQLToLLVMBuildArrayRef($ctxt, (char *) $id.text->chars, e1.llvmVal, $c->u); }
+	| ^(c='[' e1 = expression[$ctxt] e2 = expression[$ctxt]) { $llvmVal = IQLToLLVMBuildArrayRef($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); }
     | TK_NULL { $llvmVal = IQLToLLVMBuildNull($ctxt); }
     | ^(c=TK_SUM { IQLToLLVMBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildAggregateFunction($ctxt, (char *) $TK_SUM.text->chars, e1.llvmVal, $c->u); } )
     | ^(c=TK_MAX { IQLToLLVMBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildAggregateFunction($ctxt, (char *) $TK_MAX.text->chars, e1.llvmVal, $c->u); } )

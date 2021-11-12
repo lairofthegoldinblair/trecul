@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012, Akamai Technologies
+ * Copyright (c) 2012-2021, Akamai Technologies
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -182,6 +182,59 @@ bool IQLToLLVMField::isNullable() const
 {
   const FieldType * outputTy = mRecordType->getMember(mMemberName).GetType();
   return outputTy->isNullable();
+}
+
+IQLToLLVMArrayElement::IQLToLLVMArrayElement(const IQLToLLVMValue * val,
+                                             llvm::Value * nullBytePtr,
+                                             llvm::Value * nullByteMask)
+  :
+  mValue(val),
+  mNullBytePtr(nullBytePtr),
+  mNullByteMask(nullByteMask)
+{
+}
+
+IQLToLLVMArrayElement::IQLToLLVMArrayElement(const IQLToLLVMValue * val)
+  :
+  mValue(val),
+  mNullBytePtr(nullptr),
+  mNullByteMask(nullptr)
+{
+}
+
+IQLToLLVMArrayElement::~IQLToLLVMArrayElement()
+{
+}
+
+const IQLToLLVMValue * IQLToLLVMArrayElement::getValuePointer(CodeGenerationContext * ctxt) const
+{
+  return mValue;
+}
+
+const IQLToLLVMValue * IQLToLLVMArrayElement::getEntirePointer(CodeGenerationContext * ctxt) const
+{
+  if(NULL == mNullBytePtr) {
+    return mValue;
+  } else {
+    llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
+    llvm::Value * v = b->CreateAnd(b->CreateLoad(b->getInt8Ty(), mNullBytePtr), mNullByteMask);
+    v = b->CreateICmpEQ(v, b->getInt8(0));
+    return IQLToLLVMValue::get(ctxt, mValue->getValue(), v, mValue->getValueType());
+  }
+}
+
+void IQLToLLVMArrayElement::setNull(CodeGenerationContext * ctxt, bool isNull) const
+{
+  llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
+  llvm::Value * val = isNull ?
+    b->CreateAnd(b->CreateLoad(b->getInt8Ty(), mNullBytePtr), b->CreateNot(mNullByteMask)) :
+    b->CreateOr(b->CreateLoad(b->getInt8Ty(), mNullBytePtr), mNullByteMask);
+  b->CreateStore(val, mNullBytePtr);
+}
+
+bool IQLToLLVMArrayElement::isNullable() const
+{
+  return mNullBytePtr != NULL;
 }
 
 IQLToLLVMLocal::IQLToLLVMLocal(const IQLToLLVMValue * val,
@@ -612,33 +665,22 @@ CodeGenerationContext::buildArray(std::vector<IQLToLLVMTypedValue>& vals,
   // it cleans up our mess.
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
+  const FieldType * eltTy = dynamic_cast<const FixedArrayType*>(arrayTy)->getElementType();
   llvm::Type * retTy = arrayTy->LLVMGetType(this);
-  llvm::Value * result = buildEntryBlockAlloca(retTy, "nullableBinOp");    
-  llvm::Type * elmntTy = llvm::cast<llvm::ArrayType>(retTy)->getElementType();
-  llvm::Type * ptrToElmntTy = llvm::PointerType::get(elmntTy, 0);
-  llvm::Value * ptrToElmnt = b->CreateBitCast(result, ptrToElmntTy);
-  // TODO: We are not allowing nullable element types for arrays at this point.
+  llvm::Value * result = buildEntryBlockAlloca(retTy, "nullableBinOp");
+  const IQLToLLVMValue * arrayVal = IQLToLLVMValue::get(this, result, IQLToLLVMValue::eLocal);
   int32_t sz = arrayTy->GetSize();
   for (int32_t i=0; i<sz; ++i) {
-    // Make an LValue out of a slot in the array so we can
-    // set the value into it.
-
-    // GEP to get pointer to the correct offset.
-    llvm::Value * gepIndexes[1] = { b->getInt64(i) };
-    llvm::Value * lval = b->CreateInBoundsGEP(elmntTy, ptrToElmnt, 
-					      llvm::ArrayRef<llvm::Value*>(&gepIndexes[0], 
-									   &gepIndexes[1]));
-    const IQLToLLVMValue * slot = IQLToLLVMValue::get(this, 
-						      lval,
-						      IQLToLLVMValue::eLocal);
     // TODO: type promotions???
-    IQLToLLVMLocal localLVal(slot, NULL);
-    buildSetNullableValue(&localLVal, vals[i].getValue(), 
-			  dynamic_cast<const FixedArrayType*>(arrayTy)->getElementType(), false);
+    const IQLToLLVMLValue * arrElt = buildArrayLValue(arrayVal, arrayTy,
+                                                      IQLToLLVMValue::get(this, b->getInt64(i), IQLToLLVMValue::eLocal), Int64Type::Get(arrayTy->getContext()),
+                                                      eltTy);                      
+    
+    buildSetNullableValue(arrElt, vals[i].getValue(), eltTy, false);
   }
 
   // return pointer to array
-  return IQLToLLVMValue::get(this, result, IQLToLLVMValue::eLocal);
+  return arrayVal;
 }
 
 const IQLToLLVMValue * 
@@ -670,56 +712,60 @@ CodeGenerationContext::buildGlobalConstArray(std::vector<IQLToLLVMTypedValue>& v
   return IQLToLLVMValue::get(this, globalArray, IQLToLLVMValue::eLocal);
 }
 
-const IQLToLLVMValue * CodeGenerationContext::buildArrayRef(const char * var,
-							    const IQLToLLVMValue * idx,
-							    const FieldType * elementTy)
+const IQLToLLVMValue * CodeGenerationContext::buildArrayRef(const IQLToLLVMValue * arr,
+                                                            const FieldType * arrType,
+                                                            const IQLToLLVMValue * idx,
+                                                            const FieldType * idxType,
+                                                            const FieldType * retType)
 {
-  const IQLToLLVMLValue * allocAVal=buildArrayLValue(var, idx);
-  return buildRef(allocAVal->getEntirePointer(this), elementTy);
+  const IQLToLLVMLValue * allocAVal=buildArrayLValue(arr, arrType, idx, idxType, retType);
+  return buildRef(allocAVal->getEntirePointer(this), retType);
 }
 
-const IQLToLLVMValue * CodeGenerationContext::buildArrayRef(const IQLToLLVMValue * val,
-							    const IQLToLLVMValue * idx,
-							    const FieldType * elementTy)
-{
-  const IQLToLLVMLValue * allocAVal=buildArrayLValue(val, idx);
-  return buildRef(allocAVal->getEntirePointer(this), elementTy);
-}
-
-const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const char * var,
-								const IQLToLLVMValue * idx)
-{
-  return buildArrayLValue(lookupValue(var, NULL), idx);
-}
-
-const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const IQLToLLVMValue * val,
-								const IQLToLLVMValue * idx)
+const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const IQLToLLVMValue * arr,
+                                                                const FieldType * arrType,
+                                                                const IQLToLLVMValue * idx,
+                                                                const FieldType * idxType,
+                                                                const FieldType * retType)
 {
   llvm::Module * m = LLVMModule;
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function *f = b->GetInsertBlock()->getParent();
-  llvm::Value * lval = val->getValue();
+  llvm::Value * lval = arr->getValue();
 
   // Convert index to int64
   // TODO: Not handling NULL so type check should be enforcing this!
   llvm::Value * idxVal = idx->getValue();
   idxVal = b->CreateSExt(idxVal, b->getInt64Ty());
 
-  // TODO: The "should" be a pointer to an array type and for us to GEP it
-  // we need to bitcast to a pointer to the element type.
-  // However...  There is a hack that we are being backward compatible
-  // with for the moment that allows one to array reference a scalar
-  // which is already a pointer to element type!
-  const llvm::PointerType * ptrType = llvm::dyn_cast<llvm::PointerType>(lval->getType());
-  llvm::Type * lvalType = ptrType->getPointerElementType();
-  BOOST_ASSERT(ptrType != NULL);
-  const llvm::ArrayType * arrayType = llvm::dyn_cast<llvm::ArrayType>(ptrType->getElementType());
-  if (arrayType) {    
+  const FixedArrayType * fixedArrType = reinterpret_cast<const FixedArrayType *>(arrType);
+  llvm::Value * dataPtr = getFixedArrayData(arr, arrType);
+  dataPtr = b->CreateGEP(fixedArrType->getElementType()->LLVMGetType(this),
+                         dataPtr,
+                         idxVal,
+                         "arrayLValue");
+  const IQLToLLVMValue * iqlDataPtr = IQLToLLVMValue::get(this, dataPtr, IQLToLLVMValue::eLocal);
+  if (fixedArrType->getElementType()->isNullable()) {
+    // This means an array of nullable elements.
+    llvm::Value * nullPtr = getFixedArrayNull(arr, arrType);
+    llvm::Value * bytePos = b->CreateLShr(idxVal, 3);
+    llvm::Value * mask = b->CreateShl(b->getInt8(1), b->CreateTrunc(b->CreateSub(idxVal, b->CreateShl(bytePos, 3)), b->getInt8Ty()));
+    llvm::Value * nullBytePtr = b->CreateGEP(b->getInt8Ty(),
+                                             nullPtr,
+                                             bytePos,
+                                             "arrayIsNull");
+    return new IQLToLLVMArrayElement(iqlDataPtr, nullBytePtr, mask);
+  } else {
+    // This includes the case of an array of non-nullable elements
+
     // Seeing about 50% performance overhead for the bounds checking.
     // Not implementing this until I have some optimization mechanism
     // for safely removing them in some cases (perhaps using LLVM).
 
+    // const llvm::PointerType * ptrType = llvm::dyn_cast<llvm::PointerType>(lval->getType());
+    // llvm::Type * lvalType = ptrType->getPointerElementType();
+    // BOOST_ASSERT(ptrType != NULL);
     // llvm::Value * lowerBound = b->CreateICmpSLT(idxVal,
     // 						b->getInt64(0));
     // llvm::Value * upperBound = b->CreateICmpSGE(idxVal,
@@ -739,19 +785,19 @@ const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const IQLToLLVMV
     // // throw in the called function.
     // b->CreateBr(goodBlock);
 
-    // // Array check good: emit the value.
-    // b->SetInsertPoint(goodBlock);
-    lvalType = arrayType->getElementType();
-    lval = b->CreateBitCast(lval, llvm::PointerType::get(lvalType,0));
-  }
-  
-  // GEP to get pointer to the correct offset.
-  llvm::Value * gepIndexes[1] = { idxVal };
-  lval = b->CreateInBoundsGEP(lvalType, lval, llvm::ArrayRef<llvm::Value*>(&gepIndexes[0], &gepIndexes[1]));
-  return new IQLToLLVMLocal(IQLToLLVMValue::get(this, 
-						lval,
-						IQLToLLVMValue::eLocal),
-			    NULL);
+    // // // Array check good: emit the value.
+    // // b->SetInsertPoint(goodBlock);
+    // lvalType = arrayType->getElementType();
+    // lval = b->CreateBitCast(lval, llvm::PointerType::get(lvalType,0));
+    // // GEP to get pointer to the correct offset.
+    // llvm::Value * gepIndexes[1] = { idxVal };
+    // lval = b->CreateInBoundsGEP(lvalType, lval, llvm::ArrayRef<llvm::Value*>(&gepIndexes[0], &gepIndexes[1]));
+    // return new IQLToLLVMLocal(IQLToLLVMValue::get(this, 
+    //                                               lval,
+    //                                               IQLToLLVMValue::eLocal),
+    //                           NULL);
+    return new IQLToLLVMArrayElement(iqlDataPtr);
+  }  
 }
 
 IQLToLLVMValue::ValueType 
@@ -1303,6 +1349,34 @@ const IQLToLLVMValue * CodeGenerationContext::buildCastVarchar(const IQLToLLVMVa
 							       const FieldType * retType)
 {
   return buildNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCastVarchar);
+}
+
+// Return pointer of element type pointing to beginning of fixed array data
+llvm::Value * CodeGenerationContext::getFixedArrayData(const IQLToLLVMValue * e, const FieldType * ty)
+{
+  BOOST_ASSERT(FieldType::FIXED_ARRAY == ty->GetEnum());
+  const FixedArrayType * arrTy = reinterpret_cast<const FixedArrayType*>(ty);
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Value * ptr = e->getValue();
+  ptr = b->CreateBitCast(ptr, b->getInt8PtrTy());
+  // GEP to get pointer to data and cast back to pointer to element
+  return b->CreateBitCast(b->CreateGEP(b->getInt8Ty(), ptr, b->getInt64(arrTy->GetDataOffset()), ""),
+                          llvm::PointerType::get(arrTy->getElementType()->LLVMGetType(this), 0));
+}
+
+// Return int8Ptr pointing to beginning of fixed array null bitmask
+llvm::Value * CodeGenerationContext::getFixedArrayNull(const IQLToLLVMValue * e, const FieldType * ty)
+{
+  BOOST_ASSERT(FieldType::FIXED_ARRAY == ty->GetEnum());
+  const FixedArrayType * arrTy = reinterpret_cast<const FixedArrayType*>(ty);
+  if(!arrTy->getElementType()->isNullable()) {
+    return nullptr;
+  }
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Value * ptr = e->getValue();
+  ptr = b->CreateBitCast(ptr, b->getInt8PtrTy());
+  // GEP to get pointer to offset
+  return b->CreateGEP(b->getInt8Ty(), ptr, b->getInt64(arrTy->GetNullOffset()), "");
 }
 
 IQLToLLVMValue::ValueType 
@@ -2955,7 +3029,7 @@ CodeGenerationContext::buildArrayElementwiseCompare(const IQLToLLVMValue * lhs,
   // SET ret = CASE WHEN notDone AND rhs[idx] < lhs[idx] THEN 0 ELSE ret END
   buildBeginAnd(int32Type);
   buildAddAnd(buildRef(notDone, int32Type), int32Type, int32Type);
-  pred = buildAnd(buildCompare(buildArrayRef(rhs, idx, eltType), eltType, buildArrayRef(lhs, idx, eltType), eltType, int32Type, op), int32Type, int32Type);
+  pred = buildAnd(buildCompare(buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, int32Type, op), int32Type, int32Type);
   buildCaseBlockBegin(int32Type);
   buildCaseBlockIf(pred);
   buildCaseBlockThen(zero, int32Type, int32Type, false);
@@ -2972,7 +3046,7 @@ CodeGenerationContext::buildArrayElementwiseCompare(const IQLToLLVMValue * lhs,
   // SET ret = CASE WHEN notDone AND lhs[idx] < rhs[idx] THEN 1 ELSE ret END
   buildBeginAnd(int32Type);
   buildAddAnd(buildRef(notDone, int32Type), int32Type, int32Type);
-  pred = buildAnd(buildCompare(buildArrayRef(lhs, idx, eltType), eltType, buildArrayRef(rhs, idx, eltType), eltType, int32Type, op), int32Type, int32Type);
+  pred = buildAnd(buildCompare(buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, int32Type, op), int32Type, int32Type);
   buildCaseBlockBegin(int32Type);
   buildCaseBlockIf(pred);
   buildCaseBlockThen(one, int32Type, int32Type, false);
@@ -3100,17 +3174,18 @@ CodeGenerationContext::buildCompare(const IQLToLLVMValue * lhs,
       return IQLToLLVMValue::eLocal;
     } else {
       const FieldType * eltType = reinterpret_cast<const FixedArrayType*>(promoted)->getElementType();
-      auto idx = IQLToLLVMValue::get(this, b->getInt32(0), IQLToLLVMValue::eLocal); 
+      auto idx = IQLToLLVMValue::get(this, b->getInt32(0), IQLToLLVMValue::eLocal);
+      const FieldType * idxTy = Int32Type::Get(promoted->getContext(), false);
       const IQLToLLVMValue * cmp = nullptr;
       switch(op) {
       case IQLToLLVMOpEQ:
       case IQLToLLVMOpNE:
-        cmp = buildCompare(buildArrayRef(lhs, idx, eltType), eltType, buildArrayRef(rhs, idx, eltType), eltType, retType, IQLToLLVMOpEQ);
+        cmp = buildCompare(buildArrayRef(lhs, promoted, idx, idxTy, eltType), eltType, buildArrayRef(rhs, promoted, idx, idxTy, eltType), eltType, retType, IQLToLLVMOpEQ);
         for(std::size_t i=1; i<promoted->GetSize(); ++i) {
           buildBeginAnd(retType);
           buildAddAnd(cmp, retType, retType);
           idx = IQLToLLVMValue::get(this, b->getInt32(i), IQLToLLVMValue::eLocal); 
-          cmp = buildAnd(buildCompare(buildArrayRef(lhs, idx, eltType), eltType, buildArrayRef(rhs, idx, eltType), eltType, retType, IQLToLLVMOpEQ), retType, retType);
+          cmp = buildAnd(buildCompare(buildArrayRef(lhs, promoted, idx, idxTy, eltType), eltType, buildArrayRef(rhs, promoted, idx, idxTy, eltType), eltType, retType, IQLToLLVMOpEQ), retType, retType);
         }
         if (IQLToLLVMOpNE == op) {
           cmp = buildNot(cmp, retType, retType);

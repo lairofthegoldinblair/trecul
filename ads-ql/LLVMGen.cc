@@ -397,12 +397,17 @@ IQLToLLVMValueRef IQLToLLVMBuildVariableRef(IQLCodeGenerationContextRef ctxtRef,
 }
 
 IQLToLLVMValueRef IQLToLLVMBuildArrayRef(IQLCodeGenerationContextRef ctxtRef, 
-					 const char * var,
-					 IQLToLLVMValueRef idx,
-					 void * elementAttrs) 
+                                         IQLToLLVMValueRef arr,
+                                         void * arrAttrs,
+                                         IQLToLLVMValueRef idx,
+                                         void * idxAttrs,
+                                         void * retAttrs)
 {
   CodeGenerationContext * ctxt = unwrap(ctxtRef);
-  return wrap(ctxt->buildArrayRef(var, unwrap(idx), (const FieldType *) elementAttrs));
+  const FieldType * arrType = (const FieldType *) arrAttrs;
+  const FieldType * idxType = (const FieldType *) idxAttrs;
+  const FieldType * retType = (const FieldType *) retAttrs;
+  return wrap(ctxt->buildArrayRef(unwrap(arr), arrType, unwrap(idx), idxType, retType));
 }
 
 IQLToLLVMValueRef IQLToLLVMBuildArray(IQLCodeGenerationContextRef ctxtRef, 
@@ -422,11 +427,17 @@ IQLToLLVMLValueRef IQLToLLVMBuildLValue(IQLCodeGenerationContextRef ctxtRef,
 }
 
 IQLToLLVMLValueRef IQLToLLVMBuildArrayLValue(IQLCodeGenerationContextRef ctxtRef, 
-					     const char * var,
-					     IQLToLLVMValueRef idx)
+                                             IQLToLLVMValueRef arr,
+                                             void * arrAttrs,
+                                             IQLToLLVMValueRef idx,
+                                             void * idxAttrs,
+                                             void * retAttrs)
 {
   CodeGenerationContext * ctxt = unwrap(ctxtRef);
-  return wrap(ctxt->buildArrayLValue(var, unwrap(idx)));
+  const FieldType * arrType = (const FieldType *) arrAttrs;
+  const FieldType * idxType = (const FieldType *) idxAttrs;
+  const FieldType * retType = (const FieldType *) retAttrs;
+  return wrap(ctxt->buildArrayLValue(unwrap(arr), arrType, unwrap(idx), idxType, retType));
 }
 
 void IQLToLLVMCaseBlockBegin(IQLCodeGenerationContextRef ctxtRef, void * caseAttrs)
@@ -745,10 +756,10 @@ void IQLTypeCheckSetValue2(IQLTypeCheckContextRef ctxt,
 }
 
 IQLFieldTypeRef IQLTypeCheckArrayRef(IQLTypeCheckContextRef ctxt, 
-				     const char * nm,
+				     IQLFieldTypeRef arr,
 				     IQLFieldTypeRef idx)
 {
-  return wrap(unwrap(ctxt)->buildArrayRef(nm, unwrap(idx)));
+  return wrap(unwrap(ctxt)->buildArrayRef(unwrap(arr), unwrap(idx)));
 }
 
 IQLFieldTypeRef IQLTypeCheckBuildVariableRef(IQLTypeCheckContextRef ctxt, 

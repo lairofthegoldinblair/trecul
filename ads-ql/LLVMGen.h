@@ -247,15 +247,21 @@ extern "C" {
   IQLToLLVMLValueRef IQLToLLVMBuildLValue(IQLCodeGenerationContextRef ctxt, 
 					  const char * var);
   IQLToLLVMLValueRef IQLToLLVMBuildArrayLValue(IQLCodeGenerationContextRef ctxt, 
-					       const char * var,
-					       IQLToLLVMValueRef idx);
+                                               IQLToLLVMValueRef arr,
+                                               void * arrAttrs,
+                                               IQLToLLVMValueRef idx,
+                                               void * idxAttrs,
+                                               void * retAttrs);
 
   IQLToLLVMValueRef IQLToLLVMBuildVariableRef(IQLCodeGenerationContextRef ctxt, const char * var, const char * var2,
 					      void * varAttrs);
   IQLToLLVMValueRef IQLToLLVMBuildArrayRef(IQLCodeGenerationContextRef ctxt, 
-					   const char * var,
-					   IQLToLLVMValueRef idx,
-					   void * elementAttrs);
+                                           IQLToLLVMValueRef arr,
+                                           void * arrAttrs,
+                                           IQLToLLVMValueRef idx,
+                                           void * idxAttrs,
+                                           void * retAttrs);
+
   /**
    * Array constructor
    */
@@ -403,7 +409,7 @@ extern "C" {
    * Get the type of an array variable.
    */
   IQLFieldTypeRef IQLTypeCheckArrayRef(IQLTypeCheckContextRef ctxt, 
-				       const char * nm,
+				       IQLFieldTypeRef arr,
 				       IQLFieldTypeRef idx);
 
   /**

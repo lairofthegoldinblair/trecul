@@ -52,6 +52,40 @@
 #include "decimal128.h"
 #include "md5.h"
 
+void FieldAddress::setArrayNull(RecordBuffer buffer, const FixedArrayType * ty, int32_t idx) const
+{
+  if (!ty->getElementType()->isNullable()) {
+    return;
+  }
+  int32_t nullByte = idx >> 3;
+  uint8_t mask = 1U << (idx - (nullByte << 3));
+  uint8_t * nullBytePtr = (buffer.Ptr + mOffset + ty->GetNullOffset() + nullByte);
+  *nullBytePtr &= (~mask);
+}
+
+void FieldAddress::clearArrayNull(RecordBuffer buffer, const FixedArrayType * ty, int32_t idx) const
+{
+  if (!ty->getElementType()->isNullable()) {
+    return;
+  }
+  int32_t nullByte = idx >> 3;
+  uint8_t mask = 1U << (idx - (nullByte << 3));
+  uint8_t * nullBytePtr = (buffer.Ptr + mOffset + ty->GetNullOffset() + nullByte);
+  *nullBytePtr |= mask;
+}
+
+bool FieldAddress::isArrayNull(RecordBuffer buffer, const FixedArrayType * ty, int32_t idx) const
+{
+  if (!ty->getElementType()->isNullable()) {
+    return false;
+  }
+  int32_t nullByte = idx >> 3;
+  uint8_t mask = 1U << (idx - (nullByte << 3));
+  uint8_t * nullBytePtr = (buffer.Ptr + mOffset + ty->GetNullOffset() + nullByte);
+  uint8_t ret = *nullBytePtr & mask;
+  return ret == 0;
+}
+  
 llvm::Value * FieldAddress::getPointer(const std::string& member, 
 				       CodeGenerationContext * ctxt, 
 				       llvm::Value * basePointer) const
@@ -869,7 +903,26 @@ FixedArrayType * FixedArrayType::Get(DynamicRecordContext& ctxt,
 
 llvm::Type * FixedArrayType::LLVMGetType(CodeGenerationContext * ctxt) const
 {
-  return llvm::ArrayType::get(mElementTy->LLVMGetType(ctxt), (unsigned) GetSize());
+  if (getElementType()->isNullable()) {
+    llvm::Type * fixedArrayMembers[2];
+    fixedArrayMembers[0] = llvm::ArrayType::get(mElementTy->LLVMGetType(ctxt), (unsigned) GetSize());
+    fixedArrayMembers[1] = llvm::ArrayType::get(ctxt->LLVMBuilder->getInt8Ty(), GetNullSize());
+    llvm::StructType * structTy =  llvm::StructType::get(*ctxt->LLVMContext,
+                                                         llvm::makeArrayRef(&fixedArrayMembers[0], 2),
+                                                         0);
+    llvm::DataLayout dl("");
+    const llvm::StructLayout * layout = dl.getStructLayout(structTy);
+    BOOST_ASSERT(layout->getElementOffset(0) == GetDataOffset());
+    BOOST_ASSERT(layout->getElementOffset(1) == GetNullOffset());
+    if (layout->getSizeInBytes() != GetAllocSize()) {
+      throw std::runtime_error((boost::format("layout->getSizeInBytes() != GetAllocSize(); layout->getSizeInBytes() = %1% GetAllocSize() = %2%") %
+                                layout->getSizeInBytes() %
+                                GetAllocSize()).str());
+    }
+    return structTy;
+  } else {
+    return llvm::ArrayType::get(mElementTy->LLVMGetType(ctxt), (unsigned) GetSize());
+  }
 }
 
 FixedArrayType::~FixedArrayType()
@@ -1945,10 +1998,22 @@ void RecordType::setInt64(const std::string& field, int64_t val, RecordBuffer bu
   mMemberOffsets[it->second].setInt64(val,buf);
 }
 
+void RecordType::setArrayInt64(const std::string& field, int32_t idx, int64_t val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  *mMemberOffsets[it->second].getArrayInt64Ptr(buf, idx) = val;
+}
+
 void RecordType::setDouble(const std::string& field, double val, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
   mMemberOffsets[it->second].setDouble(val,buf);
+}
+
+void RecordType::setArrayDouble(const std::string& field, int32_t idx, double val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  *mMemberOffsets[it->second].getArrayDoublePtr(buf, idx) = val;
 }
 
 void RecordType::setDatetime(const std::string& field, 
@@ -1990,6 +2055,12 @@ int32_t RecordType::getInt32(const std::string& field, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
   return mMemberOffsets[it->second].getInt32(buf);
+}
+
+int32_t RecordType::getArrayInt32(const std::string& field, int32_t idx, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].getArrayInt32(buf, idx);
 }
 
 int64_t RecordType::getInt64(const std::string& field, RecordBuffer buf) const
