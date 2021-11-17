@@ -890,10 +890,22 @@ IQLFieldTypeRef IQLTypeCheckBuildInt64Type(IQLTypeCheckContextRef ctxtRef, int n
   return wrap(ctxt->buildInt64Type(nullable != 0));
 }
 
+IQLFieldTypeRef IQLTypeCheckBuildInt64ArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildInt64Type(), nullable != 0));
+}
+
 IQLFieldTypeRef IQLTypeCheckBuildDoubleType(IQLTypeCheckContextRef ctxtRef, int nullable)
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
   return wrap(ctxt->buildDoubleType(nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildDoubleArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildDoubleType(), nullable != 0));
 }
 
 IQLFieldTypeRef IQLTypeCheckBuildDecimalType(IQLTypeCheckContextRef ctxtRef, int nullable)
@@ -902,16 +914,34 @@ IQLFieldTypeRef IQLTypeCheckBuildDecimalType(IQLTypeCheckContextRef ctxtRef, int
   return wrap(ctxt->buildDecimalType(nullable != 0));
 }
 
+IQLFieldTypeRef IQLTypeCheckBuildDecimalArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildDecimalType(), nullable != 0));
+}
+
 IQLFieldTypeRef IQLTypeCheckBuildDatetimeType(IQLTypeCheckContextRef ctxtRef, int nullable)
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
   return wrap(ctxt->buildDatetimeType(nullable != 0));
 }
 
+IQLFieldTypeRef IQLTypeCheckBuildDatetimeArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildDatetimeType(), nullable != 0));
+}
+
 IQLFieldTypeRef IQLTypeCheckBuildDateType(IQLTypeCheckContextRef ctxtRef, int nullable)
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
   return wrap(ctxt->buildDateType(nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildDateArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildDateType(), nullable != 0));
 }
 
 IQLFieldTypeRef IQLTypeCheckBuildNVarcharType(IQLTypeCheckContextRef ctxtRef, int nullable)
@@ -938,6 +968,12 @@ IQLFieldTypeRef IQLTypeCheckBuildBooleanType(IQLTypeCheckContextRef ctxtRef, int
   return wrap(ctxt->buildBooleanType(nullable != 0));
 }
 
+IQLFieldTypeRef IQLTypeCheckBuildBooleanArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildBooleanType(), nullable != 0));
+}
+
 IQLFieldTypeRef IQLTypeCheckBuildNilType(IQLTypeCheckContextRef ctxtRef)
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
@@ -949,6 +985,14 @@ IQLFieldTypeRef IQLTypeCheckBuildType(IQLTypeCheckContextRef ctxtRef,
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
   return wrap(ctxt->buildType(typeName, nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildArrayType(IQLTypeCheckContextRef ctxtRef,
+                                           const char * typeName, const char * sz,
+                                           int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildType(typeName, false), nullable != 0));
 }
 
 void IQLTypeCheckBeginCase(IQLTypeCheckContextRef ctxtRef)

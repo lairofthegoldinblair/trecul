@@ -169,7 +169,7 @@ builtInType [IQLCodeGenerationContextRef ctxt] returns [void * llvmType]
 
 arrayTypeSpec
     :
-    ^(ARRAY (DECIMAL_INTEGER_LITERAL)?)
+    ^(TK_ARRAY (DECIMAL_INTEGER_LITERAL)?)
     ;
 
 typeNullability
@@ -246,7 +246,7 @@ expression[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMValueRef llvmVal,
     | ^(c=TK_MAX { IQLToLLVMBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildAggregateFunction($ctxt, (char *) $TK_MAX.text->chars, e1.llvmVal, $c->u); } )
     | ^(c=TK_MIN { IQLToLLVMBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildAggregateFunction($ctxt, (char *) $TK_MIN.text->chars, e1.llvmVal, $c->u); } )
     | ^(TK_INTERVAL intervalType = ID e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildInterval($ctxt, (const char *)$intervalType.text->chars, e1.llvmVal); } )
-    | ^(c=ARRAY { values = IQLToLLVMValueVectorCreate(); } (e1 = expression[$ctxt] { IQLToLLVMValueVectorPushBack(values, e1.llvmVal, $e1.start->u); })* { $llvmVal = IQLToLLVMBuildArray($ctxt, values, $c->u); IQLToLLVMValueVectorFree(values); })
+    | ^(c=TK_ARRAY { values = IQLToLLVMValueVectorCreate(); } (e1 = expression[$ctxt] { IQLToLLVMValueVectorPushBack(values, e1.llvmVal, $e1.start->u); })* { $llvmVal = IQLToLLVMBuildArray($ctxt, values, $c->u); IQLToLLVMValueVectorFree(values); })
     ;    
 
 whenExpression[IQLCodeGenerationContextRef ctxt, void * attr]

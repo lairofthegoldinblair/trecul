@@ -45,7 +45,6 @@ tokens {
   LITERAL_CAST;
   DATETIME_LITERAL;
   DECIMAL_BIGINT_LITERAL; 
-  ARRAY;
 }
 
 graph
@@ -153,36 +152,36 @@ variableDeclaration
 	;
 
 builtInTypeNoNull
-	: (TK_INTEGER^ ('['! DECIMAL_INTEGER_LITERAL ']'!)? 
-	  | TK_DOUBLE^ (TK_PRECISION!) 
+	: (TK_INTEGER^ (arrayTypeSpec)?
+	  | TK_DOUBLE^ (TK_PRECISION!) (arrayTypeSpec)?
 	  | TK_CHAR^ '('! DECIMAL_INTEGER_LITERAL ')'!
 	  | TK_VARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? 
 	  | TK_NVARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? 
-	  | TK_DECIMAL^ 
-	  | TK_BOOLEAN^ 
-	  | TK_DATETIME^ 
-      | TK_BIGINT^ 
-	  | ID^ 
+	  | TK_DECIMAL^ (arrayTypeSpec)?
+	  | TK_BOOLEAN^ (arrayTypeSpec)?
+	  | TK_DATETIME^ (arrayTypeSpec)?
+      | TK_BIGINT^ (arrayTypeSpec)?
+	  | ID^ (arrayTypeSpec)?
         ) 
 	;
 
 builtInType
 	: (TK_INTEGER^ (arrayTypeSpec)? 
-	  | TK_DOUBLE^ (TK_PRECISION!) 
+	  | TK_DOUBLE^ (TK_PRECISION!) (arrayTypeSpec)?
 	  | TK_CHAR^ '('! DECIMAL_INTEGER_LITERAL ')'!
 	  | TK_VARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? 
 	  | TK_NVARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? 
-	  | TK_DECIMAL^ 
-	  | TK_BOOLEAN^ 
-	  | TK_DATETIME^ 
-      | TK_BIGINT^ 
-	  | ID^ 
+	  | TK_DECIMAL^ (arrayTypeSpec)?
+	  | TK_BOOLEAN^ (arrayTypeSpec)?
+	  | TK_DATETIME^ (arrayTypeSpec)?
+      | TK_BIGINT^ (arrayTypeSpec)?
+	  | ID^ (arrayTypeSpec)?
         ) typeNullability?
 	;
 
 arrayTypeSpec
     :
-    '[' sz=DECIMAL_INTEGER_LITERAL? ']' -> ^(ARRAY $sz?)
+    '[' sz=DECIMAL_INTEGER_LITERAL? ']' -> ^(TK_ARRAY $sz?)
     ;
 
 typeNullability
@@ -502,12 +501,12 @@ primaryExpression
 	| ID '['^ expression ']'!
   | TK_NULL
   | '('! expression ')'!
-  | arrayExpression
+  | arrayConstructor
 	);
 
-arrayExpression
+arrayConstructor
 	:
-    '[' expressionList ']' -> ^(ARRAY expressionList)
+    TK_ARRAY '[' expressionList ']' -> ^(TK_ARRAY expressionList)
 	;
 
 //Lexer
@@ -516,6 +515,7 @@ TK_ALL : 'ALL';
 TK_ALTER : 'ALTER';
 TK_AND : 'AND';
 TK_ANY : 'ANY';
+TK_ARRAY : 'ARRAY';
 TK_AS : 'AS';
 TK_ASC : 'ASC';
 TK_AVG : 'AVG';
@@ -578,6 +578,7 @@ TK_RETURN : 'RETURN';
 TK_RETURNS : 'RETURNS';
 TK_RIGHT : 'RIGHT';
 TK_RLIKE : 'RLIKE';
+TK_ROW : 'ROW';
 TK_SELECT : 'SELECT';
 TK_SET : 'SET';
 TK_SOME : 'SOME';

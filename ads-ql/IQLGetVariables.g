@@ -89,7 +89,7 @@ builtInType[IQLGetVariablesContextRef ctxt]
 
 arrayTypeSpec
     :
-    ^(ARRAY (DECIMAL_INTEGER_LITERAL)?)
+    ^(TK_ARRAY (DECIMAL_INTEGER_LITERAL)?)
     ;
 
 typeNullability
@@ -149,7 +149,7 @@ expression[IQLGetVariablesContextRef ctxt]
     | ^(TK_MAX { IQLGetVariablesBeginAggregateFunction($ctxt); } expression[$ctxt] { IQLGetVariablesBuildAggregateFunction($ctxt); })
     | ^(TK_MIN { IQLGetVariablesBeginAggregateFunction($ctxt); } expression[$ctxt] { IQLGetVariablesBuildAggregateFunction($ctxt); })
     | ^(TK_INTERVAL ID expression[$ctxt])
-    | ^(ARRAY (expression[$ctxt])*)
+    | ^(TK_ARRAY (expression[$ctxt])*)
     ;    
 
 whenExpression[IQLGetVariablesContextRef ctxt]

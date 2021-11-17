@@ -938,7 +938,9 @@ public:
    * Interface to the FIXED_ARRAY datatype.
    */
   llvm::Value * getFixedArrayData(const IQLToLLVMValue * e, const FieldType * ty);
+  llvm::Value * getFixedArrayData(llvm::Value * ptr, const FieldType * ty);
   llvm::Value * getFixedArrayNull(const IQLToLLVMValue * e, const FieldType * ty);
+  llvm::Value * getFixedArrayNull(llvm::Value * ptr, const FieldType * ty);
   
   /**
    * Reuse of local variables so that we don't put too much pressure

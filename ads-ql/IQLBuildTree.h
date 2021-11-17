@@ -38,16 +38,23 @@ extern "C" {
   IQLFieldTypeRef IQLBuildInt32Type(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildInt32ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildInt64Type(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildInt64ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildDoubleType(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildDoubleArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildDecimalType(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildDecimalArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildDateType(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildDateArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildDatetimeType(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildDatetimeArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildNVarcharType(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildVarcharType(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildCharType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildBooleanType(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildBooleanArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildNilType(IQLTreeFactoryRef ctxtRef);
   IQLFieldTypeRef IQLBuildType(IQLTreeFactoryRef ctxtRef, const char * typeName, int nullable);
+  IQLFieldTypeRef IQLBuildArrayType(IQLTreeFactoryRef ctxtRef, const char * typeName, const char * sz, int nullable);
 
   IQLExpressionListRef IQLExpressionListCreate(IQLTreeFactoryRef ctxtRef);
   void IQLExpressionListFree(IQLTreeFactoryRef ctxtRef,

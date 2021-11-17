@@ -198,15 +198,15 @@ nullable=0;
 array=NULL;
 }
 	: ^(c=TK_INTEGER (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildInt32ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildInt32Type($ctxt, nullable); $c->u = $ty; }
-	  | ^(c=TK_DOUBLE (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildDoubleType($ctxt, nullable); $c->u = $ty; }
+	  | ^(c=TK_DOUBLE (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildDoubleArrayType($ctxt, array, nullable) : IQLTypeCheckBuildDoubleType($ctxt, nullable); $c->u = $ty; }
 	  | ^(c=TK_CHAR DECIMAL_INTEGER_LITERAL (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildCharType($ctxt, (const char *) $DECIMAL_INTEGER_LITERAL.text->chars, nullable); $c->u = $ty; }
 	  | ^(c=TK_VARCHAR (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildVarcharType($ctxt, nullable); $c->u = $ty; }
 	  | ^(c=TK_NVARCHAR (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildNVarcharType($ctxt, nullable); $c->u = $ty; }
-	  | ^(c=TK_DECIMAL (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildDecimalType($ctxt, nullable); $c->u = $ty; } 
-	  | ^(c=TK_BOOLEAN (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildBooleanType($ctxt, nullable); $c->u = $ty; } 
-	  | ^(c=TK_DATETIME (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildDatetimeType($ctxt, nullable); $c->u = $ty; } 
-      | ^(c=TK_BIGINT (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildInt64Type($ctxt, nullable); $c->u = $ty; }
-	  | ^(c=ID (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildType($ctxt, (const char *) $ID.text->chars, nullable); $c->u = $ty; } 
+	  | ^(c=TK_DECIMAL (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildDecimalArrayType($ctxt, array, nullable) : IQLTypeCheckBuildDecimalType($ctxt, nullable); $c->u = $ty; } 
+	  | ^(c=TK_BOOLEAN (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildBooleanArrayType($ctxt, array, nullable) : IQLTypeCheckBuildBooleanType($ctxt, nullable); $c->u = $ty; } 
+	  | ^(c=TK_DATETIME (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildDatetimeArrayType($ctxt, array, nullable) : IQLTypeCheckBuildDatetimeType($ctxt, nullable); $c->u = $ty; } 
+      | ^(c=TK_BIGINT (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildInt64ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildInt64Type($ctxt, nullable); $c->u = $ty; }
+	  | ^(c=ID (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildArrayType($ctxt, (const char *) $ID.text->chars, array, nullable) : IQLTypeCheckBuildType($ctxt, (const char *) $ID.text->chars, nullable); $c->u = $ty; } 
 	;
 
 arrayTypeSpec returns [const char * sz]
@@ -214,7 +214,7 @@ arrayTypeSpec returns [const char * sz]
     sz = "infinity";
 }
     :
-    ^(ARRAY (DECIMAL_INTEGER_LITERAL { sz = (const char *) $DECIMAL_INTEGER_LITERAL.text->chars; })?)
+    ^(TK_ARRAY (DECIMAL_INTEGER_LITERAL { sz = (const char *) $DECIMAL_INTEGER_LITERAL.text->chars; })?)
     ;
 
 typeNullability returns [int nullable]
@@ -288,7 +288,7 @@ $ty = NULL;
     | ^(TK_MAX { IQLTypeCheckBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildAggregateFunction($ctxt, e1.ty); $TK_MAX->u = $ty; } )
     | ^(TK_MIN { IQLTypeCheckBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildAggregateFunction($ctxt, e1.ty); $TK_MIN->u = $ty; } )
     | ^(TK_INTERVAL intervalType = ID e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildInterval($ctxt, (const char *) $intervalType.text->chars, e1.ty); $TK_INTERVAL->u = $ty; } )
-    | ^(c=ARRAY { types = IQLFieldTypeVectorCreate(); } (e1 = expression[$ctxt] { IQLFieldTypeVectorPushBack(types, e1.ty); })*) 
+    | ^(c=TK_ARRAY { types = IQLFieldTypeVectorCreate(); } (e1 = expression[$ctxt] { IQLFieldTypeVectorPushBack(types, e1.ty); })*) 
         { $ty = IQLTypeCheckArray($ctxt, types); IQLFieldTypeVectorFree(types); $c->u = $ty; }
     ;    
 

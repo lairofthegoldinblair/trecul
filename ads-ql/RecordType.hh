@@ -1594,8 +1594,10 @@ public:
   int32_t getInt32(const std::string& field, RecordBuffer buf) const;
   int32_t getArrayInt32(const std::string& field, int32_t idx, RecordBuffer buf) const;
   int64_t getInt64(const std::string& field, RecordBuffer buf) const;
+  int64_t getArrayInt64(const std::string& field, int32_t idx, RecordBuffer buf) const;
   double getDouble(const std::string& field, RecordBuffer buf) const;
   Varchar * getVarcharPtr(const std::string& field, RecordBuffer buf) const;
+  bool isArrayNull(const std::string& field, const class FixedArrayType * ft, int32_t idx, RecordBuffer buf) const;
 };
 
 class IQLRecordTypeBuilder

@@ -132,15 +132,15 @@ nullable=0;
 array=NULL;
 }
 	: ^(c=TK_INTEGER (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildInt32ArrayType($ctxt, array, nullable) : IQLBuildInt32Type($ctxt, nullable); }
-	  | ^(c=TK_DOUBLE (nullable=typeNullability)?) { $ty = IQLBuildDoubleType($ctxt, nullable); }
+	  | ^(c=TK_DOUBLE (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildDoubleArrayType($ctxt, array, nullable) : IQLBuildDoubleType($ctxt, nullable); }
 	  | ^(c=TK_CHAR DECIMAL_INTEGER_LITERAL (nullable=typeNullability)?) { $ty = IQLBuildCharType($ctxt, (const char *) $DECIMAL_INTEGER_LITERAL.text->chars, nullable); }
 	  | ^(c=TK_VARCHAR (nullable=typeNullability)?) { $ty = IQLBuildVarcharType($ctxt, nullable); }
 	  | ^(c=TK_NVARCHAR (nullable=typeNullability)?) { $ty = IQLBuildNVarcharType($ctxt, nullable); }
-	  | ^(c=TK_DECIMAL (nullable=typeNullability)?) { $ty = IQLBuildDecimalType($ctxt, nullable); } 
-	  | ^(c=TK_BOOLEAN (nullable=typeNullability)?) { $ty = IQLBuildBooleanType($ctxt, nullable); } 
-	  | ^(c=TK_DATETIME (nullable=typeNullability)?) { $ty = IQLBuildDatetimeType($ctxt, nullable); } 
-      | ^(c=TK_BIGINT (nullable=typeNullability)?) { $ty = IQLBuildInt64Type($ctxt, nullable); }
-	  | ^(c=ID (nullable=typeNullability)?) { $ty = IQLBuildType($ctxt, (const char *) $ID.text->chars, nullable); } 
+	  | ^(c=TK_DECIMAL (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildDecimalArrayType($ctxt, array, nullable) : IQLBuildDecimalType($ctxt, nullable); } 
+	  | ^(c=TK_BOOLEAN (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildBooleanArrayType($ctxt, array, nullable) : IQLBuildBooleanType($ctxt, nullable); } 
+	  | ^(c=TK_DATETIME (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildDatetimeArrayType($ctxt, array, nullable) : IQLBuildDatetimeType($ctxt, nullable); } 
+      | ^(c=TK_BIGINT (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildInt64ArrayType($ctxt, array, nullable) : IQLBuildInt64Type($ctxt, nullable); }
+	  | ^(c=ID (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildArrayType($ctxt, (const char *) $ID.text->chars, array, nullable) : IQLBuildType($ctxt, (const char *) $ID.text->chars, nullable); } 
 	;
 
 arrayTypeSpec returns [const char * sz]
@@ -148,7 +148,7 @@ arrayTypeSpec returns [const char * sz]
     sz = "infinity";
 }
     :
-    ^(ARRAY (DECIMAL_INTEGER_LITERAL { sz = (const char *) $DECIMAL_INTEGER_LITERAL.text->chars; })?)
+    ^(TK_ARRAY (DECIMAL_INTEGER_LITERAL { sz = (const char *) $DECIMAL_INTEGER_LITERAL.text->chars; })?)
     ;
 
 typeNullability returns [int nullable]
@@ -252,7 +252,7 @@ expression[IQLTreeFactoryRef ctxt] returns [IQLExpressionRef e]
     | ^(t=TK_MAX e1=expression[$ctxt] { $e = IQLBuildUnaryFun($ctxt, "MAX", e1, $t->getLine($t), $t->getCharPositionInLine($t)); } )
     | ^(t=TK_MIN e1=expression[$ctxt] { $e = IQLBuildUnaryFun($ctxt, "MIN", e1, $t->getLine($t), $t->getCharPositionInLine($t)); } )
     | ^(t=TK_INTERVAL fun=ID e1=expression[$ctxt] { $e = IQLBuildInterval($ctxt, (const char *)$fun.text->chars, e1, $t->getLine($t), $t->getCharPositionInLine($t)); })
-    | ^(t=ARRAY { l = IQLExpressionListCreate($ctxt); } (e1=expression[$ctxt] { IQLExpressionListAppend($ctxt, l, e1); })* { $e = IQLBuildArray($ctxt, l, $t->getLine($t), $t->getCharPositionInLine($t)); IQLExpressionListFree($ctxt, l); })
+    | ^(t=TK_ARRAY { l = IQLExpressionListCreate($ctxt); } (e1=expression[$ctxt] { IQLExpressionListAppend($ctxt, l, e1); })* { $e = IQLBuildArray($ctxt, l, $t->getLine($t), $t->getCharPositionInLine($t)); IQLExpressionListFree($ctxt, l); })
     ;    
 
 whenExpression[IQLTreeFactoryRef ctxt, IQLExpressionListRef l]

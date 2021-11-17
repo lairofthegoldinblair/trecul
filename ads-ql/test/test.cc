@@ -960,7 +960,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
 
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
-			  "[2*c,3*c] AS f");
+			  "ARRAY[2*c,3*c] AS f");
     const FieldType * ty = t1.getTarget()->getMember("f").GetType();
     BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, ty->GetEnum());
     BOOST_CHECK_EQUAL(2, ty->GetSize());
@@ -977,7 +977,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
   {
     // Test an array local, initilizing and setting a value
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
-			  "DECLARE tmp = [2*c,3*c], tmp AS f");
+			  "DECLARE tmp = ARRAY[2*c,3*c], tmp AS f");
     const FieldType * ty = t1.getTarget()->getMember("f").GetType();
     BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, ty->GetEnum());
     BOOST_CHECK_EQUAL(2, ty->GetSize());
@@ -994,7 +994,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
   {
     // Test an initialized array local and indexing
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
-			  "DECLARE tmp = [2*c,3*c], tmp[0] AS f, tmp[1] AS g");
+			  "DECLARE tmp = ARRAY[2*c,3*c], tmp[0] AS f, tmp[1] AS g");
     const FieldType * ty = t1.getTarget()->getMember("f").GetType();
     BOOST_CHECK_EQUAL(FieldType::INT32, ty->GetEnum());
     ty = t1.getTarget()->getMember("g").GetType();
@@ -1009,7 +1009,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
   {
     // Test an initialized const array local and indexing
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
-			  "DECLARE tmp = [2,3], tmp[0]*c AS f, tmp[1]*c AS g");
+			  "DECLARE tmp = ARRAY[2,3], tmp[0]*c AS f, tmp[1]*c AS g");
     const FieldType * ty = t1.getTarget()->getMember("f").GetType();
     BOOST_CHECK_EQUAL(FieldType::INT32, ty->GetEnum());
     ty = t1.getTarget()->getMember("g").GetType();
@@ -1024,7 +1024,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
   {
     // Test an initialized const array local and indexing
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
-			  "DECLARE tmp = [2.0e+00,3.0e+00], tmp[0]*e AS f, tmp[1]*e AS g");
+			  "DECLARE tmp = ARRAY[2.0e+00,3.0e+00], tmp[0]*e AS f, tmp[1]*e AS g");
     const FieldType * ty = t1.getTarget()->getMember("f").GetType();
     BOOST_CHECK_EQUAL(FieldType::DOUBLE, ty->GetEnum());
     ty = t1.getTarget()->getMember("g").GetType();
@@ -1062,7 +1062,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructorNullableElement)
 
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
-			  "[2*c, NULL, 3*c] AS f");
+			  "ARRAY[2*c, NULL, 3*c] AS f");
     const FieldType * ty = t1.getTarget()->getMember("f").GetType();
     BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, ty->GetEnum());
     BOOST_CHECK_EQUAL(3, ty->GetSize());
@@ -1113,7 +1113,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayDotProduct)
     RecordTypeInPlaceUpdate up(ctxt, 
 			       "xfer5up", 
 			       types, 
-			       "DECLARE w = [4.456e+00,3.89e+00,-1.934e+00];\n"
+			       "DECLARE w = ARRAY[4.456e+00,3.89e+00,-1.934e+00];\n"
 			       "DECLARE accum = 0.0e+00;\n"
 			       "DECLARE i = 2;\n"
 			       "WHILE i >= 0 DO\n"
@@ -2015,12 +2015,6 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32Compare)
   rhsTy.setArrayInt32("e", 0, 23542, rhs);
   rhsTy.setArrayInt32("e", 1, 88354, rhs);
   rhsTy.setArrayInt32("e", 2, 23544, rhs);
-
-  std::array<int32_t, 3> a = { 23542, 88354, 23543 };
-  std::array<int32_t, 3> b = { 23541, 88354, 23544 };
-  int32_t ret = ((a[0] < b[0]) || (a[0] == b[0] && a[1]<b[1]) || (a[0] == b[0] && a[1] == b[1] && a[2] < b[2]));
-  int32_t expected = a < b;
-  BOOST_CHECK_EQUAL(expected, ret);
 
   RecordTypeFunction lt(ctxt, "arrlt", types, "a < e");
   RecordTypeFunction gt(ctxt, "arrgt", types, "a > e");
@@ -6001,6 +5995,88 @@ BOOST_AUTO_TEST_CASE(testIQLNullableVarcharCast)
 {
   testVarcharCast(true);
   testNullableVarcharCast();
+}
+
+void testFixedArrayInt32Cast(bool isNullable)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt, false), isNullable)));
+  RecordType recTy(members);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("a", 0, 123456, inputBuf);
+  recTy.setArrayInt32("a", 1, 1234567, inputBuf);
+  recTy.setArrayInt32("a", 2, 12345678, inputBuf);
+
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			"CAST(a AS INTEGER[2]) AS ret");
+    BOOST_CHECK_EQUAL(2, t1.getTarget()->begin_members()->GetType()->GetSize());
+    BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, t1.getTarget()->begin_members()->GetType()->GetEnum());
+    const FixedArrayType * arrayTy = reinterpret_cast<const FixedArrayType *>(t1.getTarget()->begin_members()->GetType());
+    BOOST_CHECK_EQUAL(FieldType::INT32, arrayTy->getElementType()->GetEnum());
+    BOOST_CHECK_EQUAL(false, arrayTy->getElementType()->isNullable());
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(!t1.getTarget()->getFieldAddress("ret").isNull(outputBuf));
+    BOOST_CHECK_EQUAL(123456, t1.getTarget()->getArrayInt32("ret", 0, outputBuf));
+    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", arrayTy, 0, outputBuf));
+    BOOST_CHECK_EQUAL(1234567, t1.getTarget()->getArrayInt32("ret", 1, outputBuf));
+    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", arrayTy, 1, outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  for(int32_t sz=4; sz<=20; ++sz) {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          (boost::format("CAST(a AS INTEGER[%1%]) AS ret") % sz).str());
+    BOOST_TEST(sz == t1.getTarget()->begin_members()->GetType()->GetSize(), " with isNullable=" << isNullable << " and sz=" << sz);
+    BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, t1.getTarget()->begin_members()->GetType()->GetEnum());
+    const FixedArrayType * arrayTy = reinterpret_cast<const FixedArrayType *>(t1.getTarget()->begin_members()->GetType());
+    BOOST_CHECK_EQUAL(FieldType::INT32, arrayTy->getElementType()->GetEnum());
+    BOOST_CHECK_EQUAL(true, arrayTy->getElementType()->isNullable());
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(!t1.getTarget()->getFieldAddress("ret").isNull(outputBuf));
+    BOOST_CHECK_EQUAL(123456, t1.getTarget()->getArrayInt32("ret", 0, outputBuf));
+    BOOST_TEST(!t1.getTarget()->isArrayNull("ret", arrayTy, 0, outputBuf), "expected NOT NULL element at idx=0 with isNullable=" << isNullable << " and sz=" << sz);
+    BOOST_CHECK_EQUAL(1234567, t1.getTarget()->getArrayInt32("ret", 1, outputBuf));
+    BOOST_TEST(!t1.getTarget()->isArrayNull("ret", arrayTy, 1, outputBuf), "expected NOT NULL element at idx=1 with isNullable=" << isNullable << " and sz=" << sz);
+    BOOST_CHECK_EQUAL(12345678, t1.getTarget()->getArrayInt32("ret", 2, outputBuf));
+    BOOST_TEST(!t1.getTarget()->isArrayNull("ret", arrayTy, 2, outputBuf), "expected NOT NULL element at idx=2 with isNullable=" << isNullable << " and sz=" << sz);
+    for(int32_t idx=3; idx<sz; ++idx) {
+      BOOST_TEST(t1.getTarget()->isArrayNull("ret", arrayTy, idx, outputBuf), "expected NULL element at idx=" << idx << " with isNullable=" << isNullable << " and sz=" << sz);
+    }
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			"CAST(a AS BIGINT[3]) AS ret");
+    BOOST_CHECK_EQUAL(3, t1.getTarget()->begin_members()->GetType()->GetSize());
+    BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, t1.getTarget()->begin_members()->GetType()->GetEnum());
+    const FixedArrayType * arrayTy = reinterpret_cast<const FixedArrayType *>(t1.getTarget()->begin_members()->GetType());
+    BOOST_CHECK_EQUAL(FieldType::INT64, arrayTy->getElementType()->GetEnum());
+    BOOST_CHECK_EQUAL(false, arrayTy->getElementType()->isNullable());
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(!t1.getTarget()->getFieldAddress("ret").isNull(outputBuf));
+    BOOST_CHECK_EQUAL(123456LL, t1.getTarget()->getArrayInt64("ret", 0, outputBuf));
+    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", arrayTy, 0, outputBuf));
+    BOOST_CHECK_EQUAL(1234567LL, t1.getTarget()->getArrayInt64("ret", 1, outputBuf));
+    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", arrayTy, 1, outputBuf));
+    BOOST_CHECK_EQUAL(12345678LL, t1.getTarget()->getArrayInt64("ret", 2, outputBuf));
+    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", arrayTy, 2, outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32Cast)
+{
+  testFixedArrayInt32Cast(false);
+  testFixedArrayInt32Cast(true);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLAddChar)

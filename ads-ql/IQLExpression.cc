@@ -1120,6 +1120,16 @@ IQLExpressionRef IQLBuildArray(IQLTreeFactoryRef ctxtRef,
   return wrap(ArrayExpr::create(ctxt, args, SourceLocation(line, column)));
 }
 
+IQLFieldTypeRef IQLBuildArrayType(IQLTreeFactoryRef ctxtRef, const FieldType * eltTy, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  if (boost::algorithm::iequals("infinity", sz)) {
+    return wrap(VariableArrayType::Get(ctxt, eltTy, nullable!=0));
+  } else {
+    int32_t fieldSz = boost::lexical_cast<int32_t> (sz);
+    return wrap(FixedArrayType::Get(ctxt, fieldSz, eltTy, nullable!=0));
+  }
+}
 IQLFieldTypeRef IQLBuildInt32Type(IQLTreeFactoryRef ctxtRef, int nullable)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
@@ -1128,37 +1138,57 @@ IQLFieldTypeRef IQLBuildInt32Type(IQLTreeFactoryRef ctxtRef, int nullable)
 IQLFieldTypeRef IQLBuildInt32ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
-  if (boost::algorithm::iequals("infinity", sz)) {
-    return wrap(VariableArrayType::Get(ctxt, Int32Type::Get(ctxt, false), nullable!=0));
-  } else {
-    int32_t fieldSz = boost::lexical_cast<int32_t> (sz);
-    return wrap(FixedArrayType::Get(ctxt, fieldSz, Int32Type::Get(ctxt, false), nullable!=0));
-  }
+  return IQLBuildArrayType(ctxtRef, Int32Type::Get(ctxt, false), sz, nullable);
 }
 IQLFieldTypeRef IQLBuildInt64Type(IQLTreeFactoryRef ctxtRef, int nullable)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
   return wrap(Int64Type::Get(ctxt, nullable!=0));  
 }
+IQLFieldTypeRef IQLBuildInt64ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, Int64Type::Get(ctxt, false), sz, nullable);
+}
 IQLFieldTypeRef IQLBuildDoubleType(IQLTreeFactoryRef ctxtRef, int nullable)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
   return wrap(DoubleType::Get(ctxt, nullable!=0));  
+}
+IQLFieldTypeRef IQLBuildDoubleArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, DoubleType::Get(ctxt, false), sz, nullable);
 }
 IQLFieldTypeRef IQLBuildDecimalType(IQLTreeFactoryRef ctxtRef, int nullable)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
   return wrap(DecimalType::Get(ctxt, nullable!=0));  
 }
+IQLFieldTypeRef IQLBuildDecimalArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, DecimalType::Get(ctxt, false), sz, nullable);
+}
 IQLFieldTypeRef IQLBuildDateType(IQLTreeFactoryRef ctxtRef, int nullable)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
   return wrap(DateType::Get(ctxt, nullable!=0));  
 }
+IQLFieldTypeRef IQLBuildDateArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, DateType::Get(ctxt, false), sz, nullable);
+}
 IQLFieldTypeRef IQLBuildDatetimeType(IQLTreeFactoryRef ctxtRef, int nullable)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
   return wrap(DatetimeType::Get(ctxt, nullable!=0));  
+}
+IQLFieldTypeRef IQLBuildDatetimeArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, DatetimeType::Get(ctxt, false), sz, nullable);
 }
 IQLFieldTypeRef IQLBuildNVarcharType(IQLTreeFactoryRef ctxtRef, int nullable)
 {
@@ -1180,6 +1210,11 @@ IQLFieldTypeRef IQLBuildBooleanType(IQLTreeFactoryRef ctxtRef, int nullable)
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
   return wrap(Int32Type::Get(ctxt, nullable!=0));  
 }
+IQLFieldTypeRef IQLBuildBooleanArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, Int32Type::Get(ctxt, false), sz, nullable);
+}
 IQLFieldTypeRef IQLBuildNilType(IQLTreeFactoryRef ctxtRef)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
@@ -1194,6 +1229,10 @@ IQLFieldTypeRef IQLBuildType(IQLTreeFactoryRef ctxtRef, const char * typeName, i
     throw std::runtime_error((boost::format("Invalid type: %1%") %
 			      typeName).str());
   }
+}
+IQLFieldTypeRef IQLBuildArrayType(IQLTreeFactoryRef ctxtRef, const char * typeName, const char * sz, int nullable)
+{
+  return IQLBuildArrayType(ctxtRef, unwrap(IQLBuildType(ctxtRef, typeName, false)), sz, nullable);
 }
 
 const char * IQLExpressionPrinter::getExpressionSymbol(uint32_t nodeType)

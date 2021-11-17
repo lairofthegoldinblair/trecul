@@ -1354,10 +1354,22 @@ const IQLToLLVMValue * CodeGenerationContext::buildCastVarchar(const IQLToLLVMVa
 // Return pointer of element type pointing to beginning of fixed array data
 llvm::Value * CodeGenerationContext::getFixedArrayData(const IQLToLLVMValue * e, const FieldType * ty)
 {
+  // BOOST_ASSERT(FieldType::FIXED_ARRAY == ty->GetEnum());
+  // const FixedArrayType * arrTy = reinterpret_cast<const FixedArrayType*>(ty);
+  // llvm::IRBuilder<> * b = LLVMBuilder;
+  // llvm::Value * ptr = e->getValue();
+  // ptr = b->CreateBitCast(ptr, b->getInt8PtrTy());
+  // // GEP to get pointer to data and cast back to pointer to element
+  // return b->CreateBitCast(b->CreateGEP(b->getInt8Ty(), ptr, b->getInt64(arrTy->GetDataOffset()), ""),
+  //                         llvm::PointerType::get(arrTy->getElementType()->LLVMGetType(this), 0));
+  return getFixedArrayData(e->getValue(), ty);
+}
+
+llvm::Value * CodeGenerationContext::getFixedArrayData(llvm::Value * ptr, const FieldType * ty)
+{
   BOOST_ASSERT(FieldType::FIXED_ARRAY == ty->GetEnum());
   const FixedArrayType * arrTy = reinterpret_cast<const FixedArrayType*>(ty);
   llvm::IRBuilder<> * b = LLVMBuilder;
-  llvm::Value * ptr = e->getValue();
   ptr = b->CreateBitCast(ptr, b->getInt8PtrTy());
   // GEP to get pointer to data and cast back to pointer to element
   return b->CreateBitCast(b->CreateGEP(b->getInt8Ty(), ptr, b->getInt64(arrTy->GetDataOffset()), ""),
@@ -1367,13 +1379,27 @@ llvm::Value * CodeGenerationContext::getFixedArrayData(const IQLToLLVMValue * e,
 // Return int8Ptr pointing to beginning of fixed array null bitmask
 llvm::Value * CodeGenerationContext::getFixedArrayNull(const IQLToLLVMValue * e, const FieldType * ty)
 {
+  // BOOST_ASSERT(FieldType::FIXED_ARRAY == ty->GetEnum());
+  // const FixedArrayType * arrTy = reinterpret_cast<const FixedArrayType*>(ty);
+  // if(!arrTy->getElementType()->isNullable()) {
+  //   return nullptr;
+  // }
+  // llvm::IRBuilder<> * b = LLVMBuilder;
+  // llvm::Value * ptr = e->getValue();
+  // ptr = b->CreateBitCast(ptr, b->getInt8PtrTy());
+  // // GEP to get pointer to offset
+  // return b->CreateGEP(b->getInt8Ty(), ptr, b->getInt64(arrTy->GetNullOffset()), "");
+  return getFixedArrayNull(e->getValue(), ty);
+}
+
+llvm::Value * CodeGenerationContext::getFixedArrayNull(llvm::Value * ptr, const FieldType * ty)
+{
   BOOST_ASSERT(FieldType::FIXED_ARRAY == ty->GetEnum());
   const FixedArrayType * arrTy = reinterpret_cast<const FixedArrayType*>(ty);
   if(!arrTy->getElementType()->isNullable()) {
     return nullptr;
   }
   llvm::IRBuilder<> * b = LLVMBuilder;
-  llvm::Value * ptr = e->getValue();
   ptr = b->CreateBitCast(ptr, b->getInt8PtrTy());
   // GEP to get pointer to offset
   return b->CreateGEP(b->getInt8Ty(), ptr, b->getInt64(arrTy->GetNullOffset()), "");
@@ -1381,44 +1407,117 @@ llvm::Value * CodeGenerationContext::getFixedArrayNull(const IQLToLLVMValue * e,
 
 IQLToLLVMValue::ValueType 
 CodeGenerationContext::buildCastFixedArray(const IQLToLLVMValue * e, 
-				     const FieldType * argType, 
-				     llvm::Value * ret, 
-				     const FieldType * retType)
+                                           const FieldType * argType, 
+                                           llvm::Value * ret, 
+                                           const FieldType * retType)
 {
   llvm::IRBuilder<> * b = LLVMBuilder;
-  llvm::Value * e1 = e->getValue();
-  // Must bitcast to match calling convention.
-  llvm::Type * int8Ptr = llvm::PointerType::get(b->getInt8Ty(), 0);
-  llvm::Value * ptr = b->CreateBitCast(ret, int8Ptr);
 
-  if (argType->GetEnum() == FieldType::FIXED_ARRAY) {
-    int32_t toCopy=argType->GetSize() < retType->GetSize() ? argType->GetSize() : retType->GetSize();
-    int32_t toSet=retType->GetSize() - toCopy;
-    llvm::Value * args[5];
-    if (toCopy > 0) {
-      llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemcpyIntrinsic);
-      // memcpy arg1 at offset 0
-      args[0] = ptr;
-      args[1] = b->CreateBitCast(e1, int8Ptr);
-      args[2] = b->getInt64(toCopy);
-      args[3] = b->getInt32(1);
-      args[4] = b->getInt1(0);
-      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
-    }
-    // DBTODO: Need to set these to NULL instead
-    if (toSet > 0) {
-      llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemsetIntrinsic);
-      // memset 0 at offset toCopy
-      args[0] = b->CreateGEP(b->getInt8Ty(), ptr, b->getInt64(toCopy), "");;
-      args[1] = b->getInt8(0);
-      args[2] = b->getInt64(toSet);
-      args[3] = b->getInt32(1);
-      args[4] = b->getInt1(0);
-      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
-    }
-  } else {
+  if (argType->GetEnum() != FieldType::FIXED_ARRAY) {
     throw std::runtime_error("Only supporting CAST from fixed array to fixed array");
   }
+  const FixedArrayType * argArrTy = reinterpret_cast<const FixedArrayType *>(argType);
+  const FixedArrayType * retArrTy = reinterpret_cast<const FixedArrayType *>(retType);
+  int32_t toCopy=argType->GetSize() < retType->GetSize() ? argType->GetSize() : retType->GetSize();
+  int32_t toSet=retType->GetSize() - toCopy;
+  int32_t nullBytesToCopy = (toCopy+7)/8;
+  llvm::Value * args[5];
+  if (argArrTy->getElementType()->GetEnum() != FieldType::VARCHAR &&
+      argArrTy->getElementType()->GetEnum() == retArrTy->getElementType()->GetEnum()) {
+    // Just resizing a fixed array of copyable types
+    if (toCopy > 0) {
+      llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemcpyIntrinsic);
+      // memcpy data at offset 0
+      args[0] = b->CreateBitCast(getFixedArrayData(ret, retType), b->getInt8PtrTy());
+      args[1] = b->CreateBitCast(getFixedArrayData(e, argType), b->getInt8PtrTy());
+      args[2] = b->getInt64(toCopy*retArrTy->getElementType()->GetAllocSize());
+      args[3] = b->getInt32(1);
+      args[4] = b->getInt1(0);
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+      // memcpy null bits at offset 0
+      llvm::Value * targetNullBytes = getFixedArrayNull(ret, retType);
+      if (targetNullBytes != nullptr) {
+        if(argArrTy->getElementType()->isNullable()) {
+          args[0] = targetNullBytes;
+          args[1] = getFixedArrayNull(e, argType);
+          args[2] = b->getInt64(nullBytesToCopy);
+          args[3] = b->getInt32(1);
+          args[4] = b->getInt1(0);
+          b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+        } else {
+          // Everything is non-null but there is no null bitmap in argument
+          BOOST_ASSERT(nullBytesToCopy <= retArrTy->GetNullSize());
+          llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemsetIntrinsic);
+          args[0] = getFixedArrayNull(ret, retType);
+          args[1] = b->getInt8(0xff);
+          args[2] = b->getInt64(nullBytesToCopy);
+          args[3] = b->getInt32(1);
+          args[4] = b->getInt1(0);
+          b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+        }
+      }
+    }
+  } else if (toCopy>0) {
+    // Types of elements are different so elementwise iteration and conversion is necessary
+    const FieldType * argEltTy = argArrTy->getElementType();
+    const FieldType * retEltTy = retArrTy->getElementType();
+      
+    // Loop over the array and call cast between element types
+    // Constants zero, one and toCopy are used frequently
+    const IQLToLLVMValue * zero = buildFalse();
+    const IQLToLLVMValue * one  = buildTrue();
+    const IQLToLLVMValue *  sz = IQLToLLVMValue::get(this, b->getInt32(toCopy), IQLToLLVMValue::eLocal);
+    // INTEGER type used frequently in this method
+    FieldType * int32Type = Int32Type::Get(argType->getContext());
+
+    // DECLARE idx = 0
+    // Allocate and initialize counter
+    llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
+    const IQLToLLVMValue * counter = IQLToLLVMValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
+    IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(counter, nullptr);
+    buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
+        
+    whileBegin();
+
+    // while (idx < sz)
+    const IQLToLLVMValue * pred = buildCompare(buildRef(counter, int32Type), int32Type, sz, int32Type, int32Type, IQLToLLVMOpLT);
+    whileStatementBlock(pred, int32Type);
+
+    const IQLToLLVMValue * idx = buildRef(counter, int32Type);
+    const IQLToLLVMValue * converted = buildCast(buildArrayRef(e, argType, idx, int32Type, argEltTy), argEltTy, retEltTy);
+    const IQLToLLVMLValue * arrayLValue = buildArrayLValue(IQLToLLVMValue::get(this, ret, IQLToLLVMValue::eLocal), retType, idx, int32Type, retEltTy);
+    buildSetNullableValue(arrayLValue, converted, retEltTy, retEltTy);
+
+    // SET idx = idx + 1
+    buildSetNullableValue(counterLValue, buildAdd(buildRef(counter, int32Type), int32Type, one, int32Type, int32Type), int32Type, int32Type);  
+    whileFinish();
+  }
+
+  // Make sure final null byte copied from argument to result is in good shape
+  uint8_t bitsToKeep = toCopy - 8*(toCopy/8);
+  if (bitsToKeep > 0 && retArrTy->getElementType()->isNullable()) {
+    // There are bits in the last bytes copied that we need to make sure are cleared
+    uint8_t bitsToKeepMask = (1U << bitsToKeep) - 1;
+    int32_t lastNullByteOffset = nullBytesToCopy - 1;
+    llvm::Value * lastNullByteCopied = b->CreateGEP(b->getInt8Ty(), getFixedArrayNull(ret, retType), b->getInt64(lastNullByteOffset), "");
+    b->CreateStore(b->CreateAnd(b->CreateLoad(b->getInt8Ty(), lastNullByteCopied),
+                                b->getInt8(bitsToKeepMask)),
+                   lastNullByteCopied);
+  }
+
+  // If there are remaining full bytes worth of null bits in result to set to zero, do that here to make
+  // the corresponding data values NULL
+  if (retArrTy->GetNullSize() > nullBytesToCopy) {
+    BOOST_ASSERT(retArrTy->getElementType()->isNullable());
+    llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemsetIntrinsic);
+    args[0] = b->CreateGEP(b->getInt8Ty(), getFixedArrayNull(ret, retType), b->getInt64(nullBytesToCopy), "");
+    args[1] = b->getInt8(0);
+    args[2] = b->getInt64(retArrTy->GetNullSize() - nullBytesToCopy);
+    args[3] = b->getInt32(1);
+    args[4] = b->getInt1(0);
+    b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+  }
+
   return IQLToLLVMValue::eLocal;
 }
 

@@ -846,7 +846,23 @@ const FieldType * TypeCheckContext::buildCast(const FieldType * lhs,
 					      const FieldType * target)
 {
   bool isNullable = target->isNullable() || lhs->isNullable();
-  return target->clone(isNullable);
+  if (target->GetEnum() == FieldType::FIXED_ARRAY) {
+    const FixedArrayType * targetArrayTy = reinterpret_cast<const FixedArrayType *>(target);
+    if (lhs->GetEnum() == FieldType::FIXED_ARRAY) {
+      const FixedArrayType * lhsArrayTy = reinterpret_cast<const FixedArrayType *>(lhs);
+      if (target->GetSize() > lhs->GetSize() || lhsArrayTy->getElementType()->isNullable()) {
+        return buildFixedArrayType(target->GetSize(),
+                                   targetArrayTy->getElementType()->clone(true),
+                                   isNullable);
+      } else {
+        return target->clone(isNullable);
+      }
+    } else {
+      throw std::runtime_error("Not supporting cast of non-array type to array type");
+    }
+  } else {
+    return target->clone(isNullable);
+  }
 }
 
 const FieldType * TypeCheckContext::buildInt32Type(bool nullable)

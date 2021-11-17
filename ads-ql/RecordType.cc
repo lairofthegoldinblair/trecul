@@ -1989,6 +1989,7 @@ void RecordType::setInt32(const std::string& field, int32_t val, RecordBuffer bu
 void RecordType::setArrayInt32(const std::string& field, int32_t idx, int32_t val, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].clearNull(buf);
   *mMemberOffsets[it->second].getArrayInt32Ptr(buf, idx) = val;
 }
 
@@ -2001,6 +2002,7 @@ void RecordType::setInt64(const std::string& field, int64_t val, RecordBuffer bu
 void RecordType::setArrayInt64(const std::string& field, int32_t idx, int64_t val, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].clearNull(buf);
   *mMemberOffsets[it->second].getArrayInt64Ptr(buf, idx) = val;
 }
 
@@ -2013,6 +2015,7 @@ void RecordType::setDouble(const std::string& field, double val, RecordBuffer bu
 void RecordType::setArrayDouble(const std::string& field, int32_t idx, double val, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].clearNull(buf);
   *mMemberOffsets[it->second].getArrayDoublePtr(buf, idx) = val;
 }
 
@@ -2069,6 +2072,12 @@ int64_t RecordType::getInt64(const std::string& field, RecordBuffer buf) const
   return mMemberOffsets[it->second].getInt64(buf);
 }
 
+int64_t RecordType::getArrayInt64(const std::string& field, int32_t idx, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].getArrayInt64(buf, idx);
+}
+
 double RecordType::getDouble(const std::string& field, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
@@ -2079,4 +2088,10 @@ Varchar * RecordType::getVarcharPtr(const std::string& field, RecordBuffer buf) 
 {
   const_member_name_iterator it = mMemberNames.find(field);
   return mMemberOffsets[it->second].getVarcharPtr(buf);
+}
+
+bool RecordType::isArrayNull(const std::string& field, const FixedArrayType * ft, int32_t idx, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].isArrayNull(buf, ft, idx);
 }
