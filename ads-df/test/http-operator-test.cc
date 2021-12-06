@@ -38,6 +38,7 @@
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
+#include <boost/process.hpp>
 #define BOOST_TEST_MODULE MyTest
 #include <boost/test/unit_test.hpp>
 #include <boost/thread.hpp>
@@ -123,7 +124,7 @@ std::string TestFile::getName() const
 class HttpOperatorProcess
 {
 private:
-  PosixProcessFactory mProcess;
+  std::unique_ptr<boost::process::child> mProcess;
   TestFile mTestFile;
 public:
   HttpOperatorProcess(const std::string& program);
@@ -136,20 +137,14 @@ HttpOperatorProcess::HttpOperatorProcess(const std::string& program)
   mTestFile(program)
 {
   boost::filesystem::path exe =
-    Executable::getPath().parent_path()/boost::filesystem::path("ads-df");
+    Executable::getPath().parent_path().parent_path()/boost::filesystem::path("ads-df");
   if (!boost::filesystem::exists(exe))
     throw std::runtime_error((boost::format("Couldn't find ads-df "
 					    "executable: %1%.  "
 					    "Check installation") % exe.string()).str());
-  
-  typedef boost::shared_ptr<PosixProcessInitializer> ppiptr;
-  std::vector<ppiptr> v;
-  v.push_back(ppiptr(new PosixPath(exe.string())));     
-  v.push_back(ppiptr(new PosixArgument("--file")));
-  v.push_back(ppiptr(new PosixArgument(mTestFile.getName())));
-  v.push_back(boost::shared_ptr<PosixProcessInitializer>(new PosixParentEnvironment()));
-  mProcess.create(v);
 
+  mProcess.reset(new boost::process::child(exe.string(), "--file", mTestFile.getName()));
+  
   // Wait for process to start
   boost::asio::io_service io_service;
   tcp::resolver resolver(io_service);
@@ -173,16 +168,16 @@ HttpOperatorProcess::HttpOperatorProcess(const std::string& program)
 
 void HttpOperatorProcess::kill()
 {
-  boost::system::error_code ec;
-  mProcess.kill(SIGURG, ec);
-  if (ec) {
+  auto ret = ::kill(mProcess->id(), SIGURG);
+  if (0 != ret) {
     throw std::runtime_error("Failed to kill process");
   }
 }
 
 int32_t HttpOperatorProcess::waitForCompletion()
 {
-  return mProcess.waitForCompletion();
+  mProcess->wait();
+  return mProcess->exit_code();
 }
 
 std::string getPostRequest(const std::string& resource, const std::string& postBody)

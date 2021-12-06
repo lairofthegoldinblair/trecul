@@ -999,6 +999,8 @@ const FieldType * IntervalType::getDateResultType(DynamicRecordContext& ctxt,
   case MINUTE:
   case SECOND:
     return DatetimeType::Get(ctxt, nullable);
+  default:
+    throw std::runtime_error("Internal Error: Unknown interval unit in IntervalType");
   }
 }
 

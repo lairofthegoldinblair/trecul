@@ -2133,7 +2133,7 @@ CodeGenerationContext::buildVarArrayGetPtr(llvm::Value * varcharPtr, llvm::Type 
 llvm::Value * 
 CodeGenerationContext::buildVarcharGetPtr(llvm::Value * varcharPtr)
 {
-  buildVarArrayGetPtr(varcharPtr, LLVMBuilder->getInt8PtrTy());
+  return buildVarArrayGetPtr(varcharPtr, LLVMBuilder->getInt8PtrTy());
 }
 
 const IQLToLLVMValue * CodeGenerationContext::buildCompareResult(llvm::Value * boolVal)
