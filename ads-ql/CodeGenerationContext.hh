@@ -649,6 +649,28 @@ public:
 				   const std::vector<IQLToLLVMTypedValue> & args,
 				   const FieldType * retType);
   /**
+   * Cast non null value to INT8.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastInt8(const IQLToLLVMValue * e, 
+                                          const FieldType * argType, 
+                                          llvm::Value * ret, 
+					   const FieldType * retType);
+  const IQLToLLVMValue * buildCastInt8(const IQLToLLVMValue * e, 
+                                       const FieldType * argType, 
+                                       const FieldType * retType);
+
+  /**
+   * Cast non null value to INT16.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastInt16(const IQLToLLVMValue * e, 
+					   const FieldType * argType, 
+					   llvm::Value * ret, 
+					   const FieldType * retType);
+  const IQLToLLVMValue * buildCastInt16(const IQLToLLVMValue * e, 
+					const FieldType * argType, 
+					const FieldType * retType);
+
+  /**
    * Cast non null value to INT32.  Put return value in ret.
    */
   IQLToLLVMValue::ValueType buildCastInt32(const IQLToLLVMValue * e, 
@@ -669,6 +691,17 @@ public:
   const IQLToLLVMValue * buildCastInt64(const IQLToLLVMValue * e, 
 					const FieldType * argType, 
 					const FieldType * retType);
+
+  /**
+   * Cast non null value to FLOAT.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastFloat(const IQLToLLVMValue * e, 
+                                           const FieldType * argType, 
+                                           llvm::Value * ret, 
+                                           const FieldType * retType);
+  const IQLToLLVMValue * buildCastFloat(const IQLToLLVMValue * e, 
+                                        const FieldType * argType, 
+                                        const FieldType * retType);
 
   /**
    * Cast non null value to DOUBLE.  Put return value in ret.
@@ -1074,10 +1107,18 @@ public:
   const IQLToLLVMValue *
   buildArrayElementwiseCompare(const IQLToLLVMValue * lhs, 
                                const IQLToLLVMValue * rhs,
-                               std::size_t index,
                                const FieldType * promoted,
                                const FieldType * retType,
                                IQLToLLVMPredicate op);
+
+  const IQLToLLVMValue *
+  buildStructElementwiseCompare(const IQLToLLVMValue * lhs, 
+                                const IQLToLLVMValue * rhs,
+                                const FieldType * promoted,
+                                const std::vector<const FieldType *> members,
+                                const FieldType * retType,
+                                IQLToLLVMPredicate op);
+  
   /**
    * Hash a sequence of values
    */
@@ -1127,6 +1168,8 @@ public:
   const IQLToLLVMValue * buildDoubleLiteral(const char * val);
   const IQLToLLVMValue * buildVarcharLiteral(const char * val);
   const IQLToLLVMValue * buildDecimalLiteral(const char * val);
+  const IQLToLLVMValue * buildIPv4Literal(const char * val);
+  const IQLToLLVMValue * buildIPv6Literal(const char * val);
   const IQLToLLVMValue * buildTrue();
   const IQLToLLVMValue * buildFalse();
   const IQLToLLVMValue * buildNull();

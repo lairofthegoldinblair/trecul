@@ -206,6 +206,13 @@ array=NULL;
 	  | ^(c=TK_BOOLEAN (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildBooleanArrayType($ctxt, array, nullable) : IQLTypeCheckBuildBooleanType($ctxt, nullable); $c->u = $ty; } 
 	  | ^(c=TK_DATETIME (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildDatetimeArrayType($ctxt, array, nullable) : IQLTypeCheckBuildDatetimeType($ctxt, nullable); $c->u = $ty; } 
       | ^(c=TK_BIGINT (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildInt64ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildInt64Type($ctxt, nullable); $c->u = $ty; }
+      | ^(c=TK_SMALLINT (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildInt16ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildInt16Type($ctxt, nullable); $c->u = $ty; }
+      | ^(c=TK_TINYINT (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildInt8ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildInt8Type($ctxt, nullable); $c->u = $ty; }
+      | ^(c=TK_REAL (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildFloatArrayType($ctxt, array, nullable) : IQLTypeCheckBuildFloatType($ctxt, nullable); $c->u = $ty; }
+      | ^(c=TK_IPV4 (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildIPv4ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildIPv4Type($ctxt, nullable); $c->u = $ty; }
+      | ^(c=TK_CIDRV4 (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildCIDRv4ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildCIDRv4Type($ctxt, nullable); $c->u = $ty; }
+      | ^(c=TK_IPV6 (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildIPv6ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildIPv6Type($ctxt, nullable); $c->u = $ty; }
+      | ^(c=TK_CIDRV6 (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildCIDRv6ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildCIDRv6Type($ctxt, nullable); $c->u = $ty; }
 	  | ^(c=ID (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildArrayType($ctxt, (const char *) $ID.text->chars, array, nullable) : IQLTypeCheckBuildType($ctxt, (const char *) $ID.text->chars, nullable); $c->u = $ty; } 
 	;
 
@@ -253,7 +260,7 @@ $ty = NULL;
     | ^(c='-' e1 = expression[$ctxt] (e2 = expression[$ctxt] { isBinary=1; })? { $ty = isBinary ? IQLTypeCheckSub($ctxt, e1.ty, e2.ty) : IQLTypeCheckNegateType($ctxt, e1.ty); $c->u = $ty; })
     | ^(c='+' e1 = expression[$ctxt] (e2 = expression[$ctxt] { isBinary=1; })? { $ty = isBinary ? IQLTypeCheckAdditiveType($ctxt, e1.ty, e2.ty) : IQLTypeCheckNegateType($ctxt, e1.ty); $c->u = $ty; })
     | ^(c='*' e1 = expression[$ctxt] e2 = expression[$ctxt] { $ty = IQLTypeCheckMultiplicativeType($ctxt, e1.ty, e2.ty); $c->u = $ty; })
-    | ^(c='/' e1 = expression[$ctxt] e2 = expression[$ctxt] { $ty = IQLTypeCheckMultiplicativeType($ctxt, e1.ty, e2.ty); $c->u = $ty; })
+    | ^(c='/' e1 = expression[$ctxt] e2 = expression[$ctxt] { $ty = IQLTypeCheckDivide($ctxt, e1.ty, e2.ty); $c->u = $ty; })
     | ^(c='%' e1 = expression[$ctxt] e2 = expression[$ctxt] { $ty = IQLTypeCheckModulus($ctxt, e1.ty, e2.ty); $c->u = $ty; })
     | ^(c='~' e1 = expression[$ctxt] { $ty = IQLTypeCheckUnaryBitwiseType($ctxt, e1.ty); $c->u = $ty; })
     | ^(c='#' { types = IQLFieldTypeVectorCreate(); } (e1 = expression[$ctxt] { IQLFieldTypeVectorPushBack(types, e1.ty); })*) 
@@ -279,6 +286,8 @@ $ty = NULL;
     | DECIMAL_LITERAL { $ty = IQLTypeCheckBuildDecimalType($ctxt, 0); $DECIMAL_LITERAL->u = $ty; }
 	| STRING_LITERAL { $ty = IQLTypeCheckBuildVarcharType($ctxt, 0); $STRING_LITERAL->u = $ty; }
 	| WSTRING_LITERAL { $ty = IQLTypeCheckBuildNVarcharType($ctxt, 0); $WSTRING_LITERAL->u = $ty; }
+    | IPV4_LITERAL { $ty = IQLTypeCheckBuildIPv4Literal($ctxt, (const char *) $IPV4_LITERAL.text->chars, 0); $IPV4_LITERAL->u = $ty; }
+    | IPV6_LITERAL { $ty = IQLTypeCheckBuildIPv6Literal($ctxt, (const char *) $IPV6_LITERAL.text->chars, 0); $IPV6_LITERAL->u = $ty; }
 	| TK_TRUE { $ty = IQLTypeCheckBuildBooleanType($ctxt, 0); $TK_TRUE->u = $ty; }
 	| TK_FALSE { $ty = IQLTypeCheckBuildBooleanType($ctxt, 0); $TK_FALSE->u = $ty; }
 	| ^(id = ID (id2=ID { isBinary=1; })?) { $name = isBinary ? $id2.text : $id.text; $ty = IQLTypeCheckBuildVariableRef($ctxt, (const char *) $id.text->chars, isBinary ? (const char *) $id2.text->chars : 0); $id->u = $ty; }

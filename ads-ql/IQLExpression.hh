@@ -210,7 +210,7 @@ public:
 class IQLExpression
 {
 public:
-  enum NodeType { ARRAYREF, ARR, LOR, LAND, LNOT, LISNULL, CASE, BAND, BOR, BXOR, BNOT, EQ, GTN, LTN, GTEQ, LTEQ, NEQ, MINUS, PLUS, TIMES, DIVIDE, MOD, CAST, VARIABLE, CALL, INT32, INT64, DOUBLE, DECIMAL, STRING, BOOLEAN, INTERVAL, NIL };
+  enum NodeType { ARRAYREF, ARR, LOR, LAND, LNOT, LISNULL, CASE, BAND, BOR, BXOR, BNOT, EQ, GTN, LTN, GTEQ, LTEQ, NEQ, MINUS, PLUS, TIMES, DIVIDE, MOD, CAST, VARIABLE, CALL, INT32, INT64, DOUBLE, DECIMAL, STRING, BOOLEAN, INTERVAL, NIL, IPV4, IPV6 };
 
 private:
   DynamicRecordContext & mContext;
@@ -982,6 +982,58 @@ public:
   }
 
   BooleanExpr * clone() const;
+};
+
+class IPv4Expr : public IQLExpression
+{
+private:
+  IPv4Expr(const IPv4Expr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  IPv4Expr(DynamicRecordContext & ctxt, 
+           const char * text,
+           const SourceLocation& loc);
+
+  static IPv4Expr * create(DynamicRecordContext & ctxt,
+                           const char * text,
+                           const SourceLocation& loc)
+  {
+    IPv4Expr * tmp = new IPv4Expr(ctxt, text, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  IPv4Expr * clone() const;
+};
+
+class IPv6Expr : public IQLExpression
+{
+private:
+  IPv6Expr(const IPv6Expr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  IPv6Expr(DynamicRecordContext & ctxt, 
+           const char * text,
+           const SourceLocation& loc);
+
+  static IPv6Expr * create(DynamicRecordContext & ctxt,
+                           const char * text,
+                           const SourceLocation& loc)
+  {
+    IPv6Expr * tmp = new IPv6Expr(ctxt, text, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  IPv6Expr * clone() const;
 };
 
 class NilExpr : public IQLExpression

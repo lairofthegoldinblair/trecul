@@ -209,10 +209,16 @@ llvm::Type * FieldType::LLVMGetType(CodeGenerationContext * ctxt) const
     return llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctxt->LLVMContext), (unsigned) (mSize + 1));
   case BIGDECIMAL:
     return ctxt->LLVMDecimal128Type;
+  case INT8:
+    return llvm::Type::getInt8Ty(*ctxt->LLVMContext);
+  case INT16:
+    return llvm::Type::getInt16Ty(*ctxt->LLVMContext);
   case INT32:
     return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
   case INT64:
     return llvm::Type::getInt64Ty(*ctxt->LLVMContext);
+  case FLOAT:
+    return llvm::Type::getFloatTy(*ctxt->LLVMContext);
   case DOUBLE:
     return llvm::Type::getDoubleTy(*ctxt->LLVMContext);
   case DATETIME:
@@ -225,6 +231,25 @@ llvm::Type * FieldType::LLVMGetType(CodeGenerationContext * ctxt) const
       BOOST_STATIC_ASSERT(sizeof(boost::gregorian::date) == 4);
       return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
     }
+  case IPV4:
+    static_assert(sizeof(boost::asio::ip::address_v4::uint_type) == 4);
+    return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
+  case CIDRV4:
+    {
+      static_assert(sizeof(boost::asio::ip::address_v4::uint_type) == 4);
+      llvm::Type * cidrMembers[2];
+      cidrMembers[0] = llvm::Type::getInt32Ty(*ctxt->LLVMContext);
+      cidrMembers[1] = llvm::Type::getInt8Ty(*ctxt->LLVMContext);
+      return llvm::StructType::get(*ctxt->LLVMContext,
+                                   llvm::makeArrayRef(&cidrMembers[0], 2),
+                                   0);
+    }
+  case IPV6:
+    static_assert(sizeof(boost::asio::ip::address_v6::bytes_type) == 16);
+    return llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctxt->LLVMContext), 16U);
+  case CIDRV6:
+    static_assert(sizeof(boost::asio::ip::address_v6::bytes_type) == 16);
+    return llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctxt->LLVMContext), 17U);
   case INTERVAL:
     return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
   default:
@@ -365,6 +390,138 @@ llvm::Value * CharType::getZero(CodeGenerationContext * ctxt) const
   throw std::runtime_error("CharType::getZero not implemented");
 }
 
+std::string Int8Type::toString() const
+{
+  return "TINYINT";
+}
+
+const FieldType * Int8Type::clone(bool nullable) const
+{
+  if (nullable == isNullable()) return this;
+  return Int8Type::Get(getContext(), nullable);
+}
+
+Int8Type * Int8Type::Get(DynamicRecordContext& ctxt, bool nullable)
+{
+  FieldType * ft = NULL;
+  md5_state_t md5;
+  md5_init(&md5);
+  FieldType::FieldTypeEnum f=FieldType::INT8;
+  md5_append(&md5, (const md5_byte_t *) &f, sizeof(f));
+  int32_t sz = 1;
+  md5_append(&md5, (const md5_byte_t *) &sz, sizeof(sz));
+  md5_append(&md5, (const md5_byte_t *) &nullable, sizeof(nullable));
+  md5_byte_t digest[16];
+  md5_finish(&md5, digest);
+  Digest d(digest);
+  if ((ft=ctxt.lookup(d)) == NULL) {
+    ft = new Int8Type(ctxt, nullable);
+    ctxt.add(d, ft);
+  }
+  return (Int8Type *)ft;
+}
+
+Int8Type::~Int8Type()
+{
+}
+
+llvm::Value * Int8Type::getMinValue(CodeGenerationContext * ctxt) const
+{
+  return llvm::ConstantInt::get(LLVMGetType(ctxt),
+				std::numeric_limits<int8_t>::min(), 
+				1);
+}
+
+llvm::Value * Int8Type::getMaxValue(CodeGenerationContext * ctxt) const
+{
+  return llvm::ConstantInt::get(LLVMGetType(ctxt),
+				std::numeric_limits<int8_t>::max(), 
+				1);
+}
+
+llvm::Value * Int8Type::getZero(CodeGenerationContext * ctxt) const
+{
+  return llvm::ConstantInt::get(LLVMGetType(ctxt),
+				0,
+				1);
+}
+
+bool Int8Type::isNumeric() const
+{
+  return true;
+}
+
+bool Int8Type::isIntegral() const
+{
+  return true;
+}
+
+std::string Int16Type::toString() const
+{
+  return "SMALLINT";
+}
+
+const FieldType * Int16Type::clone(bool nullable) const
+{
+  if (nullable == isNullable()) return this;
+  return Int16Type::Get(getContext(), nullable);
+}
+
+Int16Type * Int16Type::Get(DynamicRecordContext& ctxt, bool nullable)
+{
+  FieldType * ft = NULL;
+  md5_state_t md5;
+  md5_init(&md5);
+  FieldType::FieldTypeEnum f=FieldType::INT16;
+  md5_append(&md5, (const md5_byte_t *) &f, sizeof(f));
+  int32_t sz = 2;
+  md5_append(&md5, (const md5_byte_t *) &sz, sizeof(sz));
+  md5_append(&md5, (const md5_byte_t *) &nullable, sizeof(nullable));
+  md5_byte_t digest[16];
+  md5_finish(&md5, digest);
+  Digest d(digest);
+  if ((ft=ctxt.lookup(d)) == NULL) {
+    ft = new Int16Type(ctxt, nullable);
+    ctxt.add(d, ft);
+  }
+  return (Int16Type *)ft;
+}
+
+Int16Type::~Int16Type()
+{
+}
+
+llvm::Value * Int16Type::getMinValue(CodeGenerationContext * ctxt) const
+{
+  return llvm::ConstantInt::get(LLVMGetType(ctxt),
+				std::numeric_limits<int16_t>::min(), 
+				1);
+}
+
+llvm::Value * Int16Type::getMaxValue(CodeGenerationContext * ctxt) const
+{
+  return llvm::ConstantInt::get(LLVMGetType(ctxt),
+				std::numeric_limits<int16_t>::max(), 
+				1);
+}
+
+llvm::Value * Int16Type::getZero(CodeGenerationContext * ctxt) const
+{
+  return llvm::ConstantInt::get(LLVMGetType(ctxt),
+				0,
+				1);
+}
+
+bool Int16Type::isNumeric() const
+{
+  return true;
+}
+
+bool Int16Type::isIntegral() const
+{
+  return true;
+}
+
 std::string Int32Type::toString() const
 {
   return "INTEGER";
@@ -493,6 +650,69 @@ bool Int64Type::isNumeric() const
 }
 
 bool Int64Type::isIntegral() const
+{
+  return true;
+}
+
+std::string FloatType::toString() const
+{
+  return "REAL";
+}
+
+const FieldType * FloatType::clone(bool nullable) const
+{
+  if (nullable == isNullable()) return this;
+  return FloatType::Get(getContext(), nullable);
+}
+
+FloatType * FloatType::Get(DynamicRecordContext& ctxt, bool nullable)
+{
+  FieldType * ft = NULL;
+  md5_state_t md5;
+  md5_init(&md5);
+  FieldType::FieldTypeEnum f=FieldType::FLOAT;
+  md5_append(&md5, (const md5_byte_t *) &f, sizeof(f));
+  int32_t sz = 4;
+  md5_append(&md5, (const md5_byte_t *) &sz, sizeof(sz));
+  md5_append(&md5, (const md5_byte_t *) &nullable, sizeof(nullable));
+  md5_byte_t digest[16];
+  md5_finish(&md5, digest);
+  Digest d(digest);
+  if ((ft=ctxt.lookup(d)) == NULL) {
+    ft = new FloatType(ctxt, nullable);
+    ctxt.add(d, ft);
+  }
+  return (FloatType *)ft;
+}
+
+FloatType::~FloatType()
+{
+}
+
+llvm::Value * FloatType::getMinValue(CodeGenerationContext * ctxt) const
+{
+  return llvm::ConstantFP::get(LLVMGetType(ctxt),
+			       std::numeric_limits<float>::min());
+}
+
+llvm::Value * FloatType::getMaxValue(CodeGenerationContext * ctxt) const
+{
+  return llvm::ConstantFP::get(LLVMGetType(ctxt),
+			       std::numeric_limits<float>::max()); 
+}
+
+llvm::Value * FloatType::getZero(CodeGenerationContext * ctxt) const
+{
+  return llvm::ConstantFP::get(LLVMGetType(ctxt),
+			       0);
+}
+
+bool FloatType::isNumeric() const
+{
+  return true;
+}
+
+bool FloatType::isFloatingPoint() const
 {
   return true;
 }
@@ -768,6 +988,146 @@ llvm::Value * DateType::getMaxValue(CodeGenerationContext * ctxt) const
 llvm::Value * DateType::getZero(CodeGenerationContext * ctxt) const
 {
   throw std::runtime_error("DateType::getZero not implemented");
+}
+
+std::string IPv4Type::toString() const
+{
+  return "IPV4";
+}
+
+const FieldType * IPv4Type::clone(bool nullable) const
+{
+  if (nullable == isNullable()) return this;
+  return IPv4Type::Get(getContext(), nullable);
+}
+
+IPv4Type * IPv4Type::Get(DynamicRecordContext& ctxt, bool nullable)
+{
+  FieldType * ft = NULL;
+  md5_state_t md5;
+  md5_init(&md5);
+  FieldType::FieldTypeEnum f=FieldType::IPV4;
+  md5_append(&md5, (const md5_byte_t *) &f, sizeof(f));
+  int32_t sz = 4;
+  md5_append(&md5, (const md5_byte_t *) &sz, sizeof(sz));
+  md5_append(&md5, (const md5_byte_t *) &nullable, sizeof(nullable));
+  md5_byte_t digest[16];
+  md5_finish(&md5, digest);
+  Digest d(digest);
+  if ((ft=ctxt.lookup(d)) == NULL) {
+    ft = new IPv4Type(ctxt, nullable);
+    ctxt.add(d, ft);
+  }
+  return (IPv4Type *)ft;
+}
+
+IPv4Type::~IPv4Type()
+{
+}
+
+std::string CIDRv4Type::toString() const
+{
+  return "CIDRV4";
+}
+
+const FieldType * CIDRv4Type::clone(bool nullable) const
+{
+  if (nullable == isNullable()) return this;
+  return CIDRv4Type::Get(getContext(), nullable);
+}
+
+CIDRv4Type * CIDRv4Type::Get(DynamicRecordContext& ctxt, bool nullable)
+{
+  FieldType * ft = NULL;
+  md5_state_t md5;
+  md5_init(&md5);
+  FieldType::FieldTypeEnum f=FieldType::CIDRV4;
+  md5_append(&md5, (const md5_byte_t *) &f, sizeof(f));
+  int32_t sz = 5;
+  md5_append(&md5, (const md5_byte_t *) &sz, sizeof(sz));
+  md5_append(&md5, (const md5_byte_t *) &nullable, sizeof(nullable));
+  md5_byte_t digest[16];
+  md5_finish(&md5, digest);
+  Digest d(digest);
+  if ((ft=ctxt.lookup(d)) == NULL) {
+    ft = new CIDRv4Type(ctxt, nullable);
+    ctxt.add(d, ft);
+  }
+  return (CIDRv4Type *)ft;
+}
+
+CIDRv4Type::~CIDRv4Type()
+{
+}
+
+std::string IPv6Type::toString() const
+{
+  return "IPV6";
+}
+
+const FieldType * IPv6Type::clone(bool nullable) const
+{
+  if (nullable == isNullable()) return this;
+  return IPv6Type::Get(getContext(), nullable);
+}
+
+IPv6Type * IPv6Type::Get(DynamicRecordContext& ctxt, bool nullable)
+{
+  FieldType * ft = NULL;
+  md5_state_t md5;
+  md5_init(&md5);
+  FieldType::FieldTypeEnum f=FieldType::IPV6;
+  md5_append(&md5, (const md5_byte_t *) &f, sizeof(f));
+  int32_t sz = 16;
+  md5_append(&md5, (const md5_byte_t *) &sz, sizeof(sz));
+  md5_append(&md5, (const md5_byte_t *) &nullable, sizeof(nullable));
+  md5_byte_t digest[16];
+  md5_finish(&md5, digest);
+  Digest d(digest);
+  if ((ft=ctxt.lookup(d)) == NULL) {
+    ft = new IPv6Type(ctxt, nullable);
+    ctxt.add(d, ft);
+  }
+  return (IPv6Type *)ft;
+}
+
+IPv6Type::~IPv6Type()
+{
+}
+
+std::string CIDRv6Type::toString() const
+{
+  return "CIDRV6";
+}
+
+const FieldType * CIDRv6Type::clone(bool nullable) const
+{
+  if (nullable == isNullable()) return this;
+  return CIDRv6Type::Get(getContext(), nullable);
+}
+
+CIDRv6Type * CIDRv6Type::Get(DynamicRecordContext& ctxt, bool nullable)
+{
+  FieldType * ft = NULL;
+  md5_state_t md5;
+  md5_init(&md5);
+  FieldType::FieldTypeEnum f=FieldType::CIDRV6;
+  md5_append(&md5, (const md5_byte_t *) &f, sizeof(f));
+  int32_t sz = 17;
+  md5_append(&md5, (const md5_byte_t *) &sz, sizeof(sz));
+  md5_append(&md5, (const md5_byte_t *) &nullable, sizeof(nullable));
+  md5_byte_t digest[16];
+  md5_finish(&md5, digest);
+  Digest d(digest);
+  if ((ft=ctxt.lookup(d)) == NULL) {
+    ft = new CIDRv6Type(ctxt, nullable);
+    ctxt.add(d, ft);
+  }
+  return (CIDRv6Type *)ft;
+}
+
+CIDRv6Type::~CIDRv6Type()
+{
 }
 
 void FunctionType::AppendTo(struct md5_state_s * md5) const
@@ -1385,6 +1745,34 @@ void TaggedFieldAddress::print(RecordBuffer buf,
       }
       break;
     }
+  case FieldType::INT8:
+    if(0 == mSize) {
+      ostr << mAddress.getInt8(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayInt8(buf, i);
+      }
+      ostr << "]";
+    }
+    break;
+  case FieldType::INT16:
+    if(0 == mSize) {
+      ostr << mAddress.getInt16(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayInt16(buf, i);
+      }
+      ostr << "]";
+    }
+    break;
   case FieldType::INT32:
     if(0 == mSize) {
       ostr << mAddress.getInt32(buf);
@@ -1409,6 +1797,20 @@ void TaggedFieldAddress::print(RecordBuffer buf,
           ostr << ",";
         }
         ostr << mAddress.getArrayInt64(buf, i);
+      }
+      ostr << "]";
+    }
+    break;
+  case FieldType::FLOAT:
+    if(0 == mSize) {
+      ostr << mAddress.getFloat(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayFloat(buf, i);
       }
       ostr << "]";
     }
@@ -1451,6 +1853,20 @@ void TaggedFieldAddress::print(RecordBuffer buf,
           ostr << ",";
         }
         ostr << mAddress.getArrayDate(buf, i);
+      }
+      ostr << "]";
+    }
+    break;
+  case FieldType::IPV4:
+    if(0 == mSize) {
+      ostr << mAddress.getIPv4(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayIPv4(buf, i);
       }
       ostr << "]";
     }
@@ -1819,11 +2235,20 @@ void RecordType::Print(RecordBuffer buf, std::ostream& ostr) const
 	// ostr << buffer;
 	break;
       }
+    case FieldType::INT8:
+      ostr << mMemberOffsets[it-begin_members()].getInt8(buf);
+      break;
+    case FieldType::INT16:
+      ostr << mMemberOffsets[it-begin_members()].getInt16(buf);
+      break;
     case FieldType::INT32:
       ostr << mMemberOffsets[it-begin_members()].getInt32(buf);
       break;
     case FieldType::INT64:
       ostr << mMemberOffsets[it-begin_members()].getInt64(buf);
+      break;
+    case FieldType::FLOAT:
+      ostr << mMemberOffsets[it-begin_members()].getFloat(buf);
       break;
     case FieldType::DOUBLE:
       ostr << mMemberOffsets[it-begin_members()].getDouble(buf);
@@ -1982,6 +2407,32 @@ const RecordMember& RecordType::GetMember(int32_t idx) const
   return mMembers[idx];
 }
 
+void RecordType::setInt8(const std::string& field, int8_t val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].setInt8(val, buf);
+}
+
+void RecordType::setArrayInt8(const std::string& field, int32_t idx, int8_t val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].clearNull(buf);
+  *mMemberOffsets[it->second].getArrayInt8Ptr(buf, idx) = val;
+}
+
+void RecordType::setInt16(const std::string& field, int16_t val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].setInt16(val, buf);
+}
+
+void RecordType::setArrayInt16(const std::string& field, int32_t idx, int16_t val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].clearNull(buf);
+  *mMemberOffsets[it->second].getArrayInt16Ptr(buf, idx) = val;
+}
+
 void RecordType::setInt32(const std::string& field, int32_t val, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
@@ -2006,6 +2457,19 @@ void RecordType::setArrayInt64(const std::string& field, int32_t idx, int64_t va
   const_member_name_iterator it = mMemberNames.find(field);
   mMemberOffsets[it->second].clearNull(buf);
   *mMemberOffsets[it->second].getArrayInt64Ptr(buf, idx) = val;
+}
+
+void RecordType::setFloat(const std::string& field, float val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].setFloat(val,buf);
+}
+
+void RecordType::setArrayFloat(const std::string& field, int32_t idx, float val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].clearNull(buf);
+  *mMemberOffsets[it->second].getArrayFloatPtr(buf, idx) = val;
 }
 
 void RecordType::setDouble(const std::string& field, double val, RecordBuffer buf) const
@@ -2037,6 +2501,30 @@ void RecordType::setDate(const std::string& field,
   mMemberOffsets[it->second].setDate(val,buf);
 }
 
+void RecordType::setIPv4(const std::string& field, boost::asio::ip::address_v4 val, RecordBuffer buffer) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].setIPv4(val,buffer);
+}
+
+void RecordType::setCIDRv4(const std::string& field, CidrV4 val, RecordBuffer buffer) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].setCIDRv4(val,buffer);
+}
+
+void RecordType::setIPv6(const std::string& field, const boost::asio::ip::address_v6 & val, RecordBuffer buffer) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].setIPv6(val,buffer);
+}
+
+void RecordType::setCIDRv6(const std::string& field, CidrV6 val, RecordBuffer buffer) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].setCIDRv6(val,buffer);
+}
+
 void RecordType::setVarchar(const std::string& field, const char * val, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
@@ -2054,6 +2542,30 @@ void RecordType::setChar(const std::string& field, const char * val, RecordBuffe
   memcpy(ptr, val, sz);
   ptr[sz] = 0;
   
+}
+
+int8_t RecordType::getInt8(const std::string& field, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].getInt8(buf);
+}
+
+int8_t RecordType::getArrayInt8(const std::string& field, int32_t idx, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].getArrayInt8(buf, idx);
+}
+
+int16_t RecordType::getInt16(const std::string& field, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].getInt16(buf);
+}
+
+int16_t RecordType::getArrayInt16(const std::string& field, int32_t idx, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].getArrayInt16(buf, idx);
 }
 
 int32_t RecordType::getInt32(const std::string& field, RecordBuffer buf) const
@@ -2078,6 +2590,12 @@ int64_t RecordType::getArrayInt64(const std::string& field, int32_t idx, RecordB
 {
   const_member_name_iterator it = mMemberNames.find(field);
   return mMemberOffsets[it->second].getArrayInt64(buf, idx);
+}
+
+float RecordType::getFloat(const std::string& field, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].getFloat(buf);
 }
 
 double RecordType::getDouble(const std::string& field, RecordBuffer buf) const

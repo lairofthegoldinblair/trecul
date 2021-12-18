@@ -161,6 +161,13 @@ builtInTypeNoNull
 	  | TK_BOOLEAN^ (arrayTypeSpec)?
 	  | TK_DATETIME^ (arrayTypeSpec)?
       | TK_BIGINT^ (arrayTypeSpec)?
+      | TK_SMALLINT^ (arrayTypeSpec)?
+      | TK_TINYINT^ (arrayTypeSpec)?
+      | TK_REAL^ (arrayTypeSpec)?
+      | TK_IPV4^ (arrayTypeSpec)?
+      | TK_CIDRV4^ (arrayTypeSpec)?
+      | TK_IPV6^ (arrayTypeSpec)?
+      | TK_CIDRV6^ (arrayTypeSpec)?
 	  | ID^ (arrayTypeSpec)?
         ) 
 	;
@@ -175,6 +182,13 @@ builtInType
 	  | TK_BOOLEAN^ (arrayTypeSpec)?
 	  | TK_DATETIME^ (arrayTypeSpec)?
       | TK_BIGINT^ (arrayTypeSpec)?
+      | TK_SMALLINT^ (arrayTypeSpec)?
+      | TK_TINYINT^ (arrayTypeSpec)?
+      | TK_REAL^ (arrayTypeSpec)?
+      | TK_IPV4^ (arrayTypeSpec)?
+      | TK_CIDRV4^ (arrayTypeSpec)?
+      | TK_IPV6^ (arrayTypeSpec)?
+      | TK_CIDRV6^ (arrayTypeSpec)?
 	  | ID^ (arrayTypeSpec)?
         ) typeNullability?
 	;
@@ -495,6 +509,8 @@ primaryExpression
 			{ 
 				// Unquotify
 			}
+    | IPV4_LITERAL
+    | IPV6_LITERAL
 	| TK_TRUE
 	| TK_FALSE
 	| ID^ ('.'! ID)?
@@ -528,6 +544,8 @@ TK_BY : 'BY';
 TK_CASE : 'CASE';
 TK_CAST : 'CAST';
 TK_CHAR : 'CHAR';
+TK_CIDRV4 : 'CIDRV4';
+TK_CIDRV6 : 'CIDRV6';
 TK_COALESCE : 'COALESCE';
 TK_CONTINUE : 'CONTINUE';
 TK_COUNT : 'COUNT';
@@ -555,6 +573,8 @@ TK_INNER : 'INNER';
 TK_INTO : 'INTO';
 TK_INTEGER : 'INTEGER'; 
 TK_INTERVAL : 'INTERVAL';
+TK_IPV4 : 'IPV4';
+TK_IPV6 : 'IPV6';
 TK_IS : 'IS';
 TK_JOIN : 'JOIN';
 TK_KEY : 'KEY'; 
@@ -574,6 +594,7 @@ TK_PRECISION : 'PRECISION';
 TK_PRINT : 'PRINT';
 TK_PROCEDURE : 'PROCEDURE';
 TK_RAISERROR : 'RAISERROR';
+TK_REAL : 'REAL';
 TK_RETURN : 'RETURN';
 TK_RETURNS : 'RETURNS';
 TK_RIGHT : 'RIGHT';
@@ -581,10 +602,12 @@ TK_RLIKE : 'RLIKE';
 TK_ROW : 'ROW';
 TK_SELECT : 'SELECT';
 TK_SET : 'SET';
+TK_SMALLINT : 'SMALLINT';
 TK_SOME : 'SOME';
 TK_SUM : 'SUM';
 TK_SWITCH : 'SWITCH';
 TK_THEN : 'THEN';
+TK_TINYINT : 'TINYINT';
 TK_TRUE : 'TRUE';
 TK_UNION : 'UNION';
 TK_VARCHAR : 'VARCHAR';
@@ -653,6 +676,17 @@ BIGINT_SUFFIX
 	:	'L' 'L'
 	;
 
+fragment
+THREE_DIGIT_NUMBER
+    :
+    '0'..'9' ('0'..'9' ('0'..'9')?)?
+    ;
+
+fragment
+FOUR_DIGIT_HEX
+    : HEX_DIGIT ((HEX_DIGIT) ((HEX_DIGIT) (HEX_DIGIT)?)?)?
+    ;
+
 HEX_INTEGER_LITERAL 
     :
     '0' ('x'|'X') HEX_DIGIT+ BIGINT_SUFFIX?
@@ -675,6 +709,23 @@ FLOATING_POINT_LITERAL
 						| FLOAT_SUFFIX
 					)
 	;
+
+IPV4_LITERAL
+    :
+    THREE_DIGIT_NUMBER '.' THREE_DIGIT_NUMBER '.' THREE_DIGIT_NUMBER '.' THREE_DIGIT_NUMBER
+    ;
+
+IPV6_LITERAL
+    :
+    ':' ':' (FOUR_DIGIT_HEX (':' FOUR_DIGIT_HEX)*)?
+    |
+    FOUR_DIGIT_HEX (':' FOUR_DIGIT_HEX)+
+    |
+    ((FOUR_DIGIT_HEX ':')+ ':')=>
+    (FOUR_DIGIT_HEX ':')+ ':'
+    (FOUR_DIGIT_HEX (':' FOUR_DIGIT_HEX)*)?
+    ;
+
 // a couple protected methods to assist in matching floating point numbers
 fragment
 EXPONENT
@@ -691,8 +742,6 @@ DECIMAL_LITERAL
     :   ('0'..'9')+ '.' ('0'..'9')* 
     |   '.' ('0'..'9')+ 
     ;
-
-
 
 
 

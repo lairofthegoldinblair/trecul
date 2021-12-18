@@ -287,6 +287,8 @@ public:
 			     const FieldType * rhs);
   const FieldType * buildMul(const FieldType * lhs, 
 			     const FieldType * rhs);
+  const FieldType * buildDiv(const FieldType * lhs, 
+			     const FieldType * rhs);
   const FieldType * buildModulus(const FieldType * lhs, 
 				 const FieldType * rhs);
   const FieldType * buildBitwise(const FieldType * lhs, 
@@ -315,8 +317,11 @@ public:
   /**
    * Primitive types.
    */
+  const FieldType * buildInt8Type(bool nullable = false);
+  const FieldType * buildInt16Type(bool nullable = false);
   const FieldType * buildInt32Type(bool nullable = false);
   const FieldType * buildInt64Type(bool nullable = false);
+  const FieldType * buildFloatType(bool nullable = false);
   const FieldType * buildDoubleType(bool nullable = false);
   const FieldType * buildDecimalType(bool nullable = false);
   const FieldType * buildDateType(bool nullable = false);
@@ -325,6 +330,12 @@ public:
   const FieldType * buildVarcharType(bool nullable);
   const FieldType * buildCharType(const char * sz, bool nullable = false);
   const FieldType * buildBooleanType(bool nullable = false);
+  const FieldType * buildIPv4Type(const char * addr, bool nullable = false);
+  const FieldType * buildIPv4Type(bool nullable = false);
+  const FieldType * buildCIDRv4Type(bool nullable = false);
+  const FieldType * buildIPv6Type(const char * addr, bool nullable = false);
+  const FieldType * buildIPv6Type(bool nullable = false);
+  const FieldType * buildCIDRv6Type(bool nullable = false);
   const FieldType * buildNilType();
   const FieldType * buildType(const char * typeName, bool nullable);
 

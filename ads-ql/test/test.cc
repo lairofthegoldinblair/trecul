@@ -518,6 +518,39 @@ BOOST_AUTO_TEST_CASE(testNativeAST)
     CastExpr * castExpr = static_cast<CastExpr *>(ast);
     BOOST_CHECK_EQUAL(Int64Type::Get(ctxt), castExpr->getCastType());
   }
+  {
+    IQLExpression * ast =
+      RecordTypeFunction::getAST(ctxt, 
+				 "CAST(e AS   SMALLINT)");
+    BOOST_CHECK_EQUAL(IQLExpression::CAST, ast->getNodeType());
+    BOOST_CHECK_EQUAL(1U, ast->args_size());
+    BOOST_CHECK_EQUAL(1, ast->getLine());
+    BOOST_CHECK_EQUAL(11, ast->getColumn());
+    CastExpr * castExpr = static_cast<CastExpr *>(ast);
+    BOOST_CHECK_EQUAL(Int16Type::Get(ctxt), castExpr->getCastType());
+  }
+  {
+    IQLExpression * ast =
+      RecordTypeFunction::getAST(ctxt, 
+				 "CAST(e AS   TINYINT)");
+    BOOST_CHECK_EQUAL(IQLExpression::CAST, ast->getNodeType());
+    BOOST_CHECK_EQUAL(1U, ast->args_size());
+    BOOST_CHECK_EQUAL(1, ast->getLine());
+    BOOST_CHECK_EQUAL(11, ast->getColumn());
+    CastExpr * castExpr = static_cast<CastExpr *>(ast);
+    BOOST_CHECK_EQUAL(Int8Type::Get(ctxt), castExpr->getCastType());
+  }
+  {
+    IQLExpression * ast =
+      RecordTypeFunction::getAST(ctxt, 
+				 "CAST(e AS   REAL)");
+    BOOST_CHECK_EQUAL(IQLExpression::CAST, ast->getNodeType());
+    BOOST_CHECK_EQUAL(1U, ast->args_size());
+    BOOST_CHECK_EQUAL(1, ast->getLine());
+    BOOST_CHECK_EQUAL(11, ast->getColumn());
+    CastExpr * castExpr = static_cast<CastExpr *>(ast);
+    BOOST_CHECK_EQUAL(FloatType::Get(ctxt), castExpr->getCastType());
+  }
 }
 
 BOOST_AUTO_TEST_CASE(testRecordConstructorNativeAST)
@@ -863,9 +896,16 @@ BOOST_AUTO_TEST_CASE(testRecordTypeBuilder)
 					       ", g DATETIME"
 					       ", h DATE"
 					       ", i INTEGER[3]"
+					       ", j SMALLINT"
+					       ", k TINYINT"
+					       ", l REAL"
+					       ", m IPV4"
+					       ", n CIDRV4"
+					       ", o IPV6"
+					       ", p CIDRV6"
 					       , false).getProduct();
 
-  BOOST_CHECK_EQUAL(rt->size(), 9U);
+  BOOST_CHECK_EQUAL(rt->size(), 16U);
   BOOST_CHECK(rt->hasMember("a"));
   BOOST_CHECK(rt->hasMember("b"));
   BOOST_CHECK(rt->hasMember("c"));
@@ -875,6 +915,13 @@ BOOST_AUTO_TEST_CASE(testRecordTypeBuilder)
   BOOST_CHECK(rt->hasMember("g"));
   BOOST_CHECK(rt->hasMember("h"));
   BOOST_CHECK(rt->hasMember("i"));
+  BOOST_CHECK(rt->hasMember("j"));
+  BOOST_CHECK(rt->hasMember("k"));
+  BOOST_CHECK(rt->hasMember("l"));
+  BOOST_CHECK(rt->hasMember("m"));
+  BOOST_CHECK(rt->hasMember("n"));
+  BOOST_CHECK(rt->hasMember("o"));
+  BOOST_CHECK(rt->hasMember("p"));
   BOOST_CHECK(FieldType::FIXED_ARRAY == rt->getMember("i").GetType()->GetEnum());
   BOOST_CHECK_EQUAL(3, rt->getMember("i").GetType()->GetSize());
 }
@@ -1283,6 +1330,13 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   members.push_back(RecordMember("y", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("w", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("u", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
+  members.push_back(RecordMember("i8", Int8Type::Get(ctxt)));
+  members.push_back(RecordMember("i16", Int16Type::Get(ctxt)));
+  members.push_back(RecordMember("f1", FloatType::Get(ctxt)));
+  members.push_back(RecordMember("iv4", IPv4Type::Get(ctxt)));
+  members.push_back(RecordMember("cv4", CIDRv4Type::Get(ctxt)));
+  members.push_back(RecordMember("iv6", IPv6Type::Get(ctxt)));
+  members.push_back(RecordMember("cv6", CIDRv6Type::Get(ctxt)));
   RecordType recTy(members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
@@ -1295,6 +1349,14 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   rhsMembers.push_back(RecordMember("z", DoubleType::Get(ctxt)));
   rhsMembers.push_back(RecordMember("x", VarcharType::Get(ctxt)));
   rhsMembers.push_back(RecordMember("v", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
+  rhsMembers.push_back(RecordMember("j8", Int8Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("j16", Int16Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("g1", FloatType::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("jv4", IPv4Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("dv4", CIDRv4Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("jv6", IPv6Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("dv6", CIDRv6Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("ev6", CIDRv6Type::Get(ctxt)));
   RecordType rhsTy(rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
@@ -1310,6 +1372,13 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   recTy.setArrayInt32("u", 0, 8632, lhs);
   recTy.setArrayInt32("u", 1, 863200, lhs);
   recTy.setArrayInt32("u", 2, 8632923, lhs);
+  recTy.setInt8("i8", 99, lhs);
+  recTy.setInt16("i16", -7532, lhs);
+  recTy.setFloat("f1", 723.33, lhs);
+  recTy.setIPv4("iv4", boost::asio::ip::make_address_v4("67.33.128.32"), lhs);
+  recTy.setCIDRv4("cv4", { boost::asio::ip::make_address_v4("67.33.128.32"), 32 }, lhs);
+  recTy.setIPv6("iv6", boost::asio::ip::make_address_v6("abcd:0124::"), lhs);
+  recTy.setCIDRv6("cv6", { boost::asio::ip::make_address_v6("abcd:0124::"), 128 }, lhs);
 
   RecordBuffer rhs1 = rhsTy.GetMalloc()->malloc();
   rhsTy.setInt32("dummy", 0, rhs1);
@@ -1322,6 +1391,14 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   rhsTy.setArrayInt32("v", 0, 8632, rhs1);
   rhsTy.setArrayInt32("v", 1, 863201, rhs1);
   rhsTy.setArrayInt32("v", 2, 8632923, rhs1);
+  rhsTy.setInt8("j8", 90, rhs1);
+  rhsTy.setInt16("j16", -7522, rhs1);
+  rhsTy.setFloat("g1", 723.5, rhs1);
+  rhsTy.setIPv4("jv4", boost::asio::ip::make_address_v4("67.33.128.33"), rhs1);
+  rhsTy.setCIDRv4("dv4", { boost::asio::ip::make_address_v4("67.33.128.33"), 32 }, rhs1);
+  rhsTy.setIPv6("jv6", boost::asio::ip::make_address_v6("abcd:0134::"), rhs1);
+  rhsTy.setCIDRv6("dv6", { boost::asio::ip::make_address_v6("abcd:0134::"), 128 }, rhs1);
+  rhsTy.setCIDRv6("ev6", { boost::asio::ip::make_address_v6("abcd:0124::"), 127 }, rhs1);
 
   RecordBuffer rhs2 = rhsTy.GetMalloc()->malloc();
   rhsTy.setInt32("dummy", 0, rhs2);
@@ -1334,6 +1411,14 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   rhsTy.setArrayInt32("v", 0, 8632, rhs2);
   rhsTy.setArrayInt32("v", 1, 863200, rhs2);
   rhsTy.setArrayInt32("v", 2, 8632923, rhs2);
+  rhsTy.setInt8("j8", 99, rhs2);
+  rhsTy.setInt16("j16", -7532, rhs2);
+  rhsTy.setFloat("g1", 723.33, rhs2);
+  rhsTy.setIPv4("jv4", boost::asio::ip::make_address_v4("67.33.128.32"), rhs2);
+  rhsTy.setCIDRv4("dv4", { boost::asio::ip::make_address_v4("67.33.128.32"), 32 }, rhs2);
+  rhsTy.setIPv6("jv6", boost::asio::ip::make_address_v6("abcd:0124::"), rhs2);
+  rhsTy.setCIDRv6("dv6", { boost::asio::ip::make_address_v6("abcd:0124::"), 128 }, rhs2);
+  rhsTy.setCIDRv6("ev6", { boost::asio::ip::make_address_v6("abcd:0124::"), 128 }, rhs2);
 
   {
     RecordTypeFunction equals(ctxt, "chareq", types, "a = e");
@@ -1393,6 +1478,62 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   }
   {
     RecordTypeFunction equals(ctxt, "fixedarrayeq", types, "u = v");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "int8eq", types, "i8 = j8");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "int16eq", types, "i16 = j16");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "floateq", types, "f1 = g1");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "ipv4eq", types, "iv4 = jv4");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "cv4eq", types, "cv4 = dv4");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "ipv6eq", types, "iv6 = jv6");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "cv4eq", types, "cv6 = dv6");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "cv4eq", types, "cv6 = ev6");
     int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
     BOOST_CHECK_EQUAL(val, 0);
     val = equals.execute(lhs, rhs2, &runtimeCtxt);
@@ -2055,6 +2196,284 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32Compare)
   val = ge.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 1);
   val = ne.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLIPv4Compare)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", IPv4Type::Get(ctxt)));
+  RecordType recTy(members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", IPv4Type::Get(ctxt)));
+  RecordType rhsTy(rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setIPv4("a", boost::asio::ip::make_address_v4("127.66.55.32"), lhs);
+
+  RecordBuffer rhs = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs);
+  rhsTy.setIPv4("e", boost::asio::ip::make_address_v4("127.66.55.33"), rhs);
+
+  RecordTypeFunction lt(ctxt, "v4lt", types, "a < e");
+  RecordTypeFunction gt(ctxt, "v4gt", types, "a > e");
+  RecordTypeFunction le(ctxt, "v4le", types, "a <= e");
+  RecordTypeFunction ge(ctxt, "v4ge", types, "a >= e");
+  int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+
+  
+  recTy.setIPv4("a", boost::asio::ip::make_address_v4("127.66.55.32"), lhs);
+  rhsTy.setIPv4("e", boost::asio::ip::make_address_v4("127.66.55.32"), rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setIPv4("a", boost::asio::ip::make_address_v4("255.66.55.32"), lhs);
+  rhsTy.setIPv4("e", boost::asio::ip::make_address_v4("127.66.55.32"), rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLCIDRv4Compare)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", CIDRv4Type::Get(ctxt)));
+  RecordType recTy(members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", CIDRv4Type::Get(ctxt)));
+  RecordType rhsTy(rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setCIDRv4("a", { boost::asio::ip::make_address_v4("127.66.55.32"), 24 }, lhs);
+
+  RecordBuffer rhs = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs);
+  rhsTy.setCIDRv4("e", { boost::asio::ip::make_address_v4("127.66.55.33"), 24 }, rhs);
+
+  RecordTypeFunction lt(ctxt, "v4lt", types, "a < e");
+  RecordTypeFunction gt(ctxt, "v4gt", types, "a > e");
+  RecordTypeFunction le(ctxt, "v4le", types, "a <= e");
+  RecordTypeFunction ge(ctxt, "v4ge", types, "a >= e");
+  int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+
+  
+  recTy.setCIDRv4("a", { boost::asio::ip::make_address_v4("127.66.55.32"), 24 }, lhs);
+  rhsTy.setCIDRv4("e", { boost::asio::ip::make_address_v4("127.66.55.32"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setCIDRv4("a", { boost::asio::ip::make_address_v4("127.66.55.32"), 25 }, lhs);
+  rhsTy.setCIDRv4("e", { boost::asio::ip::make_address_v4("127.66.55.32"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setCIDRv4("a", { boost::asio::ip::make_address_v4("255.66.55.32"), 24 }, lhs);
+  rhsTy.setCIDRv4("e", { boost::asio::ip::make_address_v4("127.66.55.32"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLIPv6Compare)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", IPv6Type::Get(ctxt)));
+  RecordType recTy(members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", IPv6Type::Get(ctxt)));
+  RecordType rhsTy(rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setIPv6("a", boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), lhs);
+
+  RecordBuffer rhs = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs);
+  rhsTy.setIPv6("e", boost::asio::ip::make_address_v6("aaaa:bbbb:cccd::"), rhs);
+
+  RecordTypeFunction lt(ctxt, "v6lt", types, "a < e");
+  RecordTypeFunction gt(ctxt, "v6gt", types, "a > e");
+  RecordTypeFunction le(ctxt, "v6le", types, "a <= e");
+  RecordTypeFunction ge(ctxt, "v6ge", types, "a >= e");
+  int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+
+  
+  recTy.setIPv6("a", boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), lhs);
+  rhsTy.setIPv6("e", boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setIPv6("a", boost::asio::ip::make_address_v6("aaab:bbbb:cccc::"), lhs);
+  rhsTy.setIPv6("e", boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLCIDRv6Compare)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", CIDRv6Type::Get(ctxt)));
+  RecordType recTy(members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", CIDRv6Type::Get(ctxt)));
+  RecordType rhsTy(rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setCIDRv6("a", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, lhs);
+
+  RecordBuffer rhs = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs);
+  rhsTy.setCIDRv6("e", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccd::"), 24 }, rhs);
+
+  RecordTypeFunction lt(ctxt, "v6lt", types, "a < e");
+  RecordTypeFunction gt(ctxt, "v6gt", types, "a > e");
+  RecordTypeFunction le(ctxt, "v6le", types, "a <= e");
+  RecordTypeFunction ge(ctxt, "v6ge", types, "a >= e");
+  int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+
+  
+  recTy.setCIDRv6("a", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, lhs);
+  rhsTy.setCIDRv6("e", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setCIDRv6("a", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 25 }, lhs);
+  rhsTy.setCIDRv6("e", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setCIDRv6("a", { boost::asio::ip::make_address_v6("aaab:bbbb:cccc::"), 24 }, lhs);
+  rhsTy.setCIDRv6("e", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 1);
 
   recTy.GetFree()->free(lhs);
@@ -7395,6 +7814,153 @@ BOOST_AUTO_TEST_CASE(testStringLiteralEscapes)
 				       t1.getTarget()->getFieldAddress("h").getVarcharPtr(outputBuf)->c_str()));
   recTy.getFree().free(inputBuf);
   t1.getTarget()->getFree().free(outputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testIPv4AddressAndCidr)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(members);
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "127.0.0.1 AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV4, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+    RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    auto expected = boost::asio::ip::make_address_v4("127.0.0.1");
+    auto actual = t1.getTarget()->getFieldAddress("a").getIPv4(outputBuf);;
+    BOOST_CHECK(expected == actual);
+    recTy.getFree().free(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "127.0.0.1/23 AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::CIDRV4, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+    RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    auto expected =  boost::asio::ip::make_address_v4("127.0.0.1");
+    auto actual = t1.getTarget()->getFieldAddress("a").getCIDRv4(outputBuf);;
+    BOOST_CHECK(expected == actual.prefix);
+    BOOST_CHECK_EQUAL(23U, actual.prefix_length);
+    recTy.getFree().free(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    try {
+      // This will fail to lex/parse
+      RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                            "1271.0.0.1 AS a"
+                            );
+      BOOST_CHECK(false);
+    } catch (std::exception & ex) {
+      std::cout << "Received expected exception: " << ex.what() << "\n";
+    }
+  }
+  {
+    try {
+      // This will fail during semantic analysis
+      RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                            "271.0.0.1 AS a"
+                            );
+      BOOST_CHECK(false);
+    } catch (std::exception & ex) {
+      std::cout << "Received expected exception: " << ex.what() << "\n";
+    }
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testIPv6AddressAndCidr)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(members);
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "aaaa:bbbb:cccc:dddd:eeee:ffff:0000:1111 AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+    RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    auto expected =  boost::asio::ip::make_address_v6("aaaa:bbbb:cccc:dddd:eeee:ffff:0000:1111");
+    auto actual = t1.getTarget()->getFieldAddress("a").getIPv6(outputBuf);;
+    BOOST_CHECK(expected == actual);
+    recTy.getFree().free(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          ":: AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "::aaaa:bbbb AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "aaaa:bbbb::ccdd AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "aaaa:bbbb:: AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "aaaa:bbbb::/96 AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::CIDRV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+    RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    auto expected =  boost::asio::ip::make_address_v6("aaaa:bbbb::");
+    auto actual = t1.getTarget()->getFieldAddress("a").getCIDRv6(outputBuf);;
+    BOOST_CHECK(expected == actual.prefix);
+    BOOST_CHECK_EQUAL(96U, actual.prefix_length);
+    recTy.getFree().free(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    try {
+      // This will fail during lex
+      RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                            "aaga:bbbb:cccc:dddd:eeee:ffff:0000:1111 AS a"
+                            );
+      BOOST_CHECK(false);
+    } catch (std::exception & ex) {
+      std::cout << "Received expected exception: " << ex.what() << "\n";
+    }
+  }
 }
 
 

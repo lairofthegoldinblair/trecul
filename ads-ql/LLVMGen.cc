@@ -606,6 +606,18 @@ IQLToLLVMValueRef IQLToLLVMBuildDecimalLiteral(IQLCodeGenerationContextRef ctxtR
   return wrap(ctxt->buildDecimalLiteral(val));
 }
 
+IQLToLLVMValueRef IQLToLLVMBuildIPv4Literal(IQLCodeGenerationContextRef ctxtRef, const char * val)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildIPv4Literal(val));
+}
+
+IQLToLLVMValueRef IQLToLLVMBuildIPv6Literal(IQLCodeGenerationContextRef ctxtRef, const char * val)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildIPv6Literal(val));
+}
+
 IQLToLLVMValueRef IQLToLLVMBuildTrue(IQLCodeGenerationContextRef ctxtRef) {
   CodeGenerationContext * ctxt = unwrap(ctxtRef);
   return wrap(ctxt->buildTrue());
@@ -807,6 +819,12 @@ IQLFieldTypeRef IQLTypeCheckMultiplicativeType(IQLTypeCheckContextRef ctxtRef, I
   return wrap(ctxt->buildMul(unwrap(lhs), unwrap(rhs)));
 }
 
+IQLFieldTypeRef IQLTypeCheckDivide(IQLTypeCheckContextRef ctxtRef, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildDiv(unwrap(lhs), unwrap(rhs)));
+}
+
 IQLFieldTypeRef IQLTypeCheckBitwiseType(IQLTypeCheckContextRef ctxtRef, 
 					IQLFieldTypeRef lhs, 
 					IQLFieldTypeRef rhs)
@@ -872,6 +890,30 @@ IQLFieldTypeRef IQLTypeCheckIsNull(IQLTypeCheckContextRef ctxtRef, IQLFieldTypeR
   return wrap(ctxt->buildBooleanType(false));
 }
 
+IQLFieldTypeRef IQLTypeCheckBuildInt8Type(IQLTypeCheckContextRef ctxtRef, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildInt8Type(nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildInt8ArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildInt8Type(), nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildInt16Type(IQLTypeCheckContextRef ctxtRef, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildInt16Type(nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildInt16ArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildInt16Type(), nullable != 0));
+}
+
 IQLFieldTypeRef IQLTypeCheckBuildInt32Type(IQLTypeCheckContextRef ctxtRef, int nullable)
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
@@ -894,6 +936,18 @@ IQLFieldTypeRef IQLTypeCheckBuildInt64ArrayType(IQLTypeCheckContextRef ctxtRef, 
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
   return wrap(ctxt->buildArrayType(sz, ctxt->buildInt64Type(), nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildFloatType(IQLTypeCheckContextRef ctxtRef, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildFloatType(nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildFloatArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildFloatType(), nullable != 0));
 }
 
 IQLFieldTypeRef IQLTypeCheckBuildDoubleType(IQLTypeCheckContextRef ctxtRef, int nullable)
@@ -942,6 +996,66 @@ IQLFieldTypeRef IQLTypeCheckBuildDateArrayType(IQLTypeCheckContextRef ctxtRef, c
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
   return wrap(ctxt->buildArrayType(sz, ctxt->buildDateType(), nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildIPv4Type(IQLTypeCheckContextRef ctxtRef, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildIPv4Type(nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildIPv4ArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildIPv4Type(), nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildCIDRv4Type(IQLTypeCheckContextRef ctxtRef, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildCIDRv4Type(nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildCIDRv4ArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildCIDRv4Type(), nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildIPv6Type(IQLTypeCheckContextRef ctxtRef, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildIPv6Type(nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildIPv6ArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildIPv6Type(), nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildCIDRv6Type(IQLTypeCheckContextRef ctxtRef, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildCIDRv6Type(nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildCIDRv6ArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildCIDRv6Type(), nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildIPv4Literal(IQLTypeCheckContextRef ctxtRef, const char * addr, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildIPv4Type(addr, nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildIPv6Literal(IQLTypeCheckContextRef ctxtRef, const char * addr, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildIPv6Type(addr, nullable != 0));
 }
 
 IQLFieldTypeRef IQLTypeCheckBuildNVarcharType(IQLTypeCheckContextRef ctxtRef, int nullable)

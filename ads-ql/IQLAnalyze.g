@@ -140,6 +140,13 @@ array=NULL;
 	  | ^(c=TK_BOOLEAN (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildBooleanArrayType($ctxt, array, nullable) : IQLBuildBooleanType($ctxt, nullable); } 
 	  | ^(c=TK_DATETIME (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildDatetimeArrayType($ctxt, array, nullable) : IQLBuildDatetimeType($ctxt, nullable); } 
       | ^(c=TK_BIGINT (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildInt64ArrayType($ctxt, array, nullable) : IQLBuildInt64Type($ctxt, nullable); }
+      | ^(c=TK_SMALLINT (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildInt16ArrayType($ctxt, array, nullable) : IQLBuildInt16Type($ctxt, nullable); }
+      | ^(c=TK_TINYINT (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildInt8ArrayType($ctxt, array, nullable) : IQLBuildInt8Type($ctxt, nullable); }
+      | ^(c=TK_REAL (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildFloatArrayType($ctxt, array, nullable) : IQLBuildFloatType($ctxt, nullable); }
+      | ^(c=TK_IPV4 (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildIPv4ArrayType($ctxt, array, nullable) : IQLBuildIPv4Type($ctxt, nullable); }
+      | ^(c=TK_CIDRV4 (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildCIDRv4ArrayType($ctxt, array, nullable) : IQLBuildCIDRv4Type($ctxt, nullable); }
+      | ^(c=TK_IPV6 (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildIPv6ArrayType($ctxt, array, nullable) : IQLBuildIPv6Type($ctxt, nullable); }
+      | ^(c=TK_CIDRV6 (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildCIDRv6ArrayType($ctxt, array, nullable) : IQLBuildCIDRv6Type($ctxt, nullable); }
 	  | ^(c=ID (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLBuildArrayType($ctxt, (const char *) $ID.text->chars, array, nullable) : IQLBuildType($ctxt, (const char *) $ID.text->chars, nullable); } 
 	;
 
@@ -243,6 +250,8 @@ expression[IQLTreeFactoryRef ctxt] returns [IQLExpressionRef e]
     | t=DECIMAL_LITERAL { $e = IQLBuildDecimal($ctxt, (const char *)$t.text->chars, $t->getLine($t), $t->getCharPositionInLine($t)); }
 	| t=STRING_LITERAL { $e = IQLBuildString($ctxt, (const char *)$t.text->chars, $t->getLine($t), $t->getCharPositionInLine($t)); }
 	| WSTRING_LITERAL
+    | t=IPV4_LITERAL { $e = IQLBuildIPv4($ctxt, (const char *)$t.text->chars, $t->getLine($t), $t->getCharPositionInLine($t)); }
+    | t=IPV6_LITERAL { $e = IQLBuildIPv6($ctxt, (const char *)$t.text->chars, $t->getLine($t), $t->getCharPositionInLine($t)); }
 	| t=TK_TRUE { $e = IQLBuildBoolean($ctxt, 1, $t->getLine($t), $t->getCharPositionInLine($t)); }
 	| t=TK_FALSE { $e = IQLBuildBoolean($ctxt, 0, $t->getLine($t), $t->getCharPositionInLine($t)); }
 	| ^(t=ID (fun=ID { isBinary=1; } )?) { $e = IQLBuildVariable($ctxt, (const char *)$t.text->chars, isBinary ? (const char *)$fun.text->chars : 0, $t->getLine($t), $t->getCharPositionInLine($t)); } 
