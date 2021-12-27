@@ -1743,14 +1743,14 @@ void TaggedFieldAddress::print(RecordBuffer buf,
     }
   case FieldType::INT8:
     if(0 == mSize) {
-      ostr << mAddress.getInt8(buf);
+      ostr << (int32_t) mAddress.getInt8(buf);
     } else {
       ostr << "[";
       for(uint32_t i=0; i<mSize; ++i) {
         if (i>0) {
           ostr << ",";
         }
-        ostr << mAddress.getArrayInt8(buf, i);
+        ostr << (int32_t) mAddress.getArrayInt8(buf, i);
       }
       ostr << "]";
     }

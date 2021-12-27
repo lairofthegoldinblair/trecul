@@ -177,7 +177,7 @@ template <typename Elem, typename Traits>
 std::basic_ostream<Elem, Traits>& operator<<(
     std::basic_ostream<Elem, Traits>& os, const CidrV4& pfx)
 {
-  return os << pfx.prefix << "/" << pfx.prefix_length;
+  return os << pfx.prefix << "/" << (int32_t) pfx.prefix_length;
 }
 
 struct CidrV6
@@ -196,7 +196,7 @@ template <typename Elem, typename Traits>
 std::basic_ostream<Elem, Traits>& operator<<(
     std::basic_ostream<Elem, Traits>& os, const CidrV6& pfx)
 {
-  return os << pfx.prefix << "/" << pfx.prefix_length;
+  return os << pfx.prefix << "/" << (int32_t) pfx.prefix_length;
 }
 
 class FieldAddress
