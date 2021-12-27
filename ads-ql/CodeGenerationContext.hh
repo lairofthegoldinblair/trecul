@@ -441,6 +441,7 @@ public:
   llvm::Type * LLVMDecimal128Type;
   llvm::Type * LLVMVarcharType;
   llvm::Type * LLVMDatetimeType;
+  llvm::Type * LLVMCidrV4Type;
   // This is set by the code generator not by the caller
   llvm::Function * LLVMFunction;
   // Alias to record type mapping for inputs
@@ -649,6 +650,28 @@ public:
 				   const std::vector<IQLToLLVMTypedValue> & args,
 				   const FieldType * retType);
   /**
+   * Cast non null value to INT8.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastInt8(const IQLToLLVMValue * e, 
+                                          const FieldType * argType, 
+                                          llvm::Value * ret, 
+					   const FieldType * retType);
+  const IQLToLLVMValue * buildCastInt8(const IQLToLLVMValue * e, 
+                                       const FieldType * argType, 
+                                       const FieldType * retType);
+
+  /**
+   * Cast non null value to INT16.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastInt16(const IQLToLLVMValue * e, 
+					   const FieldType * argType, 
+					   llvm::Value * ret, 
+					   const FieldType * retType);
+  const IQLToLLVMValue * buildCastInt16(const IQLToLLVMValue * e, 
+					const FieldType * argType, 
+					const FieldType * retType);
+
+  /**
    * Cast non null value to INT32.  Put return value in ret.
    */
   IQLToLLVMValue::ValueType buildCastInt32(const IQLToLLVMValue * e, 
@@ -669,6 +692,17 @@ public:
   const IQLToLLVMValue * buildCastInt64(const IQLToLLVMValue * e, 
 					const FieldType * argType, 
 					const FieldType * retType);
+
+  /**
+   * Cast non null value to FLOAT.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastFloat(const IQLToLLVMValue * e, 
+                                           const FieldType * argType, 
+                                           llvm::Value * ret, 
+                                           const FieldType * retType);
+  const IQLToLLVMValue * buildCastFloat(const IQLToLLVMValue * e, 
+                                        const FieldType * argType, 
+                                        const FieldType * retType);
 
   /**
    * Cast non null value to DOUBLE.  Put return value in ret.
@@ -757,6 +791,50 @@ public:
   const IQLToLLVMValue * buildCastVariableArray(const IQLToLLVMValue * e, 
                                                 const FieldType * argType, 
                                                 const FieldType * retType);
+
+  /**
+   * Cast non null value to IPV4.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastIPv4(const IQLToLLVMValue * e, 
+                                          const FieldType * argType, 
+                                          llvm::Value * ret, 
+                                          const FieldType * retType);
+  const IQLToLLVMValue * buildCastIPv4(const IQLToLLVMValue * e, 
+                                       const FieldType * argType, 
+                                       const FieldType * retType);
+
+  /**
+   * Cast non null value to CIDRV4.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastCIDRv4(const IQLToLLVMValue * e, 
+                                            const FieldType * argType, 
+                                            llvm::Value * ret, 
+                                            const FieldType * retType);
+  const IQLToLLVMValue * buildCastCIDRv4(const IQLToLLVMValue * e, 
+                                         const FieldType * argType, 
+                                         const FieldType * retType);
+
+  /**
+   * Cast non null value to IPV6.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastIPv6(const IQLToLLVMValue * e, 
+                                          const FieldType * argType, 
+                                          llvm::Value * ret, 
+                                          const FieldType * retType);
+  const IQLToLLVMValue * buildCastIPv6(const IQLToLLVMValue * e, 
+                                       const FieldType * argType, 
+                                       const FieldType * retType);
+
+  /**
+   * Cast non null value to CIDRV6.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastCIDRv6(const IQLToLLVMValue * e, 
+                                            const FieldType * argType, 
+                                            llvm::Value * ret, 
+                                            const FieldType * retType);
+  const IQLToLLVMValue * buildCastCIDRv6(const IQLToLLVMValue * e, 
+                                         const FieldType * argType, 
+                                         const FieldType * retType);
 
   /**
    * Cast non null value from one type to another.  Put return value in ret.
@@ -1074,10 +1152,18 @@ public:
   const IQLToLLVMValue *
   buildArrayElementwiseCompare(const IQLToLLVMValue * lhs, 
                                const IQLToLLVMValue * rhs,
-                               std::size_t index,
                                const FieldType * promoted,
                                const FieldType * retType,
                                IQLToLLVMPredicate op);
+
+  const IQLToLLVMValue *
+  buildStructElementwiseCompare(const IQLToLLVMValue * lhs, 
+                                const IQLToLLVMValue * rhs,
+                                const FieldType * promoted,
+                                const std::vector<const FieldType *> members,
+                                const FieldType * retType,
+                                IQLToLLVMPredicate op);
+  
   /**
    * Hash a sequence of values
    */
@@ -1127,6 +1213,8 @@ public:
   const IQLToLLVMValue * buildDoubleLiteral(const char * val);
   const IQLToLLVMValue * buildVarcharLiteral(const char * val);
   const IQLToLLVMValue * buildDecimalLiteral(const char * val);
+  const IQLToLLVMValue * buildIPv4Literal(const char * val);
+  const IQLToLLVMValue * buildIPv6Literal(const char * val);
   const IQLToLLVMValue * buildTrue();
   const IQLToLLVMValue * buildFalse();
   const IQLToLLVMValue * buildNull();

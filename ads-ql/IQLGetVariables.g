@@ -84,6 +84,13 @@ builtInType[IQLGetVariablesContextRef ctxt]
 	  | ^(TK_BOOLEAN arrayTypeSpec? typeNullability?)
 	  | ^(TK_DATETIME arrayTypeSpec? typeNullability?)
       | ^(TK_BIGINT arrayTypeSpec? typeNullability?)
+      | ^(TK_SMALLINT arrayTypeSpec? typeNullability?)
+      | ^(TK_TINYINT arrayTypeSpec? typeNullability?)
+      | ^(TK_REAL arrayTypeSpec? typeNullability?)
+      | ^(TK_IPV4 arrayTypeSpec? typeNullability?)
+      | ^(TK_IPV6 arrayTypeSpec? typeNullability?)
+      | ^(TK_CIDRV4 arrayTypeSpec? typeNullability?)
+      | ^(TK_CIDRV6 arrayTypeSpec? typeNullability?)
 	  | ^(ID arrayTypeSpec? typeNullability?)
 	;
 
@@ -140,6 +147,8 @@ expression[IQLGetVariablesContextRef ctxt]
     | DECIMAL_LITERAL
 	| STRING_LITERAL
 	| WSTRING_LITERAL
+    | IPV4_LITERAL
+    | IPV6_LITERAL
 	| TK_TRUE
 	| TK_FALSE
 	| ^(id = ID ID?) { IQLGetVariablesBuildVariableReference($ctxt, (const char *) $id.text->chars); }

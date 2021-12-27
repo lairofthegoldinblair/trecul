@@ -34,6 +34,8 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/asio/ip/address_v4.hpp>
+#include <boost/asio/ip/address_v6.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/regex.hpp>
 #include "TypeCheckContext.hh"
@@ -373,10 +375,44 @@ const FieldType * TypeCheckContext::castTo(const FieldType * lhs,
   const FieldType * to_type = rhs;
   if (from_type->GetEnum() == FieldType::NIL) {
     return to_type;
+  } else if (from_type->GetEnum() == FieldType::INT8) {
+    if (to_type->GetEnum() == FieldType::INT8)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::INT16)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::INT32)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::INT64)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::FLOAT)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::DOUBLE)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::BIGDECIMAL)
+      return to_type;
+    else 
+      return NULL;
+  } else if (from_type->GetEnum() == FieldType::INT16) {
+    if (to_type->GetEnum() == FieldType::INT16)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::INT32)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::INT64)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::FLOAT)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::DOUBLE)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::BIGDECIMAL)
+      return to_type;
+    else 
+      return NULL;
   } else if (from_type->GetEnum() == FieldType::INT32) {
     if (to_type->GetEnum() == FieldType::INT32)
       return to_type;
     else if (to_type->GetEnum() == FieldType::INT64)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::FLOAT)
       return to_type;
     else if (to_type->GetEnum() == FieldType::DOUBLE)
       return to_type;
@@ -390,6 +426,13 @@ const FieldType * TypeCheckContext::castTo(const FieldType * lhs,
     else if (to_type->GetEnum() == FieldType::DOUBLE)
       return to_type;
     else if (to_type->GetEnum() == FieldType::BIGDECIMAL)
+      return to_type;
+    else 
+      return NULL;
+  } else if (from_type->GetEnum() == FieldType::FLOAT) {
+    if (to_type->GetEnum() == FieldType::FLOAT)
+      return to_type;
+    else if (to_type->GetEnum() == FieldType::DOUBLE)
       return to_type;
     else 
       return NULL;
@@ -594,7 +637,9 @@ void TypeCheckContext::buildSetValue(const FieldType * lhs,
 
 void TypeCheckContext::beginSwitch(const FieldType * e)
 {
-  if (e != Int32Type::Get(mContext) &&
+  if (e != Int8Type::Get(mContext) &&
+      e != Int16Type::Get(mContext) &&
+      e != Int32Type::Get(mContext) &&
       e != Int64Type::Get(mContext))
     throw std::runtime_error("Switch expression must be integer");
 }
@@ -631,7 +676,9 @@ const FieldType * TypeCheckContext::buildArray(const std::vector<const FieldType
 const FieldType * TypeCheckContext::buildArrayRef(const FieldType * arrayTy,
 						  const FieldType * idx)
 {
-  if (idx != Int32Type::Get(mContext) &&
+  if (idx != Int8Type::Get(mContext) &&
+      idx != Int16Type::Get(mContext) &&
+      idx != Int32Type::Get(mContext) &&
       idx != Int64Type::Get(mContext))
     throw std::runtime_error("Array index must be integer");
 
@@ -759,12 +806,28 @@ const FieldType * TypeCheckContext::buildMul(const FieldType * lhs,
   return ty;
 }
 
+const FieldType * TypeCheckContext::buildDiv(const FieldType * lhs,
+					     const FieldType * rhs)
+{
+  if (lhs->GetEnum() == FieldType::IPV4 || lhs->GetEnum() == FieldType::IPV6) {
+    if (!rhs->isIntegral()) {
+      throw std::runtime_error("Prefix length for CIDR types must be an integer type");
+    }
+    bool nullable = lhs->isNullable() || rhs->isNullable();
+    return lhs->GetEnum() == FieldType::IPV4 ? buildCIDRv4Type(nullable) : buildCIDRv6Type(nullable);
+  } else {
+    return buildMul(lhs, rhs);
+  }
+}
+
 const FieldType * TypeCheckContext::buildModulus(const FieldType * lhs,
 						 const FieldType * rhs)
 {
   const FieldType * ret = leastCommonTypeNullable(lhs, rhs);
   if (ret == NULL || 
-      (ret->clone(true) != Int32Type::Get(mContext, true) &&
+      (ret->clone(true) != Int8Type::Get(mContext, true) &&
+       ret->clone(true) != Int16Type::Get(mContext, true) &&
+       ret->clone(true) != Int32Type::Get(mContext, true) &&
        ret->clone(true) != Int64Type::Get(mContext, true)))
     throw std::runtime_error("Argument to modulus must be integer");
   return ret;
@@ -775,7 +838,9 @@ const FieldType * TypeCheckContext::buildBitwise(const FieldType * lhs,
 {
   const FieldType * ret = leastCommonTypeNullable(lhs, rhs);
   if (ret == NULL || 
-      (ret->clone(true) != Int32Type::Get(mContext, true) &&
+      (ret->clone(true) != Int8Type::Get(mContext, true) &&
+       ret->clone(true) != Int16Type::Get(mContext, true) &&
+       ret->clone(true) != Int32Type::Get(mContext, true) &&
        ret->clone(true) != Int64Type::Get(mContext, true)))
     throw std::runtime_error("Argument to bitwise operation must be integer");
   return ret;
@@ -784,7 +849,9 @@ const FieldType * TypeCheckContext::buildBitwise(const FieldType * lhs,
 const FieldType * TypeCheckContext::buildBitwise(const FieldType * lhs)
 {
   const FieldType * ret = lhs;
-  if (ret->clone(true) != Int32Type::Get(mContext, true) &&
+  if (ret->clone(true) != Int8Type::Get(mContext, true) &&
+      ret->clone(true) != Int16Type::Get(mContext, true) &&
+      ret->clone(true) != Int32Type::Get(mContext, true) &&
       ret->clone(true) != Int64Type::Get(mContext, true))
     throw std::runtime_error("Argument to bitwise operator must be integer");
   return ret;
@@ -865,6 +932,16 @@ const FieldType * TypeCheckContext::buildCast(const FieldType * lhs,
   }
 }
 
+const FieldType * TypeCheckContext::buildInt8Type(bool nullable)
+{
+  return Int8Type::Get(mContext, nullable);
+}
+
+const FieldType * TypeCheckContext::buildInt16Type(bool nullable)
+{
+  return Int16Type::Get(mContext, nullable);
+}
+
 const FieldType * TypeCheckContext::buildInt32Type(bool nullable)
 {
   return Int32Type::Get(mContext, nullable);
@@ -873,6 +950,11 @@ const FieldType * TypeCheckContext::buildInt32Type(bool nullable)
 const FieldType * TypeCheckContext::buildInt64Type(bool nullable)
 {
   return Int64Type::Get(mContext, nullable);
+}
+
+const FieldType * TypeCheckContext::buildFloatType(bool nullable)
+{
+  return FloatType::Get(mContext, nullable);
 }
 
 const FieldType * TypeCheckContext::buildDoubleType(bool nullable)
@@ -916,6 +998,46 @@ const FieldType * TypeCheckContext::buildBooleanType(bool nullable)
 {
   // TODO: Currently returning int32_t for boolean (be smarter here).
   return Int32Type::Get(mContext, nullable);
+}
+
+const FieldType * TypeCheckContext::buildIPv4Type(const char * addr, bool nullable)
+{
+  boost::system::error_code ec;
+  boost::asio::ip::make_address_v4(addr, ec);
+  if (ec) {
+    throw std::runtime_error("Invalid IPv4 addresss");
+  }
+  return IPv4Type::Get(mContext, nullable);
+}
+
+const FieldType * TypeCheckContext::buildIPv4Type(bool nullable)
+{
+  return IPv4Type::Get(mContext, nullable);
+}
+
+const FieldType * TypeCheckContext::buildCIDRv4Type(bool nullable)
+{
+  return CIDRv4Type::Get(mContext, nullable);
+}
+
+const FieldType * TypeCheckContext::buildIPv6Type(const char * addr, bool nullable)
+{
+  boost::system::error_code ec;
+  boost::asio::ip::make_address_v6(addr, ec);
+  if (ec) {
+    throw std::runtime_error("Invalid IPv6 addresss");
+  }
+  return IPv6Type::Get(mContext, nullable);
+}
+
+const FieldType * TypeCheckContext::buildIPv6Type(bool nullable)
+{
+  return IPv6Type::Get(mContext, nullable);
+}
+
+const FieldType * TypeCheckContext::buildCIDRv6Type(bool nullable)
+{
+  return CIDRv6Type::Get(mContext, nullable);
 }
 
 const FieldType * TypeCheckContext::buildNilType()

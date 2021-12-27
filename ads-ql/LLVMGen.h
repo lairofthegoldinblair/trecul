@@ -352,6 +352,14 @@ extern "C" {
    */
   IQLToLLVMValueRef IQLToLLVMBuildDecimalLiteral(IQLCodeGenerationContextRef ctxt, const char * val);
   /**
+   * Create a literal IPv4 address value.
+   */
+  IQLToLLVMValueRef IQLToLLVMBuildIPv4Literal(IQLCodeGenerationContextRef ctxt, const char * val);
+  /**
+   * Create a literal IPv6 address value.
+   */
+  IQLToLLVMValueRef IQLToLLVMBuildIPv6Literal(IQLCodeGenerationContextRef ctxt, const char * val);
+  /**
    * Create a literal TRUE boolean value.
    */
   IQLToLLVMValueRef IQLToLLVMBuildTrue(IQLCodeGenerationContextRef ctxt);
@@ -440,6 +448,7 @@ extern "C" {
   IQLFieldTypeRef IQLTypeCheckSub(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
   IQLFieldTypeRef IQLTypeCheckNegateType(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs);
   IQLFieldTypeRef IQLTypeCheckMultiplicativeType(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs); 
+  IQLFieldTypeRef IQLTypeCheckDivide(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs); 
   IQLFieldTypeRef IQLTypeCheckModulus(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
   IQLFieldTypeRef IQLTypeCheckBitwiseType(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
   IQLFieldTypeRef IQLTypeCheckUnaryBitwiseType(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs);
@@ -452,10 +461,16 @@ extern "C" {
   IQLFieldTypeRef IQLTypeCheckAnd(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
   IQLFieldTypeRef IQLTypeCheckRLike(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
   IQLFieldTypeRef IQLTypeCheckNot(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs);
+  IQLFieldTypeRef IQLTypeCheckBuildInt8Type(IQLTypeCheckContextRef ctxt, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildInt8ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildInt16Type(IQLTypeCheckContextRef ctxt, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildInt16ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildInt32Type(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildInt32ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildInt64Type(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildInt64ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildFloatType(IQLTypeCheckContextRef ctxt, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildFloatArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildDoubleType(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildDoubleArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildDecimalType(IQLTypeCheckContextRef ctxt, int nullable);
@@ -464,11 +479,21 @@ extern "C" {
   IQLFieldTypeRef IQLTypeCheckBuildDateArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildDatetimeType(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildDatetimeArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildIPv4Type(IQLTypeCheckContextRef ctxt, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildIPv4ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildCIDRv4Type(IQLTypeCheckContextRef ctxt, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildCIDRv4ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildIPv6Type(IQLTypeCheckContextRef ctxt, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildIPv6ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildCIDRv6Type(IQLTypeCheckContextRef ctxt, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildCIDRv6ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildNVarcharType(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildVarcharType(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildCharType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildBooleanType(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildBooleanArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildIPv4Literal(IQLTypeCheckContextRef ctxt, const char * addr, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildIPv6Literal(IQLTypeCheckContextRef ctxt, const char * addr, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildNilType(IQLTypeCheckContextRef ctxt);
   IQLFieldTypeRef IQLTypeCheckBuildType(IQLTypeCheckContextRef ctxt, const char * typeName, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildArrayType(IQLTypeCheckContextRef ctxt, const char * typeName, const char * sz, int nullable);

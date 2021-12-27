@@ -42,6 +42,7 @@
 #include <boost/assert.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/serialization/shared_ptr.hpp>
+#include <boost/tokenizer.hpp>
 
 #include "zlib.h"
 
@@ -427,6 +428,14 @@ public:
 	case FieldType::BIGDECIMAL:
 	  fit.InitDelimitedDecimal(offset, delim, member.GetType()->isNullable());
 	  break;
+	case FieldType::INT8:
+	  fit.InitDecimalInt8(offset, 
+			       member.GetType()->isNullable());
+	  break;
+	case FieldType::INT16:
+	  fit.InitDecimalInt16(offset, 
+			       member.GetType()->isNullable());
+	  break;
 	case FieldType::INT32:
 	  fit.InitDecimalInt32(offset, 
 			       member.GetType()->isNullable());
@@ -438,6 +447,26 @@ public:
 	case FieldType::DOUBLE:
 	  fit.InitDouble(offset, delim, 
 			 member.GetType()->isNullable());
+	  break;
+	case FieldType::FLOAT:
+	  fit.InitFloat(offset, delim, 
+                        member.GetType()->isNullable());
+	  break;
+	case FieldType::IPV4:
+	  fit.InitIPv4(offset, delim, 
+                       member.GetType()->isNullable());
+	  break;
+	case FieldType::CIDRV4:
+	  fit.InitCIDRv4(offset, delim, 
+                         member.GetType()->isNullable());
+	  break;
+	case FieldType::IPV6:
+	  fit.InitIPv6(offset, delim, 
+                       member.GetType()->isNullable());
+	  break;
+	case FieldType::CIDRV6:
+	  fit.InitCIDRv6(offset, delim, 
+                         member.GetType()->isNullable());
 	  break;
 	case FieldType::DATETIME:
 	  fit.InitDelimitedDatetime(offset, 
@@ -489,8 +518,15 @@ private:
       funcs.push_back(&FieldImporter::ImportVariableLengthTerminatedString);
       funcs.push_back(&FieldImporter::ImportVariableLengthString);
       funcs.push_back(&FieldImporter::ConsumeTerminatedString);
+      funcs.push_back(&FieldImporter::ImportDecimalInt8);
+      funcs.push_back(&FieldImporter::ImportDecimalInt16);
       funcs.push_back(&FieldImporter::ImportDecimalInt32);
       funcs.push_back(&FieldImporter::ImportDouble);
+      funcs.push_back(&FieldImporter::ImportFloat);
+      funcs.push_back(&FieldImporter::ImportIPv4);
+      funcs.push_back(&FieldImporter::ImportCIDRv4);
+      funcs.push_back(&FieldImporter::ImportIPv6);
+      funcs.push_back(&FieldImporter::ImportCIDRv6);
       funcs.push_back(&FieldImporter::ImportDelimitedDatetime);
       funcs.push_back(&FieldImporter::ImportDelimitedDecimal);
       funcs.push_back(&FieldImporter::ImportDecimalInt64);
@@ -500,8 +536,15 @@ private:
       funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportVariableLengthTerminatedString>);
       funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportVariableLengthString>);
       funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ConsumeTerminatedString>);
+      funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportDecimalInt8>);
+      funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportDecimalInt16>);
       funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportDecimalInt32>);
       funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportDouble>);
+      funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportFloat>);
+      funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportIPv4>);
+      funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportCIDRv4>);
+      funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportIPv6>);
+      funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportCIDRv6>);
       funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportDelimitedDatetime>);
       funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportDelimitedDecimal>);
       funcs.push_back(&FieldImporter::ImportNullableField<&FieldImporter::ImportDecimalInt64>);
@@ -669,6 +712,64 @@ private:
     }
   }
 
+  bool ImportDecimalInt8(DataBlock & source, RecordBuffer target) const
+  {
+    bool neg = false;
+    uint8_t * s = source.open(1);
+    if (s == NULL) 
+      return false;
+    if (*s == '-') {
+      neg = true;
+      source.consume(1);
+    } else if (*s == '+') {
+      source.consume(1);
+    }
+    int32_t val = 0;
+    while(true) {
+      s = source.open(1);
+      if (s == NULL) {
+	return false;
+      }
+      if (*s > '9' || *s < '0')  {
+	// TODO: Right now assuming and not validating a single delimiter character
+	// TODO: Protect against overflow
+	mTargetOffset.setInt8(neg ? -val : val, target);
+	return true;
+      }
+      val = val * 10 + (*s - '0');
+      source.consume(1);
+    }
+  }
+  
+  bool ImportDecimalInt16(DataBlock & source, RecordBuffer target) const
+  {
+    bool neg = false;
+    uint8_t * s = source.open(1);
+    if (s == NULL) 
+      return false;
+    if (*s == '-') {
+      neg = true;
+      source.consume(1);
+    } else if (*s == '+') {
+      source.consume(1);
+    }
+    int16_t val = 0;
+    while(true) {
+      s = source.open(1);
+      if (s == NULL) {
+	return false;
+      }
+      if (*s > '9' || *s < '0')  {
+	// TODO: Right now assuming and not validating a single delimiter character
+	// TODO: Protect against overflow
+	mTargetOffset.setInt16(neg ? -val : val, target);
+	return true;
+      }
+      val = val * 10 + (*s - '0');
+      source.consume(1);
+    }
+  }
+  
   bool ImportDecimalInt32(DataBlock & source, RecordBuffer target) const
   {
     bool neg = false;
@@ -714,6 +815,119 @@ private:
     }
 
     mTargetOffset.setDouble(atof((char *) source.getMark()), target);
+    return true;    
+  }
+  
+  bool ImportFloat(DataBlock & source, RecordBuffer target) const
+  {
+    uint8_t term = (uint8_t) mSourceSize;
+    uint8_t * s = source.open(1);
+    AutoMark<DataBlock> m(source);
+    while(true) {
+      if (!s) return false;
+      if (*s != term) {
+	source.consume(1);
+	s = source.open(1);
+      } else {
+	break;
+      }
+    }
+
+    mTargetOffset.setFloat(atof((char *) source.getMark()), target);
+    return true;    
+  }
+  
+  bool ImportIPv4(DataBlock & source, RecordBuffer target) const
+  {
+    uint8_t term = (uint8_t) mSourceSize;
+    uint8_t * s = source.open(1);
+    AutoMark<DataBlock> m(source);
+    while(true) {
+      if (!s) return false;
+      if (*s != term) {
+	source.consume(1);
+	s = source.open(1);
+      } else {
+	break;
+      }
+    }
+
+    // TODO: When we require c++17 then we can use string_view and avoid copy (or we should not use
+    // boost and just call the underlying c API to parse
+    mTargetOffset.setIPv4(boost::asio::ip::make_address_v4(std::string((const char *) source.getMark(), (const char *) s)), target);
+    return true;    
+  }
+  
+  bool ImportCIDRv4(DataBlock & source, RecordBuffer target) const
+  {
+    uint8_t term = (uint8_t) mSourceSize;
+    uint8_t * s = source.open(1);
+    AutoMark<DataBlock> m(source);
+    while(true) {
+      if (!s) return false;
+      if (*s != term) {
+	source.consume(1);
+	s = source.open(1);
+      } else {
+	break;
+      }
+    }
+
+    // TODO: When we require c++17 then we can use string_view and avoid copy (or we should not use
+    // boost and just call the underlying c API to parse
+    std::array<char, 1> toks = { '/' };
+    const char * sep = std::search((const char *) source.getMark(), (const char *) s,
+                                   &toks[0], &toks[1]);
+    auto prefix = boost::asio::ip::make_address_v4(std::string((const char *) source.getMark(), sep));
+    uint8_t prefix_length = sep == (const char *) s || sep+1 == (const char *) s ? 32 : atoi(sep+1);
+    mTargetOffset.setCIDRv4({ prefix,  prefix_length}, target);
+    return true;    
+  }
+  
+  bool ImportIPv6(DataBlock & source, RecordBuffer target) const
+  {
+    uint8_t term = (uint8_t) mSourceSize;
+    uint8_t * s = source.open(1);
+    AutoMark<DataBlock> m(source);
+    while(true) {
+      if (!s) return false;
+      if (*s != term) {
+	source.consume(1);
+	s = source.open(1);
+      } else {
+	break;
+      }
+    }
+
+    // TODO: When we require c++17 then we can use string_view and avoid copy (or we should not use
+    // boost and just call the underlying c API to parse
+    mTargetOffset.setIPv6(boost::asio::ip::make_address_v6(std::string((const char *) source.getMark(), (const char *) s)), target);
+    return true;    
+  }
+  
+  bool ImportCIDRv6(DataBlock & source, RecordBuffer target) const
+  {
+    uint8_t term = (uint8_t) mSourceSize;
+    uint8_t * s = source.open(1);
+    AutoMark<DataBlock> m(source);
+    while(true) {
+      if (!s) return false;
+      if (*s != term) {
+	source.consume(1);
+	s = source.open(1);
+      } else {
+	break;
+      }
+    }
+
+    // TODO: When we require c++17 then we can use string_view and avoid copy (or we should not use
+    // boost and just call the underlying c API to parse
+    std::array<char, 1> toks = { '/' };
+    const char * sep = std::search((const char *) source.getMark(), (const char *) s,
+                                   &toks[0], &toks[1]);
+    auto prefix = boost::asio::ip::make_address_v6(std::string((const char *) source.getMark(), sep));
+    uint8_t prefix_length = sep == (const char *) s || sep+1 == (const char *) s ? 128 : atoi(sep+1);
+    mTargetOffset.setCIDRv6({ prefix,  prefix_length}, target);
     return true;    
   }
   
@@ -976,6 +1190,26 @@ public:
     mImporter = &FieldImporter::ConsumeTerminatedString;
   }
 
+  void InitDecimalInt8(const FieldAddress& targetOffset, bool nullable = false)
+  {
+    mTargetOffset = targetOffset;
+    if (nullable) {
+      mImporter = &FieldImporter::ImportNullableField<&FieldImporter::ImportDecimalInt8>;
+    } else {
+      mImporter = &FieldImporter::ImportDecimalInt8;
+    }
+  }
+
+  void InitDecimalInt16(const FieldAddress& targetOffset, bool nullable = false)
+  {
+    mTargetOffset = targetOffset;
+    if (nullable) {
+      mImporter = &FieldImporter::ImportNullableField<&FieldImporter::ImportDecimalInt16>;
+    } else {
+      mImporter = &FieldImporter::ImportDecimalInt16;
+    }
+  }
+
   void InitDecimalInt32(const FieldAddress& targetOffset, bool nullable = false)
   {
     mTargetOffset = targetOffset;
@@ -994,6 +1228,61 @@ public:
       mImporter = &FieldImporter::ImportNullableField<&FieldImporter::ImportDouble>;
     } else {
       mImporter = &FieldImporter::ImportDouble;
+    }
+  }
+
+  void InitFloat(const FieldAddress& targetOffset, char terminator, bool nullable = false)
+  {
+    mSourceSize = (uint8_t) terminator;
+    mTargetOffset = targetOffset;
+    if (nullable) {
+      mImporter = &FieldImporter::ImportNullableField<&FieldImporter::ImportFloat>;
+    } else {
+      mImporter = &FieldImporter::ImportFloat;
+    }
+  }
+
+  void InitIPv4(const FieldAddress& targetOffset, char terminator, bool nullable = false)
+  {
+    mSourceSize = (uint8_t) terminator;
+    mTargetOffset = targetOffset;
+    if (nullable) {
+      mImporter = &FieldImporter::ImportNullableField<&FieldImporter::ImportIPv4>;
+    } else {
+      mImporter = &FieldImporter::ImportIPv4;
+    }
+  }
+
+  void InitCIDRv4(const FieldAddress& targetOffset, char terminator, bool nullable = false)
+  {
+    mSourceSize = (uint8_t) terminator;
+    mTargetOffset = targetOffset;
+    if (nullable) {
+      mImporter = &FieldImporter::ImportNullableField<&FieldImporter::ImportCIDRv4>;
+    } else {
+      mImporter = &FieldImporter::ImportCIDRv4;
+    }
+  }
+
+  void InitIPv6(const FieldAddress& targetOffset, char terminator, bool nullable = false)
+  {
+    mSourceSize = (uint8_t) terminator;
+    mTargetOffset = targetOffset;
+    if (nullable) {
+      mImporter = &FieldImporter::ImportNullableField<&FieldImporter::ImportIPv6>;
+    } else {
+      mImporter = &FieldImporter::ImportIPv6;
+    }
+  }
+
+  void InitCIDRv6(const FieldAddress& targetOffset, char terminator, bool nullable = false)
+  {
+    mSourceSize = (uint8_t) terminator;
+    mTargetOffset = targetOffset;
+    if (nullable) {
+      mImporter = &FieldImporter::ImportNullableField<&FieldImporter::ImportCIDRv6>;
+    } else {
+      mImporter = &FieldImporter::ImportCIDRv6;
     }
   }
 

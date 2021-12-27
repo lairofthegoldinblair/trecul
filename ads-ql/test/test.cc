@@ -518,6 +518,39 @@ BOOST_AUTO_TEST_CASE(testNativeAST)
     CastExpr * castExpr = static_cast<CastExpr *>(ast);
     BOOST_CHECK_EQUAL(Int64Type::Get(ctxt), castExpr->getCastType());
   }
+  {
+    IQLExpression * ast =
+      RecordTypeFunction::getAST(ctxt, 
+				 "CAST(e AS   SMALLINT)");
+    BOOST_CHECK_EQUAL(IQLExpression::CAST, ast->getNodeType());
+    BOOST_CHECK_EQUAL(1U, ast->args_size());
+    BOOST_CHECK_EQUAL(1, ast->getLine());
+    BOOST_CHECK_EQUAL(11, ast->getColumn());
+    CastExpr * castExpr = static_cast<CastExpr *>(ast);
+    BOOST_CHECK_EQUAL(Int16Type::Get(ctxt), castExpr->getCastType());
+  }
+  {
+    IQLExpression * ast =
+      RecordTypeFunction::getAST(ctxt, 
+				 "CAST(e AS   TINYINT)");
+    BOOST_CHECK_EQUAL(IQLExpression::CAST, ast->getNodeType());
+    BOOST_CHECK_EQUAL(1U, ast->args_size());
+    BOOST_CHECK_EQUAL(1, ast->getLine());
+    BOOST_CHECK_EQUAL(11, ast->getColumn());
+    CastExpr * castExpr = static_cast<CastExpr *>(ast);
+    BOOST_CHECK_EQUAL(Int8Type::Get(ctxt), castExpr->getCastType());
+  }
+  {
+    IQLExpression * ast =
+      RecordTypeFunction::getAST(ctxt, 
+				 "CAST(e AS   REAL)");
+    BOOST_CHECK_EQUAL(IQLExpression::CAST, ast->getNodeType());
+    BOOST_CHECK_EQUAL(1U, ast->args_size());
+    BOOST_CHECK_EQUAL(1, ast->getLine());
+    BOOST_CHECK_EQUAL(11, ast->getColumn());
+    CastExpr * castExpr = static_cast<CastExpr *>(ast);
+    BOOST_CHECK_EQUAL(FloatType::Get(ctxt), castExpr->getCastType());
+  }
 }
 
 BOOST_AUTO_TEST_CASE(testRecordConstructorNativeAST)
@@ -863,9 +896,16 @@ BOOST_AUTO_TEST_CASE(testRecordTypeBuilder)
 					       ", g DATETIME"
 					       ", h DATE"
 					       ", i INTEGER[3]"
+					       ", j SMALLINT"
+					       ", k TINYINT"
+					       ", l REAL"
+					       ", m IPV4"
+					       ", n CIDRV4"
+					       ", o IPV6"
+					       ", p CIDRV6"
 					       , false).getProduct();
 
-  BOOST_CHECK_EQUAL(rt->size(), 9U);
+  BOOST_CHECK_EQUAL(rt->size(), 16U);
   BOOST_CHECK(rt->hasMember("a"));
   BOOST_CHECK(rt->hasMember("b"));
   BOOST_CHECK(rt->hasMember("c"));
@@ -875,6 +915,13 @@ BOOST_AUTO_TEST_CASE(testRecordTypeBuilder)
   BOOST_CHECK(rt->hasMember("g"));
   BOOST_CHECK(rt->hasMember("h"));
   BOOST_CHECK(rt->hasMember("i"));
+  BOOST_CHECK(rt->hasMember("j"));
+  BOOST_CHECK(rt->hasMember("k"));
+  BOOST_CHECK(rt->hasMember("l"));
+  BOOST_CHECK(rt->hasMember("m"));
+  BOOST_CHECK(rt->hasMember("n"));
+  BOOST_CHECK(rt->hasMember("o"));
+  BOOST_CHECK(rt->hasMember("p"));
   BOOST_CHECK(FieldType::FIXED_ARRAY == rt->getMember("i").GetType()->GetEnum());
   BOOST_CHECK_EQUAL(3, rt->getMember("i").GetType()->GetSize());
 }
@@ -1283,6 +1330,13 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   members.push_back(RecordMember("y", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("w", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("u", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
+  members.push_back(RecordMember("i8", Int8Type::Get(ctxt)));
+  members.push_back(RecordMember("i16", Int16Type::Get(ctxt)));
+  members.push_back(RecordMember("f1", FloatType::Get(ctxt)));
+  members.push_back(RecordMember("iv4", IPv4Type::Get(ctxt)));
+  members.push_back(RecordMember("cv4", CIDRv4Type::Get(ctxt)));
+  members.push_back(RecordMember("iv6", IPv6Type::Get(ctxt)));
+  members.push_back(RecordMember("cv6", CIDRv6Type::Get(ctxt)));
   RecordType recTy(members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
@@ -1295,6 +1349,14 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   rhsMembers.push_back(RecordMember("z", DoubleType::Get(ctxt)));
   rhsMembers.push_back(RecordMember("x", VarcharType::Get(ctxt)));
   rhsMembers.push_back(RecordMember("v", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
+  rhsMembers.push_back(RecordMember("j8", Int8Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("j16", Int16Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("g1", FloatType::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("jv4", IPv4Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("dv4", CIDRv4Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("jv6", IPv6Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("dv6", CIDRv6Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("ev6", CIDRv6Type::Get(ctxt)));
   RecordType rhsTy(rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
@@ -1310,6 +1372,13 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   recTy.setArrayInt32("u", 0, 8632, lhs);
   recTy.setArrayInt32("u", 1, 863200, lhs);
   recTy.setArrayInt32("u", 2, 8632923, lhs);
+  recTy.setInt8("i8", 99, lhs);
+  recTy.setInt16("i16", -7532, lhs);
+  recTy.setFloat("f1", 723.33, lhs);
+  recTy.setIPv4("iv4", boost::asio::ip::make_address_v4("67.33.128.32"), lhs);
+  recTy.setCIDRv4("cv4", { boost::asio::ip::make_address_v4("67.33.128.32"), 32 }, lhs);
+  recTy.setIPv6("iv6", boost::asio::ip::make_address_v6("abcd:0124::"), lhs);
+  recTy.setCIDRv6("cv6", { boost::asio::ip::make_address_v6("abcd:0124::"), 128 }, lhs);
 
   RecordBuffer rhs1 = rhsTy.GetMalloc()->malloc();
   rhsTy.setInt32("dummy", 0, rhs1);
@@ -1322,6 +1391,14 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   rhsTy.setArrayInt32("v", 0, 8632, rhs1);
   rhsTy.setArrayInt32("v", 1, 863201, rhs1);
   rhsTy.setArrayInt32("v", 2, 8632923, rhs1);
+  rhsTy.setInt8("j8", 90, rhs1);
+  rhsTy.setInt16("j16", -7522, rhs1);
+  rhsTy.setFloat("g1", 723.5, rhs1);
+  rhsTy.setIPv4("jv4", boost::asio::ip::make_address_v4("67.33.128.33"), rhs1);
+  rhsTy.setCIDRv4("dv4", { boost::asio::ip::make_address_v4("67.33.128.33"), 32 }, rhs1);
+  rhsTy.setIPv6("jv6", boost::asio::ip::make_address_v6("abcd:0134::"), rhs1);
+  rhsTy.setCIDRv6("dv6", { boost::asio::ip::make_address_v6("abcd:0134::"), 128 }, rhs1);
+  rhsTy.setCIDRv6("ev6", { boost::asio::ip::make_address_v6("abcd:0124::"), 127 }, rhs1);
 
   RecordBuffer rhs2 = rhsTy.GetMalloc()->malloc();
   rhsTy.setInt32("dummy", 0, rhs2);
@@ -1334,6 +1411,14 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   rhsTy.setArrayInt32("v", 0, 8632, rhs2);
   rhsTy.setArrayInt32("v", 1, 863200, rhs2);
   rhsTy.setArrayInt32("v", 2, 8632923, rhs2);
+  rhsTy.setInt8("j8", 99, rhs2);
+  rhsTy.setInt16("j16", -7532, rhs2);
+  rhsTy.setFloat("g1", 723.33, rhs2);
+  rhsTy.setIPv4("jv4", boost::asio::ip::make_address_v4("67.33.128.32"), rhs2);
+  rhsTy.setCIDRv4("dv4", { boost::asio::ip::make_address_v4("67.33.128.32"), 32 }, rhs2);
+  rhsTy.setIPv6("jv6", boost::asio::ip::make_address_v6("abcd:0124::"), rhs2);
+  rhsTy.setCIDRv6("dv6", { boost::asio::ip::make_address_v6("abcd:0124::"), 128 }, rhs2);
+  rhsTy.setCIDRv6("ev6", { boost::asio::ip::make_address_v6("abcd:0124::"), 128 }, rhs2);
 
   {
     RecordTypeFunction equals(ctxt, "chareq", types, "a = e");
@@ -1393,6 +1478,62 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   }
   {
     RecordTypeFunction equals(ctxt, "fixedarrayeq", types, "u = v");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "int8eq", types, "i8 = j8");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "int16eq", types, "i16 = j16");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "floateq", types, "f1 = g1");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "ipv4eq", types, "iv4 = jv4");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "cv4eq", types, "cv4 = dv4");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "ipv6eq", types, "iv6 = jv6");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "cv4eq", types, "cv6 = dv6");
+    int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+    val = equals.execute(lhs, rhs2, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);    
+  }
+  {
+    RecordTypeFunction equals(ctxt, "cv4eq", types, "cv6 = ev6");
     int32_t val = equals.execute(lhs, rhs1, &runtimeCtxt);
     BOOST_CHECK_EQUAL(val, 0);
     val = equals.execute(lhs, rhs2, &runtimeCtxt);
@@ -2061,6 +2202,284 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32Compare)
   rhsTy.GetFree()->free(rhs);
 }
 
+BOOST_AUTO_TEST_CASE(testIQLIPv4Compare)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", IPv4Type::Get(ctxt)));
+  RecordType recTy(members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", IPv4Type::Get(ctxt)));
+  RecordType rhsTy(rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setIPv4("a", boost::asio::ip::make_address_v4("127.66.55.32"), lhs);
+
+  RecordBuffer rhs = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs);
+  rhsTy.setIPv4("e", boost::asio::ip::make_address_v4("127.66.55.33"), rhs);
+
+  RecordTypeFunction lt(ctxt, "v4lt", types, "a < e");
+  RecordTypeFunction gt(ctxt, "v4gt", types, "a > e");
+  RecordTypeFunction le(ctxt, "v4le", types, "a <= e");
+  RecordTypeFunction ge(ctxt, "v4ge", types, "a >= e");
+  int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+
+  
+  recTy.setIPv4("a", boost::asio::ip::make_address_v4("127.66.55.32"), lhs);
+  rhsTy.setIPv4("e", boost::asio::ip::make_address_v4("127.66.55.32"), rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setIPv4("a", boost::asio::ip::make_address_v4("255.66.55.32"), lhs);
+  rhsTy.setIPv4("e", boost::asio::ip::make_address_v4("127.66.55.32"), rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLCIDRv4Compare)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", CIDRv4Type::Get(ctxt)));
+  RecordType recTy(members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", CIDRv4Type::Get(ctxt)));
+  RecordType rhsTy(rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setCIDRv4("a", { boost::asio::ip::make_address_v4("127.66.55.32"), 24 }, lhs);
+
+  RecordBuffer rhs = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs);
+  rhsTy.setCIDRv4("e", { boost::asio::ip::make_address_v4("127.66.55.33"), 24 }, rhs);
+
+  RecordTypeFunction lt(ctxt, "v4lt", types, "a < e");
+  RecordTypeFunction gt(ctxt, "v4gt", types, "a > e");
+  RecordTypeFunction le(ctxt, "v4le", types, "a <= e");
+  RecordTypeFunction ge(ctxt, "v4ge", types, "a >= e");
+  int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+
+  
+  recTy.setCIDRv4("a", { boost::asio::ip::make_address_v4("127.66.55.32"), 24 }, lhs);
+  rhsTy.setCIDRv4("e", { boost::asio::ip::make_address_v4("127.66.55.32"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setCIDRv4("a", { boost::asio::ip::make_address_v4("127.66.55.32"), 25 }, lhs);
+  rhsTy.setCIDRv4("e", { boost::asio::ip::make_address_v4("127.66.55.32"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setCIDRv4("a", { boost::asio::ip::make_address_v4("255.66.55.32"), 24 }, lhs);
+  rhsTy.setCIDRv4("e", { boost::asio::ip::make_address_v4("127.66.55.32"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLIPv6Compare)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", IPv6Type::Get(ctxt)));
+  RecordType recTy(members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", IPv6Type::Get(ctxt)));
+  RecordType rhsTy(rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setIPv6("a", boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), lhs);
+
+  RecordBuffer rhs = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs);
+  rhsTy.setIPv6("e", boost::asio::ip::make_address_v6("aaaa:bbbb:cccd::"), rhs);
+
+  RecordTypeFunction lt(ctxt, "v6lt", types, "a < e");
+  RecordTypeFunction gt(ctxt, "v6gt", types, "a > e");
+  RecordTypeFunction le(ctxt, "v6le", types, "a <= e");
+  RecordTypeFunction ge(ctxt, "v6ge", types, "a >= e");
+  int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+
+  
+  recTy.setIPv6("a", boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), lhs);
+  rhsTy.setIPv6("e", boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setIPv6("a", boost::asio::ip::make_address_v6("aaab:bbbb:cccc::"), lhs);
+  rhsTy.setIPv6("e", boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLCIDRv6Compare)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", CIDRv6Type::Get(ctxt)));
+  RecordType recTy(members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", CIDRv6Type::Get(ctxt)));
+  RecordType rhsTy(rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setCIDRv6("a", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, lhs);
+
+  RecordBuffer rhs = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs);
+  rhsTy.setCIDRv6("e", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccd::"), 24 }, rhs);
+
+  RecordTypeFunction lt(ctxt, "v6lt", types, "a < e");
+  RecordTypeFunction gt(ctxt, "v6gt", types, "a > e");
+  RecordTypeFunction le(ctxt, "v6le", types, "a <= e");
+  RecordTypeFunction ge(ctxt, "v6ge", types, "a >= e");
+  int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+
+  
+  recTy.setCIDRv6("a", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, lhs);
+  rhsTy.setCIDRv6("e", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setCIDRv6("a", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 25 }, lhs);
+  rhsTy.setCIDRv6("e", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.setCIDRv6("a", { boost::asio::ip::make_address_v6("aaab:bbbb:cccc::"), 24 }, lhs);
+  rhsTy.setCIDRv6("e", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, rhs);
+  val = lt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = gt.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = le.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
+  val = ge.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs);
+}
+
 void testRecordLogicalOps(bool isNullable)
 {
   DynamicRecordContext ctxt;
@@ -2246,12 +2665,56 @@ BOOST_AUTO_TEST_CASE(testIQLRecordLogicalOpsNullable)
   testRecordLogicalOps(true);
 }
 
-BOOST_AUTO_TEST_CASE(testIQLArray)
+void testArrayReference(bool isNullable)
 {
   DynamicRecordContext ctxt;
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
-  members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt), false)));
+  members.push_back(RecordMember("g", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt, isNullable), false)));
+  RecordType recTy(members);
+  std::vector<RecordMember> emptyMembers;
+  RecordType emptyTy(emptyMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&emptyTy);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("g", 0, 6234, inputBuf);
+  recTy.setArrayInt32("g", 1, 6235, inputBuf);
+  recTy.setArrayInt32("g", 2, 6236, inputBuf);
+
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			  "g[0] AS a, g[1] AS b, g[2] AS c");
+    for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+	it != t1.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::INT32, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK_EQUAL(6234, t1.getTarget()->getInt32("a", outputBuf));
+    BOOST_CHECK_EQUAL(6235, t1.getTarget()->getInt32("b", outputBuf));
+    BOOST_CHECK_EQUAL(6236, t1.getTarget()->getInt32("c", outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+
+  recTy.GetFree()->free(inputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLArrayReference)
+{
+  testArrayReference(false);
+  testArrayReference(true);
+}
+
+void testArrayUpdate(bool isNullable)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt, isNullable), false)));
   RecordType recTy(members);
   std::vector<RecordMember> rhsMembers;
   RecordType rhsTy(rhsMembers);
@@ -2282,6 +2745,16 @@ BOOST_AUTO_TEST_CASE(testIQLArray)
     up.execute(lhs, NULL, &runtimeCtxt);
     BOOST_CHECK_EQUAL(88311, recTy.getArrayInt32("a", 2, lhs));
   }
+}
+
+BOOST_AUTO_TEST_CASE(testIQLArrayUpdate)
+{
+  testArrayUpdate(false);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLArrayUpdateNullable)
+{
+  testArrayUpdate(true);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLWhile)
@@ -2747,6 +3220,8 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("f", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("g", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
+  members.push_back(RecordMember("h", Int8Type::Get(ctxt)));
+  members.push_back(RecordMember("i", Int16Type::Get(ctxt)));
   RecordType recTy(members);
   std::vector<RecordMember> emptyMembers;
   RecordType emptyTy(emptyMembers);
@@ -2764,7 +3239,9 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
   recTy.setArrayInt32("g", 0, 6234, inputBuf);
   recTy.setArrayInt32("g", 1, 6235, inputBuf);
   recTy.setArrayInt32("g", 2, 6236, inputBuf);
-
+  recTy.setInt8("h", 123, inputBuf);
+  recTy.setInt16("i", 2343, inputBuf);
+  
   // Give a big buffer where serialization succeeds in a single pass
   uint8_t bigBuf[128];
   uint8_t * bufPtr = &bigBuf[0];
@@ -2772,13 +3249,13 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
   recIt.init(inputBuf);
   bool ret = recTy.getSerialize().doit(bufPtr, bigBuf+128, recIt, inputBuf);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(&bigBuf[93], bufPtr);
+  BOOST_CHECK_EQUAL(&bigBuf[97], bufPtr);
 
   // Deserialize and make sure all is well
   RecordBuffer outputBuf = recTy.GetMalloc()->malloc();
   recIt.init(outputBuf);
   bufPtr = &bigBuf[0];
-  ret = recTy.getDeserialize().Do(bufPtr, &bigBuf[93], recIt, outputBuf);
+  ret = recTy.getDeserialize().Do(bufPtr, &bigBuf[97], recIt, outputBuf);
   BOOST_CHECK(ret);
   BOOST_CHECK(boost::algorithm::equals("123456",
 				       recTy.getFieldAddress("a").getCharPtr(outputBuf)));
@@ -2792,6 +3269,8 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
   BOOST_CHECK_EQUAL(6234, recTy.getFieldAddress("g").getArrayInt32(outputBuf, 0));
   BOOST_CHECK_EQUAL(6235, recTy.getFieldAddress("g").getArrayInt32(outputBuf, 1));
   BOOST_CHECK_EQUAL(6236, recTy.getFieldAddress("g").getArrayInt32(outputBuf, 2));
+  BOOST_CHECK_EQUAL(123, recTy.getFieldAddress("h").getInt8(outputBuf));
+  BOOST_CHECK_EQUAL(2343, recTy.getFieldAddress("i").getInt16(outputBuf));
 }
 
 BOOST_AUTO_TEST_CASE(testRecordTypeNullBitmap)
@@ -2985,7 +3464,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferIntegers)
   recordType->setInt32("a", 23, inputBuf);
   recordType->setInt32("b", 230, inputBuf);
   recordType->setInt32("c", 2300, inputBuf);
-  recordType->Print(inputBuf, std::cout);
   RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
@@ -3069,6 +3547,8 @@ public:
   }
   virtual ~BinaryOp() {}
   const char * getOp() const { return mOp; }
+  virtual int8_t operator()(int8_t a, int8_t b) const =0;
+  virtual int16_t operator()(int16_t a, int16_t b) const =0;
   virtual int32_t operator()(int32_t a, int32_t b) const =0;
   virtual int64_t operator()(int64_t a, int64_t b) const =0;
 };
@@ -3077,6 +3557,8 @@ class MulOp : public BinaryOp
 {
 public:
   MulOp() : BinaryOp("*") {}
+  int8_t operator()(int8_t a, int8_t b) const { return a*b; }
+  int16_t operator()(int16_t a, int16_t b) const { return a*b; }
   int32_t operator()(int32_t a, int32_t b) const { return a*b; }
   int64_t operator()(int64_t a, int64_t b) const { return a*b; }  
 };
@@ -3085,6 +3567,8 @@ class DivOp : public BinaryOp
 {
 public:
   DivOp() : BinaryOp("/") {}
+  int8_t operator()(int8_t a, int8_t b) const { return a/b; }
+  int16_t operator()(int16_t a, int16_t b) const { return a/b; }
   int32_t operator()(int32_t a, int32_t b) const { return a/b; }
   int64_t operator()(int64_t a, int64_t b) const { return a/b; }  
 };
@@ -3093,6 +3577,8 @@ class SubOp : public BinaryOp
 {
 public:
   SubOp() : BinaryOp("-") {}
+  int8_t operator()(int8_t a, int8_t b) const { return a-b; }
+  int16_t operator()(int16_t a, int16_t b) const { return a-b; }
   int32_t operator()(int32_t a, int32_t b) const { return a-b; }
   int64_t operator()(int64_t a, int64_t b) const { return a-b; }  
 };
@@ -3101,6 +3587,8 @@ class AddOp : public BinaryOp
 {
 public:
   AddOp() : BinaryOp("+") {}
+  int8_t operator()(int8_t a, int8_t b) const { return a+b; }
+  int16_t operator()(int16_t a, int16_t b) const { return a+b; }
   int32_t operator()(int32_t a, int32_t b) const { return a+b; }
   int64_t operator()(int64_t a, int64_t b) const { return a+b; }  
 };
@@ -3109,6 +3597,8 @@ class BitwiseAndOp : public BinaryOp
 {
 public:
   BitwiseAndOp() : BinaryOp("&") {}
+  int8_t operator()(int8_t a, int8_t b) const { return a&b; }
+  int16_t operator()(int16_t a, int16_t b) const { return a&b; }
   int32_t operator()(int32_t a, int32_t b) const { return a&b; }
   int64_t operator()(int64_t a, int64_t b) const { return a&b; }  
 };
@@ -3117,6 +3607,8 @@ class BitwiseOrOp : public BinaryOp
 {
 public:
   BitwiseOrOp() : BinaryOp("|") {}
+  int8_t operator()(int8_t a, int8_t b) const { return a|b; }
+  int16_t operator()(int16_t a, int16_t b) const { return a|b; }
   int32_t operator()(int32_t a, int32_t b) const { return a|b; }
   int64_t operator()(int64_t a, int64_t b) const { return a|b; }  
 };
@@ -3125,6 +3617,8 @@ class BitwiseXorOp : public BinaryOp
 {
 public:
   BitwiseXorOp() : BinaryOp("^") {}
+  int8_t operator()(int8_t a, int8_t b) const { return a^b; }
+  int16_t operator()(int16_t a, int16_t b) const { return a^b; }
   int32_t operator()(int32_t a, int32_t b) const { return a^b; }
   int64_t operator()(int64_t a, int64_t b) const { return a^b; }  
 };
@@ -3137,6 +3631,10 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
   members.push_back(RecordMember("b", Int32Type::Get(ctxt, isNullable2)));
   members.push_back(RecordMember("c", Int64Type::Get(ctxt, isNullable1)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt, isNullable2)));
+  members.push_back(RecordMember("e", Int8Type::Get(ctxt, isNullable1)));
+  members.push_back(RecordMember("f", Int8Type::Get(ctxt, isNullable2)));
+  members.push_back(RecordMember("g", Int16Type::Get(ctxt, isNullable1)));
+  members.push_back(RecordMember("h", Int16Type::Get(ctxt, isNullable2)));
   boost::shared_ptr<RecordType> recordType(new RecordType(members));
 
   // Result nullability
@@ -3144,7 +3642,7 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
   
   // Simple Transfer of everything.  
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
-			(boost::format("a%1%b AS e, c%1%d AS f, a%1%d AS g") % 
+			(boost::format("a%1%b AS e, c%1%d AS f, a%1%d AS g, e%1%f AS h, g%1%h AS i") % 
 			 op.getOp()).str());
   BOOST_CHECK_EQUAL(Int32Type::Get(ctxt, isNullable), 
 		    t1.getTarget()->getMember("e").GetType());
@@ -3152,6 +3650,10 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
 		    t1.getTarget()->getMember("f").GetType());
   BOOST_CHECK_EQUAL(Int64Type::Get(ctxt, isNullable), 
 		    t1.getTarget()->getMember("g").GetType());
+  BOOST_CHECK_EQUAL(Int8Type::Get(ctxt, isNullable), 
+		    t1.getTarget()->getMember("h").GetType());
+  BOOST_CHECK_EQUAL(Int16Type::Get(ctxt, isNullable), 
+		    t1.getTarget()->getMember("i").GetType());
   // Actually execute this thing.
   InterpreterContext runtimeCtxt;
   RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
@@ -3160,20 +3662,34 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
   recordType->setInt32("b", 7, inputBuf);
   recordType->setInt64("c", 2300, inputBuf);
   recordType->setInt64("d", 231, inputBuf);
+  recordType->setInt8("e", 12, inputBuf);
+  recordType->setInt8("f", 7, inputBuf);
+  recordType->setInt16("g", 19, inputBuf);
+  recordType->setInt16("h", 75, inputBuf);
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(op(23,7), t1.getTarget()->getInt32("e", outputBuf));
   BOOST_CHECK_EQUAL(op((int64_t) 2300, (int64_t) 231), 
 		    t1.getTarget()->getInt64("f", outputBuf));
   BOOST_CHECK_EQUAL(op((int64_t) 23, (int64_t) 231), 
 		    t1.getTarget()->getInt64("g", outputBuf));
+  BOOST_CHECK_EQUAL(op((int8_t) 12, (int8_t) 7), 
+		    t1.getTarget()->getInt8("h", outputBuf));
+  BOOST_CHECK_EQUAL(op((int16_t) 19, (int16_t) 75), 
+		    t1.getTarget()->getInt16("i", outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("g").isNull(outputBuf));
+  BOOST_CHECK(!t1.getTarget()->getFieldAddress("h").isNull(outputBuf));
+  BOOST_CHECK(!t1.getTarget()->getFieldAddress("i").isNull(outputBuf));
 
   recordType->setInt32("a", 23, inputBuf);
   recordType->setInt32("b", -7, inputBuf);
   recordType->setInt64("c", 2300, inputBuf);
   recordType->setInt64("d", -231, inputBuf);
+  recordType->setInt8("e", 12, inputBuf);
+  recordType->setInt8("f", -7, inputBuf);
+  recordType->setInt16("g", 19, inputBuf);
+  recordType->setInt16("h", -75, inputBuf);
   t1.getTarget()->getFree().free(outputBuf);
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(op(23,-7), t1.getTarget()->getInt32("e", outputBuf));
@@ -3181,14 +3697,24 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
 		    t1.getTarget()->getInt64("f", outputBuf));
   BOOST_CHECK_EQUAL(op((int64_t) 23, (int64_t) -231), 
 		    t1.getTarget()->getInt64("g", outputBuf));
+  BOOST_CHECK_EQUAL(op((int8_t) 12, (int8_t) -7), 
+		    t1.getTarget()->getInt8("h", outputBuf));
+  BOOST_CHECK_EQUAL(op((int16_t) 19, (int16_t) -75), 
+		    t1.getTarget()->getInt16("i", outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("g").isNull(outputBuf));
+  BOOST_CHECK(!t1.getTarget()->getFieldAddress("h").isNull(outputBuf));
+  BOOST_CHECK(!t1.getTarget()->getFieldAddress("i").isNull(outputBuf));
 
   recordType->setInt32("a", -23, inputBuf);
   recordType->setInt32("b", 7, inputBuf);
   recordType->setInt64("c", -2300, inputBuf);
   recordType->setInt64("d", 231, inputBuf);
+  recordType->setInt8("e", -12, inputBuf);
+  recordType->setInt8("f", 7, inputBuf);
+  recordType->setInt16("g", -19, inputBuf);
+  recordType->setInt16("h", 75, inputBuf);
   t1.getTarget()->getFree().free(outputBuf);
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(op(-23,7), t1.getTarget()->getInt32("e", outputBuf));
@@ -3196,14 +3722,24 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
 		    t1.getTarget()->getInt64("f", outputBuf));
   BOOST_CHECK_EQUAL(op((int64_t) -23, (int64_t) 231), 
 		    t1.getTarget()->getInt64("g", outputBuf));
+  BOOST_CHECK_EQUAL(op((int8_t) -12, (int8_t) 7), 
+		    t1.getTarget()->getInt8("h", outputBuf));
+  BOOST_CHECK_EQUAL(op((int16_t) -19, (int16_t) 75), 
+		    t1.getTarget()->getInt16("i", outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("g").isNull(outputBuf));
+  BOOST_CHECK(!t1.getTarget()->getFieldAddress("h").isNull(outputBuf));
+  BOOST_CHECK(!t1.getTarget()->getFieldAddress("i").isNull(outputBuf));
 
   recordType->setInt32("a", -23, inputBuf);
   recordType->setInt32("b", -7, inputBuf);
   recordType->setInt64("c", -2300, inputBuf);
   recordType->setInt64("d", -231, inputBuf);
+  recordType->setInt8("e", -12, inputBuf);
+  recordType->setInt8("f", -7, inputBuf);
+  recordType->setInt16("g", -19, inputBuf);
+  recordType->setInt16("h", -75, inputBuf);
   t1.getTarget()->getFree().free(outputBuf);
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(op(-23,-7), t1.getTarget()->getInt32("e", outputBuf));
@@ -3211,42 +3747,64 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
 		    t1.getTarget()->getInt64("f", outputBuf));
   BOOST_CHECK_EQUAL(op((int64_t) -23, (int64_t) -231), 
 		    t1.getTarget()->getInt64("g", outputBuf));
+  BOOST_CHECK_EQUAL(op((int8_t) -12, (int8_t) -7), 
+		    t1.getTarget()->getInt8("h", outputBuf));
+  BOOST_CHECK_EQUAL(op((int16_t) -19, (int16_t) -75), 
+		    t1.getTarget()->getInt16("i", outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("g").isNull(outputBuf));
+  BOOST_CHECK(!t1.getTarget()->getFieldAddress("h").isNull(outputBuf));
+  BOOST_CHECK(!t1.getTarget()->getFieldAddress("i").isNull(outputBuf));
   
   if (isNullable1) {
     recordType->getFieldAddress("a").setNull(inputBuf);
     recordType->getFieldAddress("c").setNull(inputBuf);
+    recordType->getFieldAddress("e").setNull(inputBuf);
+    recordType->getFieldAddress("g").setNull(inputBuf);
     t1.getTarget()->getFree().free(outputBuf);
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
     BOOST_CHECK(t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
     BOOST_CHECK(t1.getTarget()->getFieldAddress("g").isNull(outputBuf));
+    BOOST_CHECK(t1.getTarget()->getFieldAddress("h").isNull(outputBuf));
+    BOOST_CHECK(t1.getTarget()->getFieldAddress("i").isNull(outputBuf));
   }
 
   if (isNullable2) {
     recordType->getFieldAddress("a").setInt32(23, inputBuf);
     recordType->getFieldAddress("c").setInt64(9923LL, inputBuf);
+    recordType->getFieldAddress("e").setInt8(23, inputBuf);
+    recordType->getFieldAddress("g").setInt16(23, inputBuf);
     recordType->getFieldAddress("b").setNull(inputBuf);
     recordType->getFieldAddress("d").setNull(inputBuf);
+    recordType->getFieldAddress("f").setNull(inputBuf);
+    recordType->getFieldAddress("h").setNull(inputBuf);
     t1.getTarget()->getFree().free(outputBuf);
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
     BOOST_CHECK(t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
     BOOST_CHECK(t1.getTarget()->getFieldAddress("g").isNull(outputBuf));
+    BOOST_CHECK(t1.getTarget()->getFieldAddress("h").isNull(outputBuf));
+    BOOST_CHECK(t1.getTarget()->getFieldAddress("i").isNull(outputBuf));
   }
 
   if (isNullable1 && isNullable2) {
     recordType->getFieldAddress("a").setNull(inputBuf);
     recordType->getFieldAddress("c").setNull(inputBuf);
+    recordType->getFieldAddress("e").setNull(inputBuf);
+    recordType->getFieldAddress("g").setNull(inputBuf);
     recordType->getFieldAddress("b").setNull(inputBuf);
     recordType->getFieldAddress("d").setNull(inputBuf);
+    recordType->getFieldAddress("f").setNull(inputBuf);
+    recordType->getFieldAddress("h").setNull(inputBuf);
     t1.getTarget()->getFree().free(outputBuf);
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
     BOOST_CHECK(t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
     BOOST_CHECK(t1.getTarget()->getFieldAddress("g").isNull(outputBuf));
+    BOOST_CHECK(t1.getTarget()->getFieldAddress("h").isNull(outputBuf));
+    BOOST_CHECK(t1.getTarget()->getFieldAddress("i").isNull(outputBuf));
   }
   recordType->getFree().free(inputBuf);
   t1.getTarget()->getFree().free(outputBuf);
@@ -3418,7 +3976,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferLocalVariable)
   recordType->setInt32("a", 23, inputBuf);
   recordType->setInt32("b", 230, inputBuf);
   recordType->setInt32("c", 2300, inputBuf);
-  recordType->Print(inputBuf, std::cout);
   RecordBuffer outputBuf;
   InterpreterContext runtimeCtxt;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
@@ -3980,7 +4537,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStrings)
     t1.getTarget()->dump();
     RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
-    t1.getTarget()->Print(outputBuf, std::cout);
     t1.getTarget()->GetFree()->free(outputBuf);
   }
 
@@ -3998,7 +4554,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStrings)
     t4.getTarget()->dump();
     RecordBuffer outputBuf;
     t4.execute(inputBuf, outputBuf, &runtimeCtxt, false);
-    t4.getTarget()->Print(outputBuf, std::cout);
     t4.getTarget()->GetFree()->free(outputBuf);
   }
 
@@ -4008,7 +4563,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStrings)
     t4.getTarget()->dump();
     RecordBuffer outputBuf;
     t4.execute(inputBuf, outputBuf, &runtimeCtxt, false);
-    t4.getTarget()->Print(outputBuf, std::cout);
     t4.getTarget()->GetFree()->free(outputBuf);
   }
 
@@ -4018,7 +4572,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStrings)
     t5.getTarget()->dump();
     RecordBuffer outputBuf;
     t5.execute(inputBuf, outputBuf, &runtimeCtxt, false);
-    t5.getTarget()->Print(outputBuf, std::cout);
     t5.getTarget()->GetFree()->free(outputBuf);
   }
 
@@ -4046,7 +4599,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStringsWithMove)
     t1.getTarget()->dump();
     RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, true);
-    t1.getTarget()->Print(outputBuf, std::cout);
     t1.getTarget()->GetFree()->free(outputBuf);
     // Input should actually be cleared out and safe to free.
     recordType->GetFree()->free(inputBuf);
@@ -4066,7 +4618,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStringsWithMove)
   //   t4.getTarget()->dump();
   //   RecordBuffer outputBuf;
   //   t4.execute(inputBuf, outputBuf, &runtimeCtxt, false);
-  //   t4.getTarget()->Print(outputBuf, std::cout);
   //   t4.getTarget()->GetFree()->free(outputBuf);
   // }
 
@@ -4076,7 +4627,6 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferStringsWithMove)
   //   t5.getTarget()->dump();
   //   RecordBuffer outputBuf;
   //   t5.execute(inputBuf, outputBuf, &runtimeCtxt, false);
-  //   t5.getTarget()->Print(outputBuf, std::cout);
   //   t5.getTarget()->GetFree()->free(outputBuf);
   // }
 
@@ -5518,6 +6068,160 @@ BOOST_AUTO_TEST_CASE(testIQLDatetimeCast)
   testDatetimeCast(false);
 }
 
+void testInt8Cast(bool isNullable)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", CharType::Get(ctxt, 10, isNullable)));
+  members.push_back(RecordMember("b", VarcharType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("c", Int32Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("d", Int64Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("e", DoubleType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("f", DecimalType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("g", DatetimeType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("h", DateType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("i", Int16Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("j", Int8Type::Get(ctxt, isNullable)));
+  RecordType recTy(members);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setChar("a", "127", inputBuf);
+  recTy.setVarchar("b", "-77", inputBuf);
+  recTy.setInt32("c", 99, inputBuf);
+  recTy.setInt64("d", 12, inputBuf);
+  recTy.setDouble("e", 82.24344, inputBuf);
+  decimal128 dec;
+  ::decimal128FromString(&dec,
+			 "12.8234", 
+			 runtimeCtxt.getDecimalContext());
+  recTy.getMemberOffset("f").setDecimal(dec, inputBuf);
+  boost::posix_time::ptime dt = boost::posix_time::time_from_string("2011-02-17 15:38:33");
+  recTy.setDatetime("g", dt, inputBuf);
+  boost::gregorian::date d = boost::gregorian::from_string("2011-02-22");
+  recTy.setDate("h", d, inputBuf);
+  recTy.setInt16("i", -72, inputBuf);
+  recTy.setInt16("j", -71, inputBuf);
+
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			  "CAST(a AS TINYINT) AS a"
+			  ", CAST(b AS TINYINT) AS b"
+			  ", CAST(c AS TINYINT) AS c"
+			  ", CAST(d AS TINYINT) AS d"
+			  ", CAST(e AS TINYINT) AS e"
+			  ", CAST(f AS TINYINT) AS f"
+			  ", CAST(g AS TINYINT) AS g"
+			  ", CAST(h AS TINYINT) AS h"
+			  ", CAST(i AS TINYINT) AS i"
+			  ", CAST(j AS TINYINT) AS j"
+			  );
+    for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+	it != t1.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::INT8, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK_EQUAL(127, t1.getTarget()->getInt8("a", outputBuf));
+    BOOST_CHECK_EQUAL(-77, t1.getTarget()->getInt8("b", outputBuf));
+    BOOST_CHECK_EQUAL(99, t1.getTarget()->getInt8("c", outputBuf));
+    BOOST_CHECK_EQUAL(12, t1.getTarget()->getInt8("d", outputBuf));
+    BOOST_CHECK_EQUAL(82, t1.getTarget()->getInt8("e", outputBuf));
+    BOOST_CHECK_EQUAL(13, t1.getTarget()->getInt8("f", outputBuf));
+    // Not sure whether there is correct behavior here...
+    // BOOST_CHECK_EQUAL(20, t1.getTarget()->getInt8("g", outputBuf));
+    // BOOST_CHECK_EQUAL(20, t1.getTarget()->getInt8("h", outputBuf));
+    BOOST_CHECK_EQUAL(-72, t1.getTarget()->getInt8("i", outputBuf));
+    BOOST_CHECK_EQUAL(-71, t1.getTarget()->getInt8("j", outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testIQLInt8Cast)
+{
+  testInt8Cast(false);
+}
+
+void testInt16Cast(bool isNullable)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", CharType::Get(ctxt, 10, isNullable)));
+  members.push_back(RecordMember("b", VarcharType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("c", Int32Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("d", Int64Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("e", DoubleType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("f", DecimalType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("g", DatetimeType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("h", DateType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("i", Int16Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("j", Int8Type::Get(ctxt, isNullable)));
+  RecordType recTy(members);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setChar("a", "127", inputBuf);
+  recTy.setVarchar("b", "-77", inputBuf);
+  recTy.setInt32("c", 99, inputBuf);
+  recTy.setInt64("d", 12, inputBuf);
+  recTy.setDouble("e", 82.24344, inputBuf);
+  decimal128 dec;
+  ::decimal128FromString(&dec,
+			 "12.8234", 
+			 runtimeCtxt.getDecimalContext());
+  recTy.getMemberOffset("f").setDecimal(dec, inputBuf);
+  boost::posix_time::ptime dt = boost::posix_time::time_from_string("2011-02-17 15:38:33");
+  recTy.setDatetime("g", dt, inputBuf);
+  boost::gregorian::date d = boost::gregorian::from_string("2011-02-22");
+  recTy.setDate("h", d, inputBuf);
+  recTy.setInt16("i", -72, inputBuf);
+  recTy.setInt16("j", -71, inputBuf);
+
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			  "CAST(a AS SMALLINT) AS a"
+			  ", CAST(b AS SMALLINT) AS b"
+			  ", CAST(c AS SMALLINT) AS c"
+			  ", CAST(d AS SMALLINT) AS d"
+			  ", CAST(e AS SMALLINT) AS e"
+			  ", CAST(f AS SMALLINT) AS f"
+			  ", CAST(g AS SMALLINT) AS g"
+			  ", CAST(h AS SMALLINT) AS h"
+			  ", CAST(i AS SMALLINT) AS i"
+			  ", CAST(j AS SMALLINT) AS j"
+			  );
+    for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+	it != t1.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::INT16, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK_EQUAL(127, t1.getTarget()->getInt16("a", outputBuf));
+    BOOST_CHECK_EQUAL(-77, t1.getTarget()->getInt16("b", outputBuf));
+    BOOST_CHECK_EQUAL(99, t1.getTarget()->getInt16("c", outputBuf));
+    BOOST_CHECK_EQUAL(12, t1.getTarget()->getInt16("d", outputBuf));
+    BOOST_CHECK_EQUAL(82, t1.getTarget()->getInt16("e", outputBuf));
+    BOOST_CHECK_EQUAL(13, t1.getTarget()->getInt16("f", outputBuf));
+    // Not sure whether there is correct behavior here...
+    // BOOST_CHECK_EQUAL(20, t1.getTarget()->getInt16("g", outputBuf));
+    // BOOST_CHECK_EQUAL(20, t1.getTarget()->getInt16("h", outputBuf));
+    BOOST_CHECK_EQUAL(-72, t1.getTarget()->getInt16("i", outputBuf));
+    BOOST_CHECK_EQUAL(-71, t1.getTarget()->getInt16("j", outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testIQLInt16Cast)
+{
+  testInt16Cast(false);
+}
+
 void testInt32Cast(bool isNullable)
 {
   DynamicRecordContext ctxt;
@@ -5531,6 +6235,8 @@ void testInt32Cast(bool isNullable)
   members.push_back(RecordMember("f", DecimalType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("g", DatetimeType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("h", DateType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("i", Int16Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("j", Int8Type::Get(ctxt, isNullable)));
   RecordType recTy(members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
@@ -5548,6 +6254,8 @@ void testInt32Cast(bool isNullable)
   recTy.setDatetime("g", dt, inputBuf);
   boost::gregorian::date d = boost::gregorian::from_string("2011-02-22");
   recTy.setDate("h", d, inputBuf);
+  recTy.setInt16("i", -7231, inputBuf);
+  recTy.setInt16("j", -71, inputBuf);
 
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
@@ -5559,6 +6267,8 @@ void testInt32Cast(bool isNullable)
 			  ", CAST(f AS INTEGER) AS f"
 			  ", CAST(g AS INTEGER) AS g"
 			  ", CAST(h AS INTEGER) AS h"
+			  ", CAST(i AS INTEGER) AS i"
+			  ", CAST(j AS INTEGER) AS j"
 			  );
     for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
 	it != t1.getTarget()->end_members();
@@ -5577,6 +6287,8 @@ void testInt32Cast(bool isNullable)
     BOOST_CHECK_EQUAL(123457, t1.getTarget()->getInt32("f", outputBuf));
     BOOST_CHECK_EQUAL(20110217, t1.getTarget()->getInt32("g", outputBuf));
     BOOST_CHECK_EQUAL(20110222, t1.getTarget()->getInt32("h", outputBuf));
+    BOOST_CHECK_EQUAL(-7231, t1.getTarget()->getInt32("i", outputBuf));
+    BOOST_CHECK_EQUAL(-71, t1.getTarget()->getInt32("j", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
 }
@@ -5859,6 +6571,13 @@ void testVarcharCast(bool isNullable)
   members.push_back(RecordMember("h", DateType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("i", Int64Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("j", DecimalType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("k", Int8Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("l", Int16Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("m", FloatType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("n", IPv4Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("o", CIDRv4Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("p", IPv6Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("q", CIDRv6Type::Get(ctxt, isNullable)));
   RecordType recTy(members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
@@ -5882,7 +6601,13 @@ void testVarcharCast(bool isNullable)
 			 "1234563495284584.82342344", 
 			 runtimeCtxt.getDecimalContext());
   recTy.getMemberOffset("j").setDecimal(dec2, inputBuf);
-
+  recTy.setInt8("k", 101, inputBuf);
+  recTy.setInt16("l", 10001, inputBuf);
+  recTy.setFloat("m", 12.375, inputBuf);
+  recTy.setIPv4("n", boost::asio::ip::make_address_v4("100.84.33.22"), inputBuf);
+  recTy.setCIDRv4("o", { boost::asio::ip::make_address_v4("100.84.33.22"), 32 }, inputBuf);
+  recTy.setIPv6("p", boost::asio::ip::make_address_v6("fe80::c066:5cff:fe85:b5eb"), inputBuf);
+  recTy.setCIDRv6("q", { boost::asio::ip::make_address_v6("fe80::c066:5cff:fe85:b5eb"), 128 }, inputBuf);
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
 			  "CAST(a AS VARCHAR) AS a"
@@ -5895,6 +6620,13 @@ void testVarcharCast(bool isNullable)
 			  ", CAST(h AS VARCHAR) AS h"
 			  ", CAST(i AS VARCHAR) AS i"
 			  ", CAST(j AS VARCHAR) AS j"
+			  ", CAST(k AS VARCHAR) AS k"
+			  ", CAST(l AS VARCHAR) AS l"
+			  ", CAST(m AS VARCHAR) AS m"
+			  ", CAST(n AS VARCHAR) AS n"
+			  ", CAST(o AS VARCHAR) AS o"
+			  ", CAST(p AS VARCHAR) AS p"
+			  ", CAST(q AS VARCHAR) AS q"
 			  );
     for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
 	it != t1.getTarget()->end_members();
@@ -5925,6 +6657,20 @@ void testVarcharCast(bool isNullable)
 					 t1.getTarget()->getVarcharPtr("i", outputBuf)->c_str()));
     BOOST_CHECK(boost::algorithm::equals("1234563495284584.82342344", 
 					 t1.getTarget()->getVarcharPtr("j", outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("101", 
+					 t1.getTarget()->getVarcharPtr("k", outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("10001", 
+					 t1.getTarget()->getVarcharPtr("l", outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("12.375", 
+					 t1.getTarget()->getVarcharPtr("m", outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("100.84.33.22", 
+					 t1.getTarget()->getVarcharPtr("n", outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("100.84.33.22/32", 
+					 t1.getTarget()->getVarcharPtr("o", outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("fe80::c066:5cff:fe85:b5eb", 
+					 t1.getTarget()->getVarcharPtr("p", outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("fe80::c066:5cff:fe85:b5eb/128", 
+					 t1.getTarget()->getVarcharPtr("q", outputBuf)->c_str()));
     t1.getTarget()->getFree().free(outputBuf);
   }
 }
@@ -6023,9 +6769,9 @@ void testFixedArrayInt32Cast(bool isNullable)
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(!t1.getTarget()->getFieldAddress("ret").isNull(outputBuf));
     BOOST_CHECK_EQUAL(123456, t1.getTarget()->getArrayInt32("ret", 0, outputBuf));
-    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", arrayTy, 0, outputBuf));
+    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", 0, outputBuf));
     BOOST_CHECK_EQUAL(1234567, t1.getTarget()->getArrayInt32("ret", 1, outputBuf));
-    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", arrayTy, 1, outputBuf));
+    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", 1, outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
   for(int32_t sz=4; sz<=20; ++sz) {
@@ -6041,13 +6787,13 @@ void testFixedArrayInt32Cast(bool isNullable)
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(!t1.getTarget()->getFieldAddress("ret").isNull(outputBuf));
     BOOST_CHECK_EQUAL(123456, t1.getTarget()->getArrayInt32("ret", 0, outputBuf));
-    BOOST_TEST(!t1.getTarget()->isArrayNull("ret", arrayTy, 0, outputBuf), "expected NOT NULL element at idx=0 with isNullable=" << isNullable << " and sz=" << sz);
+    BOOST_TEST(!t1.getTarget()->isArrayNull("ret", 0, outputBuf), "expected NOT NULL element at idx=0 with isNullable=" << isNullable << " and sz=" << sz);
     BOOST_CHECK_EQUAL(1234567, t1.getTarget()->getArrayInt32("ret", 1, outputBuf));
-    BOOST_TEST(!t1.getTarget()->isArrayNull("ret", arrayTy, 1, outputBuf), "expected NOT NULL element at idx=1 with isNullable=" << isNullable << " and sz=" << sz);
+    BOOST_TEST(!t1.getTarget()->isArrayNull("ret", 1, outputBuf), "expected NOT NULL element at idx=1 with isNullable=" << isNullable << " and sz=" << sz);
     BOOST_CHECK_EQUAL(12345678, t1.getTarget()->getArrayInt32("ret", 2, outputBuf));
-    BOOST_TEST(!t1.getTarget()->isArrayNull("ret", arrayTy, 2, outputBuf), "expected NOT NULL element at idx=2 with isNullable=" << isNullable << " and sz=" << sz);
+    BOOST_TEST(!t1.getTarget()->isArrayNull("ret", 2, outputBuf), "expected NOT NULL element at idx=2 with isNullable=" << isNullable << " and sz=" << sz);
     for(int32_t idx=3; idx<sz; ++idx) {
-      BOOST_TEST(t1.getTarget()->isArrayNull("ret", arrayTy, idx, outputBuf), "expected NULL element at idx=" << idx << " with isNullable=" << isNullable << " and sz=" << sz);
+      BOOST_TEST(t1.getTarget()->isArrayNull("ret", idx, outputBuf), "expected NULL element at idx=" << idx << " with isNullable=" << isNullable << " and sz=" << sz);
     }
     t1.getTarget()->getFree().free(outputBuf);
   }
@@ -6064,11 +6810,11 @@ void testFixedArrayInt32Cast(bool isNullable)
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK(!t1.getTarget()->getFieldAddress("ret").isNull(outputBuf));
     BOOST_CHECK_EQUAL(123456LL, t1.getTarget()->getArrayInt64("ret", 0, outputBuf));
-    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", arrayTy, 0, outputBuf));
+    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", 0, outputBuf));
     BOOST_CHECK_EQUAL(1234567LL, t1.getTarget()->getArrayInt64("ret", 1, outputBuf));
-    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", arrayTy, 1, outputBuf));
+    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", 1, outputBuf));
     BOOST_CHECK_EQUAL(12345678LL, t1.getTarget()->getArrayInt64("ret", 2, outputBuf));
-    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", arrayTy, 2, outputBuf));
+    BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", 2, outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
 }
@@ -6077,6 +6823,230 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32Cast)
 {
   testFixedArrayInt32Cast(false);
   testFixedArrayInt32Cast(true);
+}
+
+void testIPv4Cast(bool isNullable)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", IPv4Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("b", CIDRv4Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("c", IPv6Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("d", CIDRv6Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("e", FixedArrayType::Get(ctxt, 4, Int32Type::Get(ctxt, isNullable), isNullable)));
+  RecordType recTy(members);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setIPv4("a", boost::asio::ip::make_address_v4("83.33.1.77"), inputBuf);
+  recTy.setCIDRv4("b", { boost::asio::ip::make_address_v4("83.33.1.0"), 24 }, inputBuf);
+  recTy.setIPv6("c", boost::asio::ip::make_address_v6(boost::asio::ip::v4_mapped_t::v4_mapped, boost::asio::ip::make_address_v4("83.33.1.70")), inputBuf);
+  recTy.setCIDRv6("d", { boost::asio::ip::make_address_v6(boost::asio::ip::v4_mapped_t::v4_mapped, boost::asio::ip::make_address_v4("83.33.1.0")), 120 }, inputBuf);
+  recTy.setArrayInt32("e", 0, 23, inputBuf);
+  recTy.setArrayInt32("e", 1, 66, inputBuf);
+  recTy.setArrayInt32("e", 2, 100, inputBuf);
+  recTy.setArrayInt32("e", 3, 3, inputBuf);
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "CAST(a AS IPV4) AS a"
+                          ", CAST(b AS IPV4) AS b"
+                          ", CAST(c AS IPV4) AS c"
+                          ", CAST(d AS IPV4) AS d"
+                          ", CAST(e AS IPV4) AS e"
+                          );
+    for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+	it != t1.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::IPV4, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(boost::asio::ip::make_address_v4("83.33.1.77") == 
+                      t1.getTarget()->getIPv4("a", outputBuf));
+    BOOST_CHECK(boost::asio::ip::make_address_v4("83.33.1.0") == 
+                      t1.getTarget()->getIPv4("b", outputBuf));
+    BOOST_CHECK(boost::asio::ip::make_address_v4("83.33.1.70") == 
+                      t1.getTarget()->getIPv4("c", outputBuf));
+    BOOST_CHECK(boost::asio::ip::make_address_v4("83.33.1.0") == 
+                      t1.getTarget()->getIPv4("d", outputBuf));
+    BOOST_CHECK(boost::asio::ip::make_address_v4("23.66.100.3") == 
+                      t1.getTarget()->getIPv4("e", outputBuf));
+    
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testIQLIPv4Cast)
+{
+  testIPv4Cast(false);
+  testIPv4Cast(true);
+}
+
+void testCIDRv4Cast(bool isNullable)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", IPv4Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("b", CIDRv4Type::Get(ctxt, isNullable)));
+  RecordType recTy(members);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setIPv4("a", boost::asio::ip::make_address_v4("83.33.1.77"), inputBuf);
+  recTy.setCIDRv4("b", { boost::asio::ip::make_address_v4("83.33.1.0"), 24 }, inputBuf);
+
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "CAST(a AS CIDRV4) AS a"
+                          ", CAST(b AS CIDRV4) AS b");
+    for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+	it != t1.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::CIDRV4, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(boost::asio::ip::make_address_v4("83.33.1.77") == 
+                      t1.getTarget()->getCIDRv4("a", outputBuf).prefix);
+    BOOST_CHECK(32U == 
+                      t1.getTarget()->getCIDRv4("a", outputBuf).prefix_length);
+    BOOST_CHECK(boost::asio::ip::make_address_v4("83.33.1.0") == 
+                      t1.getTarget()->getCIDRv4("b", outputBuf).prefix);
+    BOOST_CHECK(24U == 
+                      t1.getTarget()->getCIDRv4("b", outputBuf).prefix_length);
+    
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testIQLCIDRv4Cast)
+{
+  testCIDRv4Cast(false);
+  testCIDRv4Cast(true);
+}
+
+void testIPv6Cast(bool isNullable)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", IPv4Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("b", IPv6Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("c", CIDRv6Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("d", CIDRv4Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("e", FixedArrayType::Get(ctxt, 16, Int32Type::Get(ctxt, isNullable), isNullable)));
+  members.push_back(RecordMember("f", FixedArrayType::Get(ctxt, 20, Int32Type::Get(ctxt, isNullable), isNullable)));
+  members.push_back(RecordMember("g", FixedArrayType::Get(ctxt, 8, Int32Type::Get(ctxt, isNullable), isNullable)));
+  RecordType recTy(members);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setIPv4("a", boost::asio::ip::make_address_v4("83.33.1.77"), inputBuf);
+  recTy.setIPv6("b", boost::asio::ip::make_address_v6("aaaa:bbbb::"), inputBuf);
+  recTy.setCIDRv6("c", { boost::asio::ip::make_address_v6("aaaa:cccc::"), 32 }, inputBuf);
+  recTy.setCIDRv4("d", { boost::asio::ip::make_address_v4("83.33.1.0"), 24 }, inputBuf);
+  for(std::size_t i=0; i<16; ++i) {
+    recTy.setArrayInt32("e", i, i+1, inputBuf);
+  }
+  for(std::size_t i=0; i<20; ++i) {
+    recTy.setArrayInt32("f", i, i+1, inputBuf);
+  }
+  for(std::size_t i=0; i<8; ++i) {
+    recTy.setArrayInt32("g", i, i+1, inputBuf);
+  }
+
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "CAST(a AS IPV6) AS a"
+                          ", CAST(b AS IPV6) AS b"
+                          ", CAST(c AS IPV6) AS c"
+                          ", CAST(d AS IPV6) AS d"
+                          ", CAST(e AS IPV6) AS e"
+                          ", CAST(f AS IPV6) AS f"
+                          ", CAST(g AS IPV6) AS g"
+                          );
+    for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+	it != t1.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::IPV6, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(t1.getTarget()->getIPv6("a", outputBuf).is_v4_mapped());
+    BOOST_CHECK(boost::asio::ip::make_address_v6(boost::asio::ip::v4_mapped_t::v4_mapped, boost::asio::ip::make_address_v4("83.33.1.77")) == 
+                      t1.getTarget()->getIPv6("a", outputBuf));
+    BOOST_CHECK(boost::asio::ip::make_address_v6("aaaa:bbbb::") == 
+                      t1.getTarget()->getIPv6("b", outputBuf));
+    BOOST_CHECK(boost::asio::ip::make_address_v6("aaaa:cccc::") == 
+                      t1.getTarget()->getIPv6("c", outputBuf));
+    BOOST_CHECK(t1.getTarget()->getIPv6("d", outputBuf).is_v4_mapped());
+    BOOST_CHECK(boost::asio::ip::make_address_v6(boost::asio::ip::v4_mapped_t::v4_mapped, boost::asio::ip::make_address_v4("83.33.1.0")) == 
+                      t1.getTarget()->getIPv6("d", outputBuf));
+    BOOST_CHECK(boost::asio::ip::make_address_v6("0102:0304:0506:0708:090a:0b0c:0d0e:0f10") == 
+                      t1.getTarget()->getIPv6("e", outputBuf));
+    BOOST_CHECK(boost::asio::ip::make_address_v6("0102:0304:0506:0708:090a:0b0c:0d0e:0f10") == 
+                      t1.getTarget()->getIPv6("f", outputBuf));
+    BOOST_CHECK(boost::asio::ip::make_address_v6("0102:0304:0506:0708::") == 
+                      t1.getTarget()->getIPv6("g", outputBuf));
+    
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testIQLIPv6Cast)
+{
+  testIPv6Cast(false);
+  testIPv6Cast(true);
+}
+
+void testCIDRv6Cast(bool isNullable)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", IPv6Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("b", CIDRv6Type::Get(ctxt, isNullable)));
+  RecordType recTy(members);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setIPv6("a", boost::asio::ip::make_address_v6("aaaa:bbbb::"), inputBuf);
+  recTy.setCIDRv6("b", { boost::asio::ip::make_address_v6("aaaa:cccc::"), 32 }, inputBuf);
+
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "CAST(a AS CIDRV6) AS a"
+                          ", CAST(b AS CIDRV6) AS b");
+    for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+	it != t1.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::CIDRV6, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(boost::asio::ip::make_address_v6("aaaa:bbbb::") == 
+                      t1.getTarget()->getCIDRv6("a", outputBuf).prefix);
+    BOOST_CHECK(128U == 
+                      t1.getTarget()->getCIDRv6("a", outputBuf).prefix_length);
+    BOOST_CHECK(boost::asio::ip::make_address_v6("aaaa:cccc::") == 
+                      t1.getTarget()->getCIDRv6("b", outputBuf).prefix);
+    BOOST_CHECK(32U == 
+                      t1.getTarget()->getCIDRv6("b", outputBuf).prefix_length);
+    
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testIQLCIDRv6Cast)
+{
+  testCIDRv6Cast(false);
+  testCIDRv6Cast(true);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLAddChar)
@@ -7395,6 +8365,153 @@ BOOST_AUTO_TEST_CASE(testStringLiteralEscapes)
 				       t1.getTarget()->getFieldAddress("h").getVarcharPtr(outputBuf)->c_str()));
   recTy.getFree().free(inputBuf);
   t1.getTarget()->getFree().free(outputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testIPv4AddressAndCidr)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(members);
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "127.0.0.1 AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV4, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+    RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    auto expected = boost::asio::ip::make_address_v4("127.0.0.1");
+    auto actual = t1.getTarget()->getFieldAddress("a").getIPv4(outputBuf);;
+    BOOST_CHECK(expected == actual);
+    recTy.getFree().free(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "127.0.0.1/23 AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::CIDRV4, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+    RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    auto expected =  boost::asio::ip::make_address_v4("127.0.0.1");
+    auto actual = t1.getTarget()->getFieldAddress("a").getCIDRv4(outputBuf);;
+    BOOST_CHECK(expected == actual.prefix);
+    BOOST_CHECK_EQUAL(23U, actual.prefix_length);
+    recTy.getFree().free(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    try {
+      // This will fail to lex/parse
+      RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                            "1271.0.0.1 AS a"
+                            );
+      BOOST_CHECK(false);
+    } catch (std::exception & ex) {
+      std::cout << "Received expected exception: " << ex.what() << "\n";
+    }
+  }
+  {
+    try {
+      // This will fail during semantic analysis
+      RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                            "271.0.0.1 AS a"
+                            );
+      BOOST_CHECK(false);
+    } catch (std::exception & ex) {
+      std::cout << "Received expected exception: " << ex.what() << "\n";
+    }
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testIPv6AddressAndCidr)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(members);
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "aaaa:bbbb:cccc:dddd:eeee:ffff:0000:1111 AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+    RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    auto expected =  boost::asio::ip::make_address_v6("aaaa:bbbb:cccc:dddd:eeee:ffff:0000:1111");
+    auto actual = t1.getTarget()->getFieldAddress("a").getIPv6(outputBuf);;
+    BOOST_CHECK(expected == actual);
+    recTy.getFree().free(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          ":: AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "::aaaa:bbbb AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "aaaa:bbbb::ccdd AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "aaaa:bbbb:: AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::IPV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                          "aaaa:bbbb::/96 AS a"
+                          );
+    BOOST_CHECK(t1.getTarget()->hasMember("a"));
+    BOOST_CHECK_EQUAL(FieldType::CIDRV6, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+    RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    auto expected =  boost::asio::ip::make_address_v6("aaaa:bbbb::");
+    auto actual = t1.getTarget()->getFieldAddress("a").getCIDRv6(outputBuf);;
+    BOOST_CHECK(expected == actual.prefix);
+    BOOST_CHECK_EQUAL(96U, actual.prefix_length);
+    recTy.getFree().free(inputBuf);
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    try {
+      // This will fail during lex
+      RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                            "aaga:bbbb:cccc:dddd:eeee:ffff:0000:1111 AS a"
+                            );
+      BOOST_CHECK(false);
+    } catch (std::exception & ex) {
+      std::cout << "Received expected exception: " << ex.what() << "\n";
+    }
+  }
 }
 
 

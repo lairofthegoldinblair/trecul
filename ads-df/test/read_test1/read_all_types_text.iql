@@ -1,5 +1,5 @@
 /* Test that we can read text files with headers.
  */
-a = read[file="simple_text.txt", format="a INTEGER, b BIGINT, c DECIMAL, e VARCHAR, f CHAR(8), g DATETIME, h DATE", mode="text", skipHeader="true"];
+a = read[file="simple_text.txt", format="a INTEGER, b BIGINT, c DECIMAL, e VARCHAR, f CHAR(8), g DATETIME, h DATE, i TINYINT, j SMALLINT, k IPV4, l IPV6, m CIDRv4, n CIDRv6", mode="text", skipHeader="true"];
 d = write[file="output.txt", mode="text"];
 a -> d;

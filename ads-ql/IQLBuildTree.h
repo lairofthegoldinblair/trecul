@@ -35,10 +35,16 @@ extern "C" {
   IQLRecordConstructorRef IQLBuildRecord(IQLTreeFactoryRef ctxtRef,
 					 IQLFieldConstructorListRef fields);
 
+  IQLFieldTypeRef IQLBuildInt8Type(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildInt8ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
+  IQLFieldTypeRef IQLBuildInt16Type(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildInt16ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildInt32Type(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildInt32ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildInt64Type(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildInt64ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
+  IQLFieldTypeRef IQLBuildFloatType(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildFloatArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildDoubleType(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildDoubleArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildDecimalType(IQLTreeFactoryRef ctxtRef, int nullable);
@@ -47,6 +53,14 @@ extern "C" {
   IQLFieldTypeRef IQLBuildDateArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildDatetimeType(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildDatetimeArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
+  IQLFieldTypeRef IQLBuildIPv4Type(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildIPv4ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
+  IQLFieldTypeRef IQLBuildCIDRv4Type(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildCIDRv4ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
+  IQLFieldTypeRef IQLBuildIPv6Type(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildIPv6ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
+  IQLFieldTypeRef IQLBuildCIDRv6Type(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildCIDRv6ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildNVarcharType(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildVarcharType(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildCharType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
@@ -172,6 +186,12 @@ extern "C" {
   IQLExpressionRef IQLBuildInt64(IQLTreeFactoryRef ctxtRef,
 				 const char * text,
 				 int line, int column);
+  IQLExpressionRef IQLBuildIPv4(IQLTreeFactoryRef ctxtRef,
+                                const char * text,
+                                int line, int column);
+  IQLExpressionRef IQLBuildIPv6(IQLTreeFactoryRef ctxtRef,
+                                const char * text,
+                                int line, int column);
   IQLExpressionRef IQLBuildInterval(IQLTreeFactoryRef ctxtRef,
 				    const char * text,
 				    IQLExpressionRef arg,

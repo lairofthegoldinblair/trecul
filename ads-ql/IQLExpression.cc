@@ -300,6 +300,34 @@ BooleanExpr * BooleanExpr::clone() const
   return new BooleanExpr(*this);
 }
 
+IPv4Expr::IPv4Expr(DynamicRecordContext & ctxt, 
+			 const char * text,
+			 const SourceLocation& loc)
+  :
+  IQLExpression(ctxt, IQLExpression::IPV4, loc)
+{
+  setData(text);
+}
+
+IPv4Expr * IPv4Expr::clone() const
+{
+  return new IPv4Expr(*this);
+}
+
+IPv6Expr::IPv6Expr(DynamicRecordContext & ctxt, 
+			 const char * text,
+			 const SourceLocation& loc)
+  :
+  IQLExpression(ctxt, IQLExpression::IPV6, loc)
+{
+  setData(text);
+}
+
+IPv6Expr * IPv6Expr::clone() const
+{
+  return new IPv6Expr(*this);
+}
+
 NilExpr::NilExpr(DynamicRecordContext & ctxt, 
 		 const SourceLocation& loc)
   :
@@ -1028,6 +1056,22 @@ IQLExpressionRef IQLBuildInt64(IQLTreeFactoryRef ctxtRef,
   return wrap(Int64Expr::create(ctxt, text, SourceLocation(line, column)));  
 }
 
+IQLExpressionRef IQLBuildIPv4(IQLTreeFactoryRef ctxtRef,
+                              const char * text,
+                              int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(IPv4Expr::create(ctxt, text, SourceLocation(line, column)));  
+}
+
+IQLExpressionRef IQLBuildIPv6(IQLTreeFactoryRef ctxtRef,
+                              const char * text,
+                              int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(IPv6Expr::create(ctxt, text, SourceLocation(line, column)));  
+}
+
 IQLExpressionRef IQLBuildInterval(IQLTreeFactoryRef ctxtRef,
 				  const char * text,
 				  IQLExpressionRef arg,
@@ -1130,6 +1174,26 @@ IQLFieldTypeRef IQLBuildArrayType(IQLTreeFactoryRef ctxtRef, const FieldType * e
     return wrap(FixedArrayType::Get(ctxt, fieldSz, eltTy, nullable!=0));
   }
 }
+IQLFieldTypeRef IQLBuildInt8Type(IQLTreeFactoryRef ctxtRef, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(Int8Type::Get(ctxt, nullable!=0));  
+}
+IQLFieldTypeRef IQLBuildInt8ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, Int8Type::Get(ctxt, false), sz, nullable);
+}
+IQLFieldTypeRef IQLBuildInt16Type(IQLTreeFactoryRef ctxtRef, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(Int16Type::Get(ctxt, nullable!=0));  
+}
+IQLFieldTypeRef IQLBuildInt16ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, Int16Type::Get(ctxt, false), sz, nullable);
+}
 IQLFieldTypeRef IQLBuildInt32Type(IQLTreeFactoryRef ctxtRef, int nullable)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
@@ -1149,6 +1213,16 @@ IQLFieldTypeRef IQLBuildInt64ArrayType(IQLTreeFactoryRef ctxtRef, const char * s
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
   return IQLBuildArrayType(ctxtRef, Int64Type::Get(ctxt, false), sz, nullable);
+}
+IQLFieldTypeRef IQLBuildFloatType(IQLTreeFactoryRef ctxtRef, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(FloatType::Get(ctxt, nullable!=0));  
+}
+IQLFieldTypeRef IQLBuildFloatArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, FloatType::Get(ctxt, false), sz, nullable);
 }
 IQLFieldTypeRef IQLBuildDoubleType(IQLTreeFactoryRef ctxtRef, int nullable)
 {
@@ -1189,6 +1263,46 @@ IQLFieldTypeRef IQLBuildDatetimeArrayType(IQLTreeFactoryRef ctxtRef, const char 
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
   return IQLBuildArrayType(ctxtRef, DatetimeType::Get(ctxt, false), sz, nullable);
+}
+IQLFieldTypeRef IQLBuildIPv4Type(IQLTreeFactoryRef ctxtRef, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(IPv4Type::Get(ctxt, nullable!=0));  
+}
+IQLFieldTypeRef IQLBuildIPv4ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, IPv4Type::Get(ctxt, false), sz, nullable);
+}
+IQLFieldTypeRef IQLBuildCIDRv4Type(IQLTreeFactoryRef ctxtRef, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(CIDRv4Type::Get(ctxt, nullable!=0));  
+}
+IQLFieldTypeRef IQLBuildCIDRv4ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, CIDRv4Type::Get(ctxt, false), sz, nullable);
+}
+IQLFieldTypeRef IQLBuildIPv6Type(IQLTreeFactoryRef ctxtRef, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(IPv6Type::Get(ctxt, nullable!=0));  
+}
+IQLFieldTypeRef IQLBuildIPv6ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, IPv6Type::Get(ctxt, false), sz, nullable);
+}
+IQLFieldTypeRef IQLBuildCIDRv6Type(IQLTreeFactoryRef ctxtRef, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(CIDRv6Type::Get(ctxt, nullable!=0));  
+}
+IQLFieldTypeRef IQLBuildCIDRv6ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, CIDRv6Type::Get(ctxt, false), sz, nullable);
 }
 IQLFieldTypeRef IQLBuildNVarcharType(IQLTreeFactoryRef ctxtRef, int nullable)
 {

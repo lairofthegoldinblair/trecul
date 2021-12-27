@@ -164,6 +164,13 @@ builtInType [IQLCodeGenerationContextRef ctxt] returns [void * llvmType]
 	  | ^(c=TK_BOOLEAN arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=TK_DATETIME arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
       | ^(c=TK_BIGINT arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+      | ^(c=TK_SMALLINT arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+      | ^(c=TK_TINYINT arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+      | ^(c=TK_REAL arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+      | ^(c=TK_IPV4 arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+      | ^(c=TK_IPV6 arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+      | ^(c=TK_CIDRV4 arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+      | ^(c=TK_CIDRV6 arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=ID arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	;
 
@@ -237,6 +244,8 @@ expression[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMValueRef llvmVal,
 	| DECIMAL_LITERAL  { $llvmVal = IQLToLLVMBuildDecimalLiteral($ctxt, (char *) $DECIMAL_LITERAL.text->chars); }
 	| STRING_LITERAL { $llvmVal = IQLToLLVMBuildVarcharLiteral($ctxt, (char *) $STRING_LITERAL.text->chars); }
 	| WSTRING_LITERAL { IQLToLLVMNotImplemented(); }
+    | IPV4_LITERAL { $llvmVal = IQLToLLVMBuildIPv4Literal($ctxt, (char *) $IPV4_LITERAL.text->chars); }
+    | IPV6_LITERAL { $llvmVal = IQLToLLVMBuildIPv6Literal($ctxt, (char *) $IPV6_LITERAL.text->chars); }
 	| TK_TRUE { $llvmVal = IQLToLLVMBuildTrue($ctxt); }
 	| TK_FALSE { $llvmVal = IQLToLLVMBuildFalse($ctxt); }
 	| ^(id=ID (fun=ID {isBinary=1;})?) { $llvmVal = IQLToLLVMBuildVariableRef($ctxt, (const char *) $id.text->chars, isBinary ? (const char *) $fun.text->chars : 0, $id->u); }

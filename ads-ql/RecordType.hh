@@ -41,6 +41,8 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#include <boost/asio/ip/address_v4.hpp>
+#include <boost/asio/ip/address_v6.hpp>
 #include <boost/format.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
@@ -159,6 +161,44 @@ typedef union tagVarchar {
   }
 } Varchar;
 
+struct CidrV4
+{
+  boost::asio::ip::address_v4 prefix;
+  uint8_t prefix_length;
+};
+
+struct CidrV4Runtime
+{
+  boost::asio::ip::address_v4::bytes_type prefix;
+  uint8_t prefix_length;
+};
+
+template <typename Elem, typename Traits>
+std::basic_ostream<Elem, Traits>& operator<<(
+    std::basic_ostream<Elem, Traits>& os, const CidrV4& pfx)
+{
+  return os << pfx.prefix << "/" << (int32_t) pfx.prefix_length;
+}
+
+struct CidrV6
+{
+  boost::asio::ip::address_v6 prefix;
+  uint8_t prefix_length;
+};
+
+struct CidrV6Runtime
+{
+  boost::asio::ip::address_v6::bytes_type prefix;
+  uint8_t prefix_length;
+};
+
+template <typename Elem, typename Traits>
+std::basic_ostream<Elem, Traits>& operator<<(
+    std::basic_ostream<Elem, Traits>& os, const CidrV6& pfx)
+{
+  return os << pfx.prefix << "/" << (int32_t) pfx.prefix_length;
+}
+
 class FieldAddress
 {
 private:
@@ -216,6 +256,16 @@ public:
   void clearArrayNull(RecordBuffer buffer, const class FixedArrayType * ty, int32_t idx) const;
   bool isArrayNull(RecordBuffer buffer, const class FixedArrayType * ty, int32_t idx) const;
   
+  void setInt8(int8_t val, RecordBuffer buffer) const
+  {
+    clearNull(buffer);
+    *(int8_t *) (buffer.Ptr + mOffset) = val;
+  }
+  void setInt16(int16_t val, RecordBuffer buffer) const
+  {
+    clearNull(buffer);
+    *(int16_t *) (buffer.Ptr + mOffset) = val;
+  }
   void setInt32(int32_t val, RecordBuffer buffer) const
   {
     clearNull(buffer);
@@ -225,6 +275,11 @@ public:
   {
     clearNull(buffer);
     *(int64_t *) (buffer.Ptr + mOffset) = val;
+  }
+  void setFloat(float val, RecordBuffer buffer) const
+  {
+    clearNull(buffer);
+    *(float *) (buffer.Ptr + mOffset) = val;
   }
   void setDouble(double val, RecordBuffer buffer) const
   {
@@ -246,6 +301,49 @@ public:
     clearNull(buffer);
     *(decimal128 *) (buffer.Ptr + mOffset) = val;
   }
+  void setIPv4(boost::asio::ip::address_v4 val, RecordBuffer buffer) const
+  {
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
+    clearNull(buffer);
+    *(bytes_type *) (buffer.Ptr + mOffset) = val.to_bytes();
+  }
+  void setCIDRv4(CidrV4 val, RecordBuffer buffer) const
+  {
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
+    clearNull(buffer);
+    CidrV4Runtime * bufVal = (CidrV4Runtime *) (buffer.Ptr + mOffset) ;
+    bufVal->prefix = val.prefix.to_bytes();
+    bufVal->prefix_length = val.prefix_length;
+  }
+  void setIPv6(const boost::asio::ip::address_v6 & val, RecordBuffer buffer) const
+  {
+    clearNull(buffer);
+    auto arr = val.to_bytes();
+    memcpy(buffer.Ptr + mOffset, &arr[0], 16);
+  }
+  void setCIDRv6(CidrV6 val, RecordBuffer buffer) const
+  {
+    clearNull(buffer);
+    auto arr = val.prefix.to_bytes();
+    memcpy(buffer.Ptr + mOffset, &arr[0], 16);
+    *(buffer.Ptr + mOffset + 16) = val.prefix_length;
+  }
+  int8_t getInt8(RecordBuffer buffer) const
+  {
+    return *(int8_t *) (buffer.Ptr + mOffset);
+  }
+  int8_t getArrayInt8(RecordBuffer buffer, int idx) const
+  {
+    return ((int8_t *) (buffer.Ptr + mOffset))[idx];
+  }
+  int16_t getInt16(RecordBuffer buffer) const
+  {
+    return *(int16_t *) (buffer.Ptr + mOffset);
+  }
+  int16_t getArrayInt16(RecordBuffer buffer, int idx) const
+  {
+    return ((int16_t *) (buffer.Ptr + mOffset))[idx];
+  }
   int32_t getInt32(RecordBuffer buffer) const
   {
     return *(int32_t *) (buffer.Ptr + mOffset);
@@ -261,6 +359,14 @@ public:
   int64_t getArrayInt64(RecordBuffer buffer, int idx) const
   {
     return ((int64_t *) (buffer.Ptr + mOffset))[idx];
+  }
+  float getFloat(RecordBuffer buffer) const
+  {
+    return *(float *) (buffer.Ptr + mOffset);
+  }
+  float getArrayFloat(RecordBuffer buffer, int idx) const
+  {
+    return ((float *) (buffer.Ptr + mOffset))[idx];
   }
   double getDouble(RecordBuffer buffer) const
   {
@@ -286,6 +392,57 @@ public:
   {
     return ((boost::gregorian::date *) (buffer.Ptr + mOffset))[idx];
   }
+  boost::asio::ip::address_v4 getIPv4(RecordBuffer buffer) const
+  {
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
+    return boost::asio::ip::make_address_v4(*(bytes_type *) (buffer.Ptr + mOffset));
+  }
+  boost::asio::ip::address_v4 getArrayIPv4(RecordBuffer buffer, int idx) const
+  {
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
+    return boost::asio::ip::make_address_v4(((bytes_type *) (buffer.Ptr + mOffset))[idx]);
+  }
+  CidrV4 getCIDRv4(RecordBuffer buffer) const
+  {
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
+    CidrV4 ret;
+    ret.prefix = boost::asio::ip::make_address_v4(*(bytes_type *) (buffer.Ptr + mOffset));
+    ret.prefix_length = *(buffer.Ptr + mOffset + sizeof(bytes_type));
+    return ret;
+  }
+  CidrV4 getArrayCIDRv4(RecordBuffer buffer, int idx) const
+  {
+    CidrV4 ret;
+    ret.prefix = boost::asio::ip::make_address_v4(((CidrV4Runtime *) (buffer.Ptr + mOffset))[idx].prefix);
+    ret.prefix_length = ((CidrV4Runtime *)(buffer.Ptr + mOffset))[idx].prefix_length;
+    return ret;
+  }
+  boost::asio::ip::address_v6 getIPv6(RecordBuffer buffer) const
+  {
+    boost::asio::ip::address_v6::bytes_type arr;
+    memcpy(&arr[0], buffer.Ptr + mOffset, 16);
+    return boost::asio::ip::make_address_v6(arr);
+  }
+  boost::asio::ip::address_v6 getArrayIPv6(RecordBuffer buffer, int idx) const
+  {
+    typedef boost::asio::ip::address_v6::bytes_type bytes_type;
+    return boost::asio::ip::make_address_v6(((bytes_type *) (buffer.Ptr + mOffset))[idx]);
+  }
+  CidrV6 getCIDRv6(RecordBuffer buffer) const
+  {
+    boost::asio::ip::address_v6::bytes_type arr;
+    memcpy(&arr[0], buffer.Ptr + mOffset, 16);
+    CidrV6 ret = { boost::asio::ip::make_address_v6(arr), *(buffer.Ptr + mOffset + 16) };
+    return ret;
+  }
+  CidrV6 getArrayCIDRv6(RecordBuffer buffer, int idx) const
+  {
+    boost::asio::ip::address_v6::bytes_type arr;
+    CidrV6 ret;
+    ret.prefix = boost::asio::ip::make_address_v6(((CidrV6Runtime *) (buffer.Ptr + mOffset))[idx].prefix);
+    ret.prefix_length = ((CidrV6Runtime *)(buffer.Ptr + mOffset))[idx].prefix_length;
+    return ret;
+  }
   void SetFixedLengthString(RecordBuffer buffer, const char * begin, std::size_t sz) const
   {
     clearNull(buffer);
@@ -307,6 +464,27 @@ public:
     Varchar * internalString =  (Varchar *) (buffer.Ptr + mOffset);
     internalString->assign(begin, (int32_t) sz);
   }
+
+  int8_t * getInt8Ptr(RecordBuffer buffer) const
+  {
+    return (int8_t *) (buffer.Ptr + mOffset);
+  }
+
+  int8_t * getArrayInt8Ptr(RecordBuffer buffer, int idx) const
+  {
+    return ((int8_t *) (buffer.Ptr + mOffset)) + idx;
+  }
+
+  int16_t * getInt16Ptr(RecordBuffer buffer) const
+  {
+    return (int16_t *) (buffer.Ptr + mOffset);
+  }
+
+  int16_t * getArrayInt16Ptr(RecordBuffer buffer, int idx) const
+  {
+    return ((int16_t *) (buffer.Ptr + mOffset)) + idx;
+  }
+
   int32_t * getInt32Ptr(RecordBuffer buffer) const
   {
     return (int32_t *) (buffer.Ptr + mOffset);
@@ -325,6 +503,16 @@ public:
   int64_t * getArrayInt64Ptr(RecordBuffer buffer, int idx) const
   {
     return ((int64_t *) (buffer.Ptr + mOffset)) + idx;
+  }
+
+  float * getFloatPtr(RecordBuffer buffer) const
+  {
+    return (float *) (buffer.Ptr + mOffset);
+  }
+
+  float * getArrayFloatPtr(RecordBuffer buffer, int idx) const
+  {
+    return ((float *) (buffer.Ptr + mOffset)) + idx;
   }
 
   double * getDoublePtr(RecordBuffer buffer) const
@@ -478,11 +666,18 @@ public:
   enum FieldTypeEnum { VARCHAR, /* Variable length strings */
 		       CHAR, /* Fixed length string */
 		       BIGDECIMAL, /* 128-bit decimals */
+		       INT8, /* Signed 8 bit Integers */
+		       INT16, /* Signed 16 bit Integers */
 		       INT32, /* Signed 32 bit Integers */
 		       INT64, /* Signed 64 bit Integers */
+		       FLOAT, /* IEEE single precision */
 		       DOUBLE, /* IEEE double precision */
 		       DATETIME, /* Boost datetime */
 		       DATE, /* Boost gregorian date */
+		       IPV4, /* V4 IP address */
+		       CIDRV4, /* V4 CIDR */
+		       IPV6, /* V6 IP address */
+		       CIDRV6, /* V6 CIDR */
 		       FUNCTION, /* Function types are NOT allowed as fields at this point. */
 		       FIXED_ARRAY, /* Fixed Length Array. */
 		       VARIABLE_ARRAY, /* Variable Length Array. */
@@ -539,16 +734,30 @@ public:
       return 1;
     case BIGDECIMAL:
       return 1;
+    case INT8:
+      return 1;
+    case INT16:
+      return 2;
     case INT32:
       return 4;
     case INT64:
       return 8;
+    case FLOAT:
+      return sizeof(float);
     case DOUBLE:
       return sizeof(double);
     case DATETIME:
       return sizeof(boost::posix_time::ptime);
     case DATE:
       return sizeof(boost::gregorian::date);
+    case IPV4:
+      return 4;
+    case CIDRV4:
+      return 4;
+    case IPV6:
+      return 1;
+    case CIDRV6:
+      return 1;
     case FUNCTION:
       throw std::runtime_error("Function types cannot be field values");
     case INTERVAL:
@@ -567,16 +776,30 @@ public:
       return mSize + 1;
     case BIGDECIMAL:
       return 16;
+    case INT8:
+      return 1;
+    case INT16:
+      return 2;
     case INT32:
       return 4;
     case INT64:
       return 8;
+    case FLOAT:
+      return sizeof(float);
     case DOUBLE:
       return sizeof(double);
     case DATETIME:
       return sizeof(boost::posix_time::ptime);
     case DATE:
       return sizeof(boost::gregorian::date);
+    case IPV4:
+      return 4;
+    case CIDRV4:
+      return 8;
+    case IPV6:
+      return 16;
+    case CIDRV6:
+      return 17;
     case INTERVAL:
       return 4;
     case FUNCTION:
@@ -693,6 +916,56 @@ public:
   llvm::Value * getZero(CodeGenerationContext * ctxt) const;
 };
 
+class Int8Type : public FieldType
+{
+private:
+  Int8Type(DynamicRecordContext& ctxt, bool nullable)
+    :
+    FieldType(ctxt, FieldType::INT8, 1, nullable)
+  {
+  }
+public:
+  static Int8Type * Get(DynamicRecordContext& ctxt, bool nullable = false);
+  ~Int8Type();
+  /**
+   * Text representation of type.
+   */
+  std::string toString() const;
+
+  const FieldType * clone(bool nullable) const;
+
+  llvm::Value * getMinValue(CodeGenerationContext * ctxt) const;
+  llvm::Value * getMaxValue(CodeGenerationContext * ctxt) const;
+  llvm::Value * getZero(CodeGenerationContext * ctxt) const;
+  bool isNumeric() const;
+  bool isIntegral() const;
+};
+
+class Int16Type : public FieldType
+{
+private:
+  Int16Type(DynamicRecordContext& ctxt, bool nullable)
+    :
+    FieldType(ctxt, FieldType::INT16, 2, nullable)
+  {
+  }
+public:
+  static Int16Type * Get(DynamicRecordContext& ctxt, bool nullable = false);
+  ~Int16Type();
+  /**
+   * Text representation of type.
+   */
+  std::string toString() const;
+
+  const FieldType * clone(bool nullable) const;
+
+  llvm::Value * getMinValue(CodeGenerationContext * ctxt) const;
+  llvm::Value * getMaxValue(CodeGenerationContext * ctxt) const;
+  llvm::Value * getZero(CodeGenerationContext * ctxt) const;
+  bool isNumeric() const;
+  bool isIntegral() const;
+};
+
 class Int32Type : public FieldType
 {
 private:
@@ -741,6 +1014,34 @@ public:
   llvm::Value * getZero(CodeGenerationContext * ctxt) const;
   bool isNumeric() const;
   bool isIntegral() const;
+};
+
+class FloatType : public FieldType
+{
+private:
+  FloatType(DynamicRecordContext& ctxt, bool nullable)
+    :
+    FieldType(ctxt, FieldType::FLOAT, sizeof(float), nullable)
+  {
+  }
+public:
+  static FloatType * Get(DynamicRecordContext& ctxt, bool nullable = false);
+  ~FloatType();
+  /**
+   * Text representation of type.
+   */
+  std::string toString() const;
+
+  const FieldType * clone(bool nullable) const;
+
+  /**
+   * Special Values
+   */
+  llvm::Value * getMinValue(CodeGenerationContext * ctxt) const;
+  llvm::Value * getMaxValue(CodeGenerationContext * ctxt) const;
+  llvm::Value * getZero(CodeGenerationContext * ctxt) const;
+  bool isNumeric() const;
+  bool isFloatingPoint() const;
 };
 
 class DoubleType : public FieldType
@@ -854,6 +1155,98 @@ public:
   llvm::Value * getMinValue(CodeGenerationContext * ctxt) const;
   llvm::Value * getMaxValue(CodeGenerationContext * ctxt) const;
   llvm::Value * getZero(CodeGenerationContext * ctxt) const;
+};
+
+/**
+ * A v4 IP address type.
+ */
+class IPv4Type : public FieldType
+{
+private:
+  IPv4Type(DynamicRecordContext& ctxt, bool nullable)
+    :
+    FieldType(ctxt, FieldType::IPV4, 4, nullable)
+  {
+  }
+public:
+  static IPv4Type * Get(DynamicRecordContext& ctxt, bool nullable=false);
+  ~IPv4Type();
+  /**
+   * Text representation of type.
+   */
+  std::string toString() const;
+
+
+  const FieldType * clone(bool nullable) const;
+};
+
+/**
+ * A v4 CIDR type.
+ */
+class CIDRv4Type : public FieldType
+{
+private:
+  CIDRv4Type(DynamicRecordContext& ctxt, bool nullable)
+    :
+    FieldType(ctxt, FieldType::CIDRV4, 5, nullable)
+  {
+  }
+public:
+  static CIDRv4Type * Get(DynamicRecordContext& ctxt, bool nullable=false);
+  ~CIDRv4Type();
+  /**
+   * Text representation of type.
+   */
+  std::string toString() const;
+
+
+  const FieldType * clone(bool nullable) const;
+};
+
+/**
+ * A v6 IP address type.
+ */
+class IPv6Type : public FieldType
+{
+private:
+  IPv6Type(DynamicRecordContext& ctxt, bool nullable)
+    :
+    FieldType(ctxt, FieldType::IPV6, 4, nullable)
+  {
+  }
+public:
+  static IPv6Type * Get(DynamicRecordContext& ctxt, bool nullable=false);
+  ~IPv6Type();
+  /**
+   * Text representation of type.
+   */
+  std::string toString() const;
+
+
+  const FieldType * clone(bool nullable) const;
+};
+
+/**
+ * A v6 CIDR type.
+ */
+class CIDRv6Type : public FieldType
+{
+private:
+  CIDRv6Type(DynamicRecordContext& ctxt, bool nullable)
+    :
+    FieldType(ctxt, FieldType::CIDRV6, 5, nullable)
+  {
+  }
+public:
+  static CIDRv6Type * Get(DynamicRecordContext& ctxt, bool nullable=false);
+  ~CIDRv6Type();
+  /**
+   * Text representation of type.
+   */
+  std::string toString() const;
+
+
+  const FieldType * clone(bool nullable) const;
 };
 
 class FunctionType : public FieldType
@@ -1483,9 +1876,6 @@ public:
   const RecordTypeDeserialize& getDeserialize() const { return *mDeserialize.get(); }
   const RecordTypePrint& getPrint() const { return *mPrint.get(); }
 
-  // This does not belong here!
-  void Print(RecordBuffer buf, std::ostream& ostr) const;
-
   typedef std::vector<RecordMember>::const_iterator const_member_iterator;
   const_member_iterator begin_members() const { return mMembers.begin(); }
   const_member_iterator end_members() const { return mMembers.end(); }
@@ -1575,10 +1965,16 @@ public:
   void dump() const;
 
   // Interpreter methods for getting/setting
+  void setInt8(const std::string& field, int8_t val, RecordBuffer buf) const;
+  void setArrayInt8(const std::string& field, int32_t idx, int8_t val, RecordBuffer buf) const;
+  void setInt16(const std::string& field, int16_t val, RecordBuffer buf) const;
+  void setArrayInt16(const std::string& field, int32_t idx, int16_t val, RecordBuffer buf) const;
   void setInt32(const std::string& field, int32_t val, RecordBuffer buf) const;
   void setArrayInt32(const std::string& field, int32_t idx, int32_t val, RecordBuffer buf) const;
   void setInt64(const std::string& field, int64_t val, RecordBuffer buf) const;
   void setArrayInt64(const std::string& field, int32_t idx, int64_t val, RecordBuffer buf) const;
+  void setFloat(const std::string& field, float val, RecordBuffer buf) const;
+  void setArrayFloat(const std::string& field, int32_t idx, float val, RecordBuffer buf) const;
   void setDouble(const std::string& field, double val, RecordBuffer buf) const;
   void setArrayDouble(const std::string& field, int32_t idx, double val, RecordBuffer buf) const;
   void setDatetime(const std::string& field, 
@@ -1587,17 +1983,30 @@ public:
   void setDate(const std::string& field, 
 	       boost::gregorian::date val, 
 	       RecordBuffer buf) const;
+  void setIPv4(const std::string& field, boost::asio::ip::address_v4 val, RecordBuffer buffer) const;
+  void setCIDRv4(const std::string& field, CidrV4 val, RecordBuffer buffer) const;
+  void setIPv6(const std::string& field, const boost::asio::ip::address_v6 & val, RecordBuffer buffer) const;
+  void setCIDRv6(const std::string& field, CidrV6 val, RecordBuffer buffer) const;
   // These have copy semantics
   void setVarchar(const std::string& field, const char* val, RecordBuffer buf) const;
   void setChar(const std::string& field, const char* val, RecordBuffer buf) const;
 
+  int8_t getInt8(const std::string& field, RecordBuffer buf) const;
+  int8_t getArrayInt8(const std::string& field, int32_t idx, RecordBuffer buf) const;
+  int16_t getInt16(const std::string& field, RecordBuffer buf) const;
+  int16_t getArrayInt16(const std::string& field, int32_t idx, RecordBuffer buf) const;
   int32_t getInt32(const std::string& field, RecordBuffer buf) const;
   int32_t getArrayInt32(const std::string& field, int32_t idx, RecordBuffer buf) const;
   int64_t getInt64(const std::string& field, RecordBuffer buf) const;
   int64_t getArrayInt64(const std::string& field, int32_t idx, RecordBuffer buf) const;
+  float getFloat(const std::string& field, RecordBuffer buf) const;
   double getDouble(const std::string& field, RecordBuffer buf) const;
   Varchar * getVarcharPtr(const std::string& field, RecordBuffer buf) const;
-  bool isArrayNull(const std::string& field, const class FixedArrayType * ft, int32_t idx, RecordBuffer buf) const;
+  boost::asio::ip::address_v4 getIPv4(const std::string& field, RecordBuffer buffer) const;
+  CidrV4 getCIDRv4(const std::string& field, RecordBuffer buffer) const;
+  boost::asio::ip::address_v6 getIPv6(const std::string& field, RecordBuffer buffer) const;
+  CidrV6 getCIDRv6(const std::string& field, RecordBuffer buffer) const;
+  bool isArrayNull(const std::string& field, int32_t idx, RecordBuffer buf) const;
 };
 
 class IQLRecordTypeBuilder
