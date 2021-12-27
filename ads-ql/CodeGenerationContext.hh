@@ -441,6 +441,7 @@ public:
   llvm::Type * LLVMDecimal128Type;
   llvm::Type * LLVMVarcharType;
   llvm::Type * LLVMDatetimeType;
+  llvm::Type * LLVMCidrV4Type;
   // This is set by the code generator not by the caller
   llvm::Function * LLVMFunction;
   // Alias to record type mapping for inputs
@@ -790,6 +791,50 @@ public:
   const IQLToLLVMValue * buildCastVariableArray(const IQLToLLVMValue * e, 
                                                 const FieldType * argType, 
                                                 const FieldType * retType);
+
+  /**
+   * Cast non null value to IPV4.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastIPv4(const IQLToLLVMValue * e, 
+                                          const FieldType * argType, 
+                                          llvm::Value * ret, 
+                                          const FieldType * retType);
+  const IQLToLLVMValue * buildCastIPv4(const IQLToLLVMValue * e, 
+                                       const FieldType * argType, 
+                                       const FieldType * retType);
+
+  /**
+   * Cast non null value to CIDRV4.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastCIDRv4(const IQLToLLVMValue * e, 
+                                            const FieldType * argType, 
+                                            llvm::Value * ret, 
+                                            const FieldType * retType);
+  const IQLToLLVMValue * buildCastCIDRv4(const IQLToLLVMValue * e, 
+                                         const FieldType * argType, 
+                                         const FieldType * retType);
+
+  /**
+   * Cast non null value to IPV6.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastIPv6(const IQLToLLVMValue * e, 
+                                          const FieldType * argType, 
+                                          llvm::Value * ret, 
+                                          const FieldType * retType);
+  const IQLToLLVMValue * buildCastIPv6(const IQLToLLVMValue * e, 
+                                       const FieldType * argType, 
+                                       const FieldType * retType);
+
+  /**
+   * Cast non null value to CIDRV6.  Put return value in ret.
+   */
+  IQLToLLVMValue::ValueType buildCastCIDRv6(const IQLToLLVMValue * e, 
+                                            const FieldType * argType, 
+                                            llvm::Value * ret, 
+                                            const FieldType * retType);
+  const IQLToLLVMValue * buildCastCIDRv6(const IQLToLLVMValue * e, 
+                                         const FieldType * argType, 
+                                         const FieldType * retType);
 
   /**
    * Cast non null value from one type to another.  Put return value in ret.

@@ -362,6 +362,70 @@ int64_t decNumberToInt64(const decNumber *dn, decContext *set) {
   return 0;
 } // decNumberToInt32
 
+template<typename IntTraits>
+typename IntTraits::int_type decNumberToInt(const decNumber *dn, decContext *set) {
+#if DECCHECK
+  if (decCheckOperands(DECUNRESU, DECUNUSED, dn, set)) return 0;
+#endif
+
+  // special or too many digits, or bad exponent
+  if (dn->bits&DECSPECIAL || dn->digits>IntTraits::max_digits || dn->exponent!=0) ; // bad
+  else { // is a finite integer with 20 or fewer digits
+    typename IntTraits::int_type d;    // work
+    const Unit *up;// ..
+    typename IntTraits::uint_type hi=0, lo; // ..
+    up=dn->lsu;                    // -> lsu
+    lo=*up;                        // get 1 to 19 digits
+#if DECDPUN>1                  // split to higher
+    hi=lo/10;
+    lo=lo%10;
+#endif
+    up++;
+    // collect remaining Units, if any, into hi
+    for (d=DECDPUN; d<dn->digits; up++, d+=DECDPUN) hi+=*up*DECPOWERS[d-1];
+    // now low has the lsd, hi the remainder
+    if (hi>IntTraits::max_value || (hi==IntTraits::max_value && lo>7)) { // out of range?
+      // most-negative is a reprieve
+      if (dn->bits&DECNEG && hi==922337203685477580LL && lo==8) return IntTraits::min_value;
+      // bad -- drop through
+    }
+    else { // in-range alwaysp
+      typename IntTraits::int_type i=X10(hi)+lo;
+      if (dn->bits&DECNEG) return -i;
+      return i;
+    }
+  } // integer
+  decContextSetStatus(set, DEC_Invalid_operation); // [may not return]
+  return 0;
+} // decNumberToInt
+
+struct Int8Traits
+{
+  typedef int8_t int_type;
+  typedef uint8_t uint_type;
+  static const int max_digits = 3;
+  static const int_type max_value = std::numeric_limits<int8_t>::max();
+  static const int_type min_value = std::numeric_limits<int8_t>::min();
+};
+
+struct Int16Traits
+{
+  typedef int16_t int_type;
+  typedef uint16_t uint_type;
+  static const int max_digits = 5;
+  static const int_type max_value = std::numeric_limits<int16_t>::max();
+  static const int_type min_value = std::numeric_limits<int16_t>::min();
+};
+
+struct Int64Traits
+{
+  typedef int64_t int_type;
+  typedef uint64_t uint_type;
+  static const int max_digits = 20;
+  static const int_type max_value = std::numeric_limits<int64_t>::max();
+  static const int_type min_value = std::numeric_limits<int64_t>::min();
+};
+
 double decNumberToDouble(const decNumber *dn, decContext *set) {
 #if DECCHECK
   if (decCheckOperands(DECUNRESU, DECUNUSED, dn, set)) return 0;
@@ -459,6 +523,18 @@ extern "C" void InternalDecimalFromChar(const char * arg,
   ::decimal128FromString(ret, arg, ctxt->getDecimalContext());
 }
 
+extern "C" void InternalDecimalFromInt8(int8_t val, decimal128 * result, InterpreterContext * ctxt) {
+  decNumber a;
+  decNumberFromInt32(&a, val);
+  decimal128FromNumber(result, &a, ctxt->getDecimalContext());
+}
+
+extern "C" void InternalDecimalFromInt16(int16_t val, decimal128 * result, InterpreterContext * ctxt) {
+  decNumber a;
+  decNumberFromInt32(&a, val);
+  decimal128FromNumber(result, &a, ctxt->getDecimalContext());
+}
+
 extern "C" void InternalDecimalFromInt32(int32_t val, decimal128 * result, InterpreterContext * ctxt) {
   decNumber a;
   decNumberFromInt32(&a, val);
@@ -478,6 +554,13 @@ extern "C" void InternalDecimalFromDouble(double arg,
   char buf[32];
   sprintf(buf, "%.15e", arg);
   ::decimal128FromString(ret, buf, ctxt->getDecimalContext());
+}
+
+extern "C" void InternalDecimalFromFloat(float arg,
+                                         decimal128 * ret,
+                                         InterpreterContext * ctxt) 
+{
+  InternalDecimalFromFloat(arg, ret, ctxt);
 }
 
 extern "C" void InternalDecimalFromDate(boost::gregorian::date arg,
@@ -882,6 +965,20 @@ extern "C" void InternalVarcharFromInt32(int32_t val,
   }
 }
 
+extern "C" void InternalVarcharFromInt8(int8_t val,
+					Varchar * result,
+					InterpreterContext * ctxt) 
+{
+  InternalVarcharFromInt32(val, result, ctxt);
+}
+
+extern "C" void InternalVarcharFromInt16(int16_t val,
+					Varchar * result,
+					InterpreterContext * ctxt) 
+{
+  InternalVarcharFromInt32(val, result, ctxt);
+}
+
 extern "C" void InternalVarcharFromInt64(int64_t val,
 					Varchar * result,
 					InterpreterContext * ctxt) 
@@ -909,6 +1006,13 @@ extern "C" void InternalVarcharFromDouble(double val,
   char buf[64];
   sprintf(buf, "%.15g", val);
   copyFromString(&buf[0], result, ctxt);
+}
+
+extern "C" void InternalVarcharFromFloat(float val,
+                                         Varchar * result,
+                                         InterpreterContext * ctxt) 
+{
+  InternalVarcharFromDouble(val, result, ctxt);
 }
 
 extern "C" void InternalVarcharFromDate(boost::gregorian::date d,
@@ -941,6 +1045,160 @@ extern "C" void InternalVarcharFromDatetime(boost::posix_time::ptime t,
   sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d", (int32_t) parts.year, (int32_t) parts.month,
 	  (int32_t) parts.day, (int32_t) dur.hours(), (int32_t) dur.minutes(), (int32_t) dur.seconds());
   copyFromString(&buf[0], result, ctxt);
+}
+
+extern "C" void InternalVarcharFromIPv4(boost::asio::ip::address_v4::bytes_type network_order,
+                                        Varchar * result,
+                                        InterpreterContext * ctxt) 
+{
+  boost::asio::ip::address_v4 addr(network_order);
+  std::string buf = addr.to_string();
+  copyFromString(&buf[0], result, ctxt);
+}
+
+extern "C" void InternalVarcharFromCIDRv4(int64_t arg,
+                                          Varchar * result,
+                                          InterpreterContext * ctxt) 
+{
+  const CidrV4Runtime * cidr = (const CidrV4Runtime *) &arg;
+  boost::asio::ip::address_v4 addr(cidr->prefix);
+  std::string buf = addr.to_string();
+  buf += "/";
+  buf += boost::lexical_cast<std::string>((int) cidr->prefix_length);
+  copyFromString(&buf[0], result, ctxt);
+}
+
+static const unsigned char v4MappedPrefix[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF };
+extern "C" void InternalVarcharFromIPv6(const char * lhs, 
+                                        Varchar * result,
+                                        InterpreterContext * ctxt) {
+  const uint8_t * octets = (const uint8_t *) lhs;
+  char buf[INET6_ADDRSTRLEN];
+  if (memcmp(lhs, v4MappedPrefix, sizeof(v4MappedPrefix)) == 0) {
+    snprintf(buf, sizeof(buf), "%u.%u.%u.%u", octets[12], octets[13], octets[14], octets[15]);
+  } else {
+    const char * result = ::inet_ntop(AF_INET6, (struct in6_addr *) lhs, buf, sizeof(buf));
+    if (result == 0) {
+      buf[0] = 0;
+    }
+  }
+  copyFromString(&buf[0], result, ctxt);
+}
+
+extern "C" void InternalVarcharFromCIDRv6(const char * lhs, 
+                                        Varchar * result,
+                                        InterpreterContext * ctxt) {
+  const uint8_t * octets = (const uint8_t *) lhs;
+  char buf[INET6_ADDRSTRLEN+4];
+  if (memcmp(lhs, v4MappedPrefix, sizeof(v4MappedPrefix)) == 0) {
+    snprintf(buf, sizeof(buf), "%u.%u.%u.%u/%u", octets[12], octets[13], octets[14], octets[15], octets[16]);
+  } else {
+    const char * result = ::inet_ntop(AF_INET6, (struct in6_addr *) lhs, buf, sizeof(buf));
+    if (result == 0) {
+      buf[0] = 0;
+    } else {
+      auto len = ::strlen(result);
+      snprintf(&buf[len], sizeof(buf)-len, "/%u", octets[16]);      
+    }
+  }
+  
+  copyFromString(&buf[0], result, ctxt);
+}
+
+extern "C" void InternalInt8FromVarchar(const Varchar * arg,
+					 int8_t * ret,
+					 InterpreterContext * ctxt) 
+{
+  try {
+    *ret = boost::lexical_cast<int>(arg->c_str());
+  } catch(std::exception & ex) {
+    std::cerr << "Failed casting VARCHAR to TINYINT : " << arg->c_str() << std::endl;
+    *ret = 0;
+  }
+}
+
+extern "C" void InternalInt8FromChar(const char * arg,
+				      int8_t * ret,
+				      InterpreterContext * ctxt) 
+{
+  try {
+    *ret = boost::lexical_cast<int>(arg);
+  } catch(std::exception & ex) {
+    std::cerr << "Failed casting CHAR to TINYINT : " << arg << std::endl;
+    *ret = 0;
+  }
+}
+
+extern "C" void InternalInt8FromDecimal(decimal128 * arg,
+					 int64_t * ret,
+					 InterpreterContext * ctxt) 
+{
+  decNumber a;
+  decimal128ToNumber(arg, &a);
+  char buf[100];
+  decNumber one;
+  decNumberFromInt32(&one, 1);
+  decNumber rounded;
+  decNumberQuantize(&rounded, &a, &one, ctxt->getDecimalContext());
+  *ret = decNumberToInt<Int8Traits>(&rounded, ctxt->getDecimalContext());
+}
+
+extern "C" void InternalInt8FromDate(boost::gregorian::date arg,
+				      int8_t * ret,
+				      InterpreterContext * ctxt) 
+{
+  boost::gregorian::greg_year_month_day ymd = arg.year_month_day();
+  *ret = ymd.year*10000 + ymd.month*100 + ymd.day;
+}
+
+extern "C" void InternalInt8FromDatetime(boost::posix_time::ptime arg,
+					  int8_t * ret,
+					  InterpreterContext * ctxt) 
+{
+  InternalInt8FromDate(arg.date(), ret, ctxt);
+}
+
+extern "C" void InternalInt16FromVarchar(const Varchar * arg,
+					 int16_t * ret,
+					 InterpreterContext * ctxt) 
+{
+  *ret = boost::lexical_cast<int16_t>(arg->c_str());
+}
+
+extern "C" void InternalInt16FromChar(const char * arg,
+				      int16_t * ret,
+				      InterpreterContext * ctxt) 
+{
+  *ret = boost::lexical_cast<int16_t>(arg);
+}
+
+extern "C" void InternalInt16FromDecimal(decimal128 * arg,
+					 int64_t * ret,
+					 InterpreterContext * ctxt) 
+{
+  decNumber a;
+  decimal128ToNumber(arg, &a);
+  char buf[100];
+  decNumber one;
+  decNumberFromInt32(&one, 1);
+  decNumber rounded;
+  decNumberQuantize(&rounded, &a, &one, ctxt->getDecimalContext());
+  *ret = decNumberToInt<Int16Traits>(&rounded, ctxt->getDecimalContext());
+}
+
+extern "C" void InternalInt16FromDate(boost::gregorian::date arg,
+				      int16_t * ret,
+				      InterpreterContext * ctxt) 
+{
+  boost::gregorian::greg_year_month_day ymd = arg.year_month_day();
+  *ret = ymd.year*10000 + ymd.month*100 + ymd.day;
+}
+
+extern "C" void InternalInt16FromDatetime(boost::posix_time::ptime arg,
+					  int16_t * ret,
+					  InterpreterContext * ctxt) 
+{
+  InternalInt16FromDate(arg.date(), ret, ctxt);
 }
 
 extern "C" void InternalInt32FromVarchar(const Varchar * arg,
@@ -1011,7 +1269,8 @@ extern "C" void InternalInt64FromDecimal(decimal128 * arg,
   decNumberFromInt32(&one, 1);
   decNumber rounded;
   decNumberQuantize(&rounded, &a, &one, ctxt->getDecimalContext());
-  *ret = decNumberToInt64(&rounded, ctxt->getDecimalContext());
+  // *ret = decNumberToInt64(&rounded, ctxt->getDecimalContext());
+  *ret = decNumberToInt<Int64Traits>(&rounded, ctxt->getDecimalContext());
 }
 
 extern "C" void InternalInt64FromDate(boost::gregorian::date arg,
@@ -1217,21 +1476,10 @@ extern "C" boost::gregorian::date date_add_year(boost::gregorian::date t,
   return t + boost::gregorian::years(units);
 }
 
-static const unsigned char v4MappedPrefix[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF };
 extern "C" void InternalIPAddress(const char * lhs, 
 				  Varchar * result,
 				  InterpreterContext * ctxt) {
-  const uint8_t * octets = (const uint8_t *) lhs;
-  char buf[INET6_ADDRSTRLEN];
-  if (memcmp(lhs, v4MappedPrefix, sizeof(v4MappedPrefix)) == 0) {
-    snprintf(buf, sizeof(buf), "%u.%u.%u.%u", octets[12], octets[13], octets[14], octets[15]);
-  } else {
-    const char * result = ::inet_ntop(AF_INET6, (struct in6_addr *) lhs, buf, sizeof(buf));
-    if (result == 0) {
-      buf[0] = 0;
-    }
-  }
-  copyFromString(&buf[0], result, ctxt);
+  InternalVarcharFromIPv6(lhs, result, ctxt);
 }
 
 extern "C" void InternalParseIPAddress(const Varchar * lhs,
@@ -1503,6 +1751,12 @@ void LLVMBase::InitializeLLVM()
 						    0);
   // DATETIME runtime type
   mContext->LLVMDatetimeType = llvm::Type::getInt64Ty(*mContext->LLVMContext);
+  // CIDRV4 runtime type
+  varcharMembers[0] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
+  varcharMembers[1] = llvm::Type::getInt8Ty(*mContext->LLVMContext);
+  mContext->LLVMCidrV4Type = llvm::StructType::get(*mContext->LLVMContext,
+                                                   llvm::makeArrayRef(&varcharMembers[0], 2),
+                                                   0);
 
   // Try to register the program as a source of symbols to resolve against.
   llvm::sys::DynamicLibrary::LoadLibraryPermanently(0, NULL);
@@ -1546,6 +1800,20 @@ void LLVMBase::InitializeLLVM()
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromChar", funTy);
 
   numArguments=0;
+  argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromInt8", funTy);
+
+  numArguments=0;
+  argumentTypes[numArguments++] = llvm::Type::getInt16Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromInt16", funTy);
+
+  numArguments=0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
@@ -1558,6 +1826,13 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromInt64", funTy);
+
+  numArguments=0;
+  argumentTypes[numArguments++] = llvm::Type::getFloatTy(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromFloat", funTy);
 
   numArguments=0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
@@ -1716,6 +1991,24 @@ void LLVMBase::InitializeLLVM()
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromChar", funTy);
 
   numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromInt8", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt16Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromInt16", funTy);
+
+  numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
@@ -1743,6 +2036,15 @@ void LLVMBase::InitializeLLVM()
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromDecimal", funTy);
 
   numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getFloatTy(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromFloat", funTy);
+
+  numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
@@ -1768,6 +2070,132 @@ void LLVMBase::InitializeLLVM()
 			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromDatetime", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromIPv4", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromCIDRv4", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromIPv6", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromCIDRv6", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt8FromVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt8FromChar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt8FromDecimal", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt8FromDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt8FromDatetime", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt16FromVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt16FromChar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt16FromDecimal", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt16FromDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
+			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt16FromDatetime", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);

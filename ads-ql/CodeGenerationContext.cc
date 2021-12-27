@@ -833,14 +833,24 @@ CodeGenerationContext::buildCall(const char * treculName,
   }
   
   for(std::size_t i=0; i<args.size(); i++) {
-    if (args[i].getType()->GetEnum() == FieldType::CHAR) {
+    if (args[i].getType()->GetEnum() == FieldType::CHAR ||
+        args[i].getType()->GetEnum() == FieldType::IPV6 ||
+        args[i].getType()->GetEnum() == FieldType::CIDRV6) {
       llvm::Value * e = args[i].getValue()->getValue();
-      // CHAR(N) arg must pass by reference
+      // CHAR(N), CIDRV6 and IPV6 arg must pass by reference
       // Pass as a pointer to int8.  pointer to char(N) is too specific
       // for a type signature.
       llvm::Type * int8Ptr = llvm::PointerType::get(b->getInt8Ty(), 0);
       llvm::Value * ptr = LLVMBuilder->CreateBitCast(e, int8Ptr, "charcnvcasttmp1");
       callArgs.push_back(ptr);
+    } else if (args[i].getType()->GetEnum() == FieldType::CIDRV4) {
+      // Pass as int64_t since passing as CidrV4 doesn't work.   Passing as int64_t is what
+      // Clang does so we do that to.   We need to alloca a temporary so that we have a pointer to cast.
+      llvm::Value * argTmp = buildEntryBlockAlloca(args[i].getType()->LLVMGetType(this), "cidrv4ArgTmp");
+      b->CreateStore(args[i].getValue()->getValue(), argTmp);
+      llvm::Type * int64PtrTy = llvm::PointerType::get(b->getInt64Ty(), 0);
+      argTmp = LLVMBuilder->CreateBitCast(argTmp, int64PtrTy, "charcnvcasttmp1");
+      callArgs.push_back(b->CreateLoad(b->getInt64Ty(), argTmp));
     } else {
       callArgs.push_back(args[i].getValue()->getValue());
     }
@@ -952,7 +962,7 @@ CodeGenerationContext::buildCastInt8(const IQLToLLVMValue * e,
     {
       llvm::Value * r = b->CreateTrunc(e1, 
 				       b->getInt8Ty(),
-				       "castInt64ToInt32");
+				       "castInt8ToInt32");
       b->CreateStore(r, ret);
       return IQLToLLVMValue::eLocal;
     }
@@ -965,26 +975,26 @@ CodeGenerationContext::buildCastInt8(const IQLToLLVMValue * e,
       b->CreateStore(r, ret);
       return IQLToLLVMValue::eLocal;
     }
-  // case FieldType::CHAR:
-  //   {
-  //     return buildCall("InternalInt32FromChar", args, ret, retType);
-  //   }
-  // case FieldType::VARCHAR:
-  //   {
-  //     return buildCall("InternalInt32FromVarchar", args, ret, retType);
-  //   }
-  // case FieldType::BIGDECIMAL:
-  //   {
-  //     return buildCall("InternalInt32FromDecimal", args, ret, retType);
-  //   }
-  // case FieldType::DATE:
-  //   {
-  //     return buildCall("InternalInt32FromDate", args, ret, retType);
-  //   }
-  // case FieldType::DATETIME:
-  //   {
-  //     return buildCall("InternalInt32FromDatetime", args, ret, retType);
-  //   }
+  case FieldType::CHAR:
+    {
+      return buildCall("InternalInt8FromChar", args, ret, retType);
+    }
+  case FieldType::VARCHAR:
+    {
+      return buildCall("InternalInt8FromVarchar", args, ret, retType);
+    }
+  case FieldType::BIGDECIMAL:
+    {
+      return buildCall("InternalInt8FromDecimal", args, ret, retType);
+    }
+  case FieldType::DATE:
+    {
+      return buildCall("InternalInt8FromDate", args, ret, retType);
+    }
+  case FieldType::DATETIME:
+    {
+      return buildCall("InternalInt8FromDatetime", args, ret, retType);
+    }
   default:
     // TODO: Cast INTEGER to DECIMAL
     throw std::runtime_error ((boost::format("Cast to TINYINT from %1% not "
@@ -1042,28 +1052,27 @@ CodeGenerationContext::buildCastInt16(const IQLToLLVMValue * e,
       b->CreateStore(r, ret);
       return IQLToLLVMValue::eLocal;
     }
-  // case FieldType::CHAR:
-  //   {
-  //     return buildCall("InternalInt32FromChar", args, ret, retType);
-  //   }
-  // case FieldType::VARCHAR:
-  //   {
-  //     return buildCall("InternalInt32FromVarchar", args, ret, retType);
-  //   }
-  // case FieldType::BIGDECIMAL:
-  //   {
-  //     return buildCall("InternalInt32FromDecimal", args, ret, retType);
-  //   }
-  // case FieldType::DATE:
-  //   {
-  //     return buildCall("InternalInt32FromDate", args, ret, retType);
-  //   }
-  // case FieldType::DATETIME:
-  //   {
-  //     return buildCall("InternalInt32FromDatetime", args, ret, retType);
-  //   }
+  case FieldType::CHAR:
+    {
+      return buildCall("InternalInt16FromChar", args, ret, retType);
+    }
+  case FieldType::VARCHAR:
+    {
+      return buildCall("InternalInt16FromVarchar", args, ret, retType);
+    }
+  case FieldType::BIGDECIMAL:
+    {
+      return buildCall("InternalInt16FromDecimal", args, ret, retType);
+    }
+  case FieldType::DATE:
+    {
+      return buildCall("InternalInt16FromDate", args, ret, retType);
+    }
+  case FieldType::DATETIME:
+    {
+      return buildCall("InternalInt16FromDatetime", args, ret, retType);
+    }
   default:
-    // TODO: Cast INTEGER to DECIMAL
     throw std::runtime_error ((boost::format("Cast to SMALLINT from %1% not "
 					     "implemented.") % 
 			       retType->toString()).str());
@@ -1140,7 +1149,6 @@ CodeGenerationContext::buildCastInt32(const IQLToLLVMValue * e,
       return buildCall("InternalInt32FromDatetime", args, ret, retType);
     }
   default:
-    // TODO: Cast INTEGER to DECIMAL
     throw std::runtime_error ((boost::format("Cast to INTEGER from %1% not "
 					     "implemented.") % 
 			       retType->toString()).str());
@@ -1375,6 +1383,14 @@ CodeGenerationContext::buildCastDecimal(const IQLToLLVMValue * e,
   args.emplace_back(e, argType);
 
   switch(argType->GetEnum()) {
+  case FieldType::INT8:
+    {
+      return buildCall("InternalDecimalFromInt8", args, ret, retType);
+    }
+  case FieldType::INT16:
+    {
+      return buildCall("InternalDecimalFromInt16", args, ret, retType);
+    }
   case FieldType::INT32:
     {
       return buildCall("InternalDecimalFromInt32", args, ret, retType);
@@ -1382,6 +1398,10 @@ CodeGenerationContext::buildCastDecimal(const IQLToLLVMValue * e,
   case FieldType::INT64:
     {
       return buildCall("InternalDecimalFromInt64", args, ret, retType);
+    }
+  case FieldType::FLOAT:
+    {
+      return buildCall("InternalDecimalFromFloat", args, ret, retType);
     }
   case FieldType::DOUBLE:
     {
@@ -1564,10 +1584,16 @@ CodeGenerationContext::buildCastVarchar(const IQLToLLVMValue * e,
   args.emplace_back(e, argType);
 
   switch(argType->GetEnum()) {
+  case FieldType::INT8:
+    return buildCall("InternalVarcharFromInt8", args, ret, retType);
+  case FieldType::INT16:
+    return buildCall("InternalVarcharFromInt16", args, ret, retType);
   case FieldType::INT32:
     return buildCall("InternalVarcharFromInt32", args, ret, retType);
   case FieldType::INT64:
     return buildCall("InternalVarcharFromInt64", args, ret, retType);
+  case FieldType::FLOAT:
+    return buildCall("InternalVarcharFromFloat", args, ret, retType);
   case FieldType::DOUBLE:
     return buildCall("InternalVarcharFromDouble", args, ret, retType);
   case FieldType::CHAR:
@@ -1585,6 +1611,14 @@ CodeGenerationContext::buildCastVarchar(const IQLToLLVMValue * e,
     return buildCall("InternalVarcharFromDate", args, ret, retType);
   case FieldType::DATETIME:
     return buildCall("InternalVarcharFromDatetime", args, ret, retType);
+  case FieldType::IPV4:
+    return buildCall("InternalVarcharFromIPv4", args, ret, retType);
+  case FieldType::CIDRV4:
+    return buildCall("InternalVarcharFromCIDRv4", args, ret, retType);
+  case FieldType::IPV6:
+    return buildCall("InternalVarcharFromIPv6", args, ret, retType);
+  case FieldType::CIDRV6:
+    return buildCall("InternalVarcharFromCIDRv6", args, ret, retType);
   default:
     throw std::runtime_error ((boost::format("Cast to VARCHAR from %1% not "
   					     "implemented.") % 
@@ -1810,6 +1844,285 @@ const IQLToLLVMValue * CodeGenerationContext::buildCastVariableArray(const IQLTo
   return buildNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCastVariableArray);
 }
 
+IQLToLLVMValue::ValueType 
+CodeGenerationContext::buildCastIPv4(const IQLToLLVMValue * e, 
+                                     const FieldType * argType, 
+                                     llvm::Value * ret, 
+                                     const FieldType * retType)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+
+  switch(argType->GetEnum()) {
+  case FieldType::IPV4:
+    b->CreateStore(e->getValue(), ret);
+    return IQLToLLVMValue::eLocal;
+  case FieldType::CIDRV4:
+    {
+      llvm::Type * structType = argType->LLVMGetType(this);
+      // We need pointer type to access struct members giving prefix, so alloca and copy
+      llvm::Value * cidrValue = e->getValue();
+      llvm::Value * tmp = buildEntryBlockAlloca(structType, "cidrv4convert");
+      b->CreateStore(cidrValue, tmp);
+      cidrValue = tmp;
+      llvm::Value * prefix = b->CreateLoad(retType->LLVMGetType(this), b->CreateStructGEP(structType, cidrValue, 0));
+      b->CreateStore(prefix, ret);
+      return IQLToLLVMValue::eLocal;      
+    }
+  case FieldType::IPV6:
+  case FieldType::CIDRV6:
+    {
+      // Copy v4 address bytes from e[12]-e[15] (i.e. assume this is a v4 mapped address)
+      ret = b->CreateBitCast(ret, b->getInt8PtrTy(0));
+      llvm::Value * gepIndexes[2];
+      gepIndexes[0] = b->getInt64(0);    
+      gepIndexes[1] = b->getInt64(12);    
+      llvm::Value * args[5];
+      llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemcpyIntrinsic);
+      args[0] = ret;
+      args[1] = b->CreateGEP(argType->LLVMGetType(this), e->getValue(), llvm::makeArrayRef(&gepIndexes[0], 2), "ipv6");;
+      args[2] = b->getInt64(4);
+      args[3] = b->getInt32(1);
+      args[4] = b->getInt1(0);
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+      return IQLToLLVMValue::eLocal;
+    }
+  case FieldType::FIXED_ARRAY:
+    {
+      b->CreateStore(b->getInt32(0), ret);
+      int32_t bytesToCopy = std::min(argType->GetSize(), 4);
+      const FieldType * eltType = reinterpret_cast<const FixedArrayType*>(argType)->getElementType();
+      const FieldType * int8FieldType = Int8Type::Get(argType->getContext(), eltType->isNullable());
+      const FieldType * int32FieldType = Int32Type::Get(argType->getContext(), eltType->isNullable());
+      const FieldType * int32FieldTypeNotNull = Int32Type::Get(argType->getContext(), false);
+      for(int32_t i=0; i<bytesToCopy; ++i) {
+        // Extract element, cast to int8_t and then promote up to int32_t.
+        const IQLToLLVMValue * idx = IQLToLLVMValue::get(this, b->getInt32(i), IQLToLLVMValue::eLocal);
+        const IQLToLLVMValue * elt = buildArrayRef(e, argType, idx, int32FieldTypeNotNull, eltType);
+        elt = buildCastInt32(buildCastInt8(elt, eltType, int8FieldType),
+                             int8FieldType, int32FieldType);
+        // Make any NULL elt equal to zero
+        std::vector<IQLToLLVMTypedValue> ifNullArgs;
+        ifNullArgs.emplace_back(elt, int32FieldType);
+        ifNullArgs.emplace_back(IQLToLLVMValue::get(this, b->getInt32(0), IQLToLLVMValue::eLocal), int32FieldTypeNotNull);
+        elt = buildIsNullFunction(ifNullArgs, int32FieldTypeNotNull);
+        // Now shift byte into position and OR into the result
+        llvm::Value * tmp = b->CreateOr(b->CreateShl(elt->getValue(), 8*i), b->CreateLoad(b->getInt32Ty(), ret));
+        b->CreateStore(tmp, ret);
+      }
+      return IQLToLLVMValue::eLocal;
+    }
+  default:
+    throw std::runtime_error ((boost::format("Cast to IPV4 from %1% not "
+  					     "implemented.") % 
+  			       argType->toString()).str());
+  }
+}
+
+const IQLToLLVMValue * CodeGenerationContext::buildCastIPv4(const IQLToLLVMValue * e, 
+							       const FieldType * argType, 
+							       const FieldType * retType)
+{
+  return buildNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCastIPv4);
+}
+
+IQLToLLVMValue::ValueType 
+CodeGenerationContext::buildCastCIDRv4(const IQLToLLVMValue * e, 
+					const FieldType * argType, 
+					llvm::Value * ret, 
+					const FieldType * retType)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+
+  switch(argType->GetEnum()) {
+  case FieldType::IPV4:
+    {
+      const FieldType * prefixLengthTy = Int8Type::Get(retType->getContext());
+      const IQLToLLVMValue * prefixLength = IQLToLLVMValue::get(this, b->getInt8(32), IQLToLLVMValue::eLocal);
+      return buildDiv(e, argType, prefixLength, prefixLengthTy, ret, retType); 
+    }
+  case FieldType::CIDRV4:
+    b->CreateStore(e->getValue(), ret);
+    return IQLToLLVMValue::eLocal;
+  default:
+    throw std::runtime_error ((boost::format("Cast to CIDRV4 from %1% not "
+  					     "implemented.") % 
+  			       argType->toString()).str());
+  }
+}
+
+const IQLToLLVMValue * CodeGenerationContext::buildCastCIDRv4(const IQLToLLVMValue * e, 
+							       const FieldType * argType, 
+							       const FieldType * retType)
+{
+  return buildNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCastCIDRv4);
+}
+
+IQLToLLVMValue::ValueType 
+CodeGenerationContext::buildCastIPv6(const IQLToLLVMValue * e, 
+                                     const FieldType * argType, 
+                                     llvm::Value * ret, 
+                                     const FieldType * retType)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+
+  switch(argType->GetEnum()) {
+  case FieldType::IPV4:
+    {
+      // First setup 12 byte prefix used for V4 mapped IPV6 addresses
+      llvm::ArrayType * arrayTy = llvm::ArrayType::get(llvm::Type::getInt8Ty(*LLVMContext), 12);
+      // This is the global variable itself
+      llvm::GlobalVariable * globalVar = new llvm::GlobalVariable(*LLVMModule, 
+                                                                  arrayTy,
+                                                                  false, llvm::GlobalValue::ExternalLinkage, 0, "v4mappedprefix");
+      // The value to initialize the global
+      llvm::Constant * constArrayMembers[12];
+      for(int i=0 ; i<10; i++) {
+        constArrayMembers[i] = llvm::ConstantInt::get(b->getInt8Ty(), 0, true);
+      }
+      for(int i=10 ; i<12; i++) {
+        constArrayMembers[i] = llvm::ConstantInt::get(b->getInt8Ty(), 0xFF, true);
+      }
+      llvm::Constant * globalVal = llvm::ConstantArray::get(arrayTy, llvm::makeArrayRef(&constArrayMembers[0], 12));
+      globalVar->setInitializer(globalVal);
+
+      llvm::Value * gepIndexes[2];
+      gepIndexes[0] = b->getInt64(0);    
+      gepIndexes[1] = b->getInt64(0);    
+      // memcpy v4mappedprefix to ret
+      llvm::Value * args[5];
+      llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemcpyIntrinsic);
+      args[0] = b->CreateGEP(retType->LLVMGetType(this), ret, llvm::makeArrayRef(&gepIndexes[0], 2), "ipv6");
+      args[1] = b->CreateGEP(arrayTy, globalVar, llvm::makeArrayRef(&gepIndexes[0], 2), "v4mapped");;
+      args[2] = b->getInt64(12);
+      args[3] = b->getInt32(1);
+      args[4] = b->getInt1(0);
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+
+      // Copy v4 address bytes to ret[12]-ret[15]
+      llvm::Value * v4Addr = buildEntryBlockAlloca(argType->LLVMGetType(this), "tmpv4");
+      b->CreateStore(e->getValue(), v4Addr);
+      v4Addr = b->CreateBitCast(v4Addr, b->getInt8PtrTy(0));
+      gepIndexes[1] = b->getInt64(12);    
+      args[0] = b->CreateGEP(retType->LLVMGetType(this), ret, llvm::makeArrayRef(&gepIndexes[0], 2), "ipv6");
+      args[1] = v4Addr;
+      args[2] = b->getInt64(4);
+      args[3] = b->getInt32(1);
+      args[4] = b->getInt1(0);
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+
+      return IQLToLLVMValue::eLocal;
+    }
+  case FieldType::CIDRV4:
+    {
+      const IPv4Type * ipv4Ty = IPv4Type::Get(argType->getContext(), false);
+      const IQLToLLVMValue * prefix = buildCastIPv4(e, argType, ipv4Ty);
+      return buildCastIPv6(prefix, ipv4Ty, ret, retType);
+    }
+  case FieldType::IPV6:
+    b->CreateStore(e->getValue(), ret);
+    return IQLToLLVMValue::eLocal;
+  case FieldType::CIDRV6:
+    {
+      llvm::Value * gepIndexes[2];
+      gepIndexes[0] = b->getInt64(0);    
+      gepIndexes[1] = b->getInt64(0);    
+      // memcpy v4mappedprefix to ret
+      llvm::Value * args[5];
+      llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemcpyIntrinsic);
+      args[0] = b->CreateGEP(retType->LLVMGetType(this), ret, llvm::makeArrayRef(&gepIndexes[0], 2), "ipv6");
+      args[1] = b->CreateGEP(argType->LLVMGetType(this), e->getValue(), llvm::makeArrayRef(&gepIndexes[0], 2), "v6cidr");;
+      args[2] = b->getInt64(16);
+      args[3] = b->getInt32(1);
+      args[4] = b->getInt1(0);
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+      return IQLToLLVMValue::eLocal;
+    }
+  case FieldType::FIXED_ARRAY:
+    {
+      int32_t bytesToCopy = std::min(argType->GetSize(), 16);
+      const FieldType * eltType = reinterpret_cast<const FixedArrayType*>(argType)->getElementType();
+      const FieldType * int8FieldType = Int8Type::Get(argType->getContext(), eltType->isNullable());
+      const FieldType * int8FieldTypeNotNull = Int8Type::Get(argType->getContext(), false);
+      const FieldType * int32FieldTypeNotNull = Int32Type::Get(argType->getContext(), false);
+      llvm::Value * gepIndexes[2];
+      gepIndexes[0] = b->getInt64(0);    
+      gepIndexes[1] = b->getInt64(0);    
+      for(int32_t i=0; i<bytesToCopy; ++i) {
+        // Extract element, cast to int8_t 
+        const IQLToLLVMValue * idx = IQLToLLVMValue::get(this, b->getInt32(i), IQLToLLVMValue::eLocal);
+        const IQLToLLVMValue * elt = buildArrayRef(e, argType, idx, int32FieldTypeNotNull, eltType);
+        elt = buildCastInt8(elt, eltType, int8FieldType);
+        // Make any NULL elt equal to zero
+        std::vector<IQLToLLVMTypedValue> ifNullArgs;
+        ifNullArgs.emplace_back(elt, int8FieldType);
+        ifNullArgs.emplace_back(IQLToLLVMValue::get(this, b->getInt8(0), IQLToLLVMValue::eLocal), int8FieldTypeNotNull);
+        elt = buildIsNullFunction(ifNullArgs, int8FieldTypeNotNull);
+        // Store value in array position
+        gepIndexes[1] = b->getInt64(i);            
+        llvm::Value * tgt =  b->CreateGEP(retType->LLVMGetType(this), ret, llvm::makeArrayRef(&gepIndexes[0], 2), "ipv6");
+        b->CreateStore(elt->getValue(), tgt);
+      }
+      if (bytesToCopy < 16) {
+        llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemsetIntrinsic);
+        llvm::Value * gepIndexes[2];
+        gepIndexes[0] = b->getInt64(0);    
+        gepIndexes[1] = b->getInt64(bytesToCopy);
+        llvm::Value * args[5];
+        args[0] = b->CreateGEP(retType->LLVMGetType(this), ret, llvm::makeArrayRef(&gepIndexes[0], 2), "ipv6");
+        args[1] = b->getInt8(0);
+        args[2] = b->getInt64(16 - bytesToCopy);
+        args[3] = b->getInt32(1);
+        args[4] = b->getInt1(0);
+        b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+      }
+      return IQLToLLVMValue::eLocal;
+    }
+  default:
+    throw std::runtime_error ((boost::format("Cast to IPV6 from %1% not "
+  					     "implemented.") % 
+  			       argType->toString()).str());
+  }
+}
+
+const IQLToLLVMValue * CodeGenerationContext::buildCastIPv6(const IQLToLLVMValue * e, 
+							       const FieldType * argType, 
+							       const FieldType * retType)
+{
+  return buildNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCastIPv6);
+}
+
+IQLToLLVMValue::ValueType 
+CodeGenerationContext::buildCastCIDRv6(const IQLToLLVMValue * e, 
+					const FieldType * argType, 
+					llvm::Value * ret, 
+					const FieldType * retType)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+
+  switch(argType->GetEnum()) {
+  case FieldType::IPV6:
+    {
+      const FieldType * prefixLengthTy = Int8Type::Get(retType->getContext());
+      const IQLToLLVMValue * prefixLength = IQLToLLVMValue::get(this, b->getInt8(128), IQLToLLVMValue::eLocal);
+      return buildDiv(e, argType, prefixLength, prefixLengthTy, ret, retType); 
+    }
+  case FieldType::CIDRV6:
+    b->CreateStore(e->getValue(), ret);
+    return IQLToLLVMValue::eLocal;
+  default:
+    throw std::runtime_error ((boost::format("Cast to CIDRV6 from %1% not "
+  					     "implemented.") % 
+  			       argType->toString()).str());
+  }
+}
+
+const IQLToLLVMValue * CodeGenerationContext::buildCastCIDRv6(const IQLToLLVMValue * e, 
+							       const FieldType * argType, 
+							       const FieldType * retType)
+{
+  return buildNullableUnaryOp(e, argType, retType, &CodeGenerationContext::buildCastCIDRv6);
+}
+
 IQLToLLVMValue::ValueType CodeGenerationContext::buildCast(const IQLToLLVMValue * e, 
 							   const FieldType * argType, 
 							   llvm::Value * ret, 
@@ -1842,6 +2155,14 @@ IQLToLLVMValue::ValueType CodeGenerationContext::buildCast(const IQLToLLVMValue 
     return buildCastFixedArray(e, argType, ret, retType);
   case FieldType::VARIABLE_ARRAY:
     return buildCastVariableArray(e, argType, ret, retType);
+  case FieldType::IPV4:
+    return buildCastIPv4(e, argType, ret, retType);
+  case FieldType::CIDRV4:
+    return buildCastCIDRv4(e, argType, ret, retType);
+  case FieldType::IPV6:
+    return buildCastIPv6(e, argType, ret, retType);
+  case FieldType::CIDRV6:
+    return buildCastCIDRv6(e, argType, ret, retType);
   default:
     // Programming error; this should have been caught during type check.
     throw std::runtime_error("Invalid type cast");    
@@ -3901,7 +4222,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildHash(const std::vector<IQLToL
 }
 
 // TODO: Handle all types.
-// TODO: Handle case of char[N] for N < 4 and BOOLEAN which don't
+// TODO: Handle case of TINYINT, SMALLINT, char[N] for N < 4 and BOOLEAN which don't
 // fully utilize the prefix.
 // TODO: Use FieldType as necessary....
 const IQLToLLVMValue * CodeGenerationContext::buildSortPrefix(const IQLToLLVMValue * arg, 
@@ -4383,7 +4704,8 @@ const IQLToLLVMValue * CodeGenerationContext::buildIPv4Literal(const char * val)
 {
   // Unwrap to C++
   llvm::IRBuilder<> * b = LLVMBuilder;
-  auto intVal = boost::asio::ip::make_address_v4(val).to_uint();
+  auto bytesVal = boost::asio::ip::make_address_v4(val).to_bytes();
+  auto intVal = *((int32_t *) &bytesVal);
   return IQLToLLVMValue::get(this, b->getInt32(intVal), IQLToLLVMValue::eLocal);
 }
 

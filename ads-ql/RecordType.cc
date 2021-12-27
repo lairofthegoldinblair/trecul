@@ -232,17 +232,13 @@ llvm::Type * FieldType::LLVMGetType(CodeGenerationContext * ctxt) const
       return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
     }
   case IPV4:
-    static_assert(sizeof(boost::asio::ip::address_v4::uint_type) == 4);
+    static_assert(sizeof(boost::asio::ip::address_v4::bytes_type) == 4);
     return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
   case CIDRV4:
     {
-      static_assert(sizeof(boost::asio::ip::address_v4::uint_type) == 4);
-      llvm::Type * cidrMembers[2];
-      cidrMembers[0] = llvm::Type::getInt32Ty(*ctxt->LLVMContext);
-      cidrMembers[1] = llvm::Type::getInt8Ty(*ctxt->LLVMContext);
-      return llvm::StructType::get(*ctxt->LLVMContext,
-                                   llvm::makeArrayRef(&cidrMembers[0], 2),
-                                   0);
+      static_assert(sizeof(boost::asio::ip::address_v4::bytes_type) == 4);
+      static_assert(sizeof(CidrV4Runtime) == 5);
+      return ctxt->LLVMCidrV4Type;
     }
   case IPV6:
     static_assert(sizeof(boost::asio::ip::address_v6::bytes_type) == 16);
@@ -1871,6 +1867,48 @@ void TaggedFieldAddress::print(RecordBuffer buf,
       ostr << "]";
     }
     break;
+  case FieldType::CIDRV4:
+    if(0 == mSize) {
+      ostr << mAddress.getCIDRv4(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayCIDRv4(buf, i);
+      }
+      ostr << "]";
+    }
+    break;
+  case FieldType::IPV6:
+    if(0 == mSize) {
+      ostr << mAddress.getIPv6(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayIPv6(buf, i);
+      }
+      ostr << "]";
+    }
+    break;
+  case FieldType::CIDRV6:
+    if(0 == mSize) {
+      ostr << mAddress.getCIDRv6(buf);
+    } else {
+      ostr << "[";
+      for(uint32_t i=0; i<mSize; ++i) {
+        if (i>0) {
+          ostr << ",";
+        }
+        ostr << mAddress.getArrayCIDRv6(buf, i);
+      }
+      ostr << "]";
+    }
+    break;
   case FieldType::NIL:
     ostr << "NULL";
     break;
@@ -2209,64 +2247,6 @@ const RecordTypeFree * RecordType::GetFree() const
   return mFree.get();
 }
 
-void RecordType::Print(RecordBuffer buf, std::ostream& ostr) const
-{
-  for(const_member_iterator it = begin_members();
-      it != end_members();
-      ++it) {
-    if (begin_members() != it) ostr << "\t";
-    // First handle the case of a NULL value
-    if (mMemberOffsets[it-begin_members()].isNull(buf)) {
-      ostr << "\\N";
-      continue;
-    }
-    // Not NULL so type dispatch
-    switch(it->GetType()->GetEnum()) {
-    case FieldType::VARCHAR:
-      ostr << mMemberOffsets[it-begin_members()].getVarcharPtr(buf)->c_str();
-      break;
-    case FieldType::CHAR:
-      ostr << mMemberOffsets[it-begin_members()].getCharPtr(buf);
-      break;
-    case FieldType::BIGDECIMAL:
-      {
-	// char buffer[DECIMAL128_String];
-	// decimal128ToString((decimal128 *) off, &buffer[0]);
-	// ostr << buffer;
-	break;
-      }
-    case FieldType::INT8:
-      ostr << mMemberOffsets[it-begin_members()].getInt8(buf);
-      break;
-    case FieldType::INT16:
-      ostr << mMemberOffsets[it-begin_members()].getInt16(buf);
-      break;
-    case FieldType::INT32:
-      ostr << mMemberOffsets[it-begin_members()].getInt32(buf);
-      break;
-    case FieldType::INT64:
-      ostr << mMemberOffsets[it-begin_members()].getInt64(buf);
-      break;
-    case FieldType::FLOAT:
-      ostr << mMemberOffsets[it-begin_members()].getFloat(buf);
-      break;
-    case FieldType::DOUBLE:
-      ostr << mMemberOffsets[it-begin_members()].getDouble(buf);
-      break;
-    case FieldType::NIL:
-      ostr << "NULL";
-      break;
-    case FieldType::INTERVAL:
-      ostr << mMemberOffsets[it-begin_members()].getInt32(buf);
-      break;
-    default:
-      break;
-    }
-  }
-
-  ostr << std::endl;
-}
-
 std::string RecordType::dumpTextFormat() const
 {
   std::string ret;
@@ -2417,6 +2397,7 @@ void RecordType::setArrayInt8(const std::string& field, int32_t idx, int8_t val,
 {
   const_member_name_iterator it = mMemberNames.find(field);
   mMemberOffsets[it->second].clearNull(buf);
+  mMemberOffsets[it->second].clearArrayNull(buf, dynamic_cast<const FixedArrayType *>(mMembers[it->second].GetType()), idx);
   *mMemberOffsets[it->second].getArrayInt8Ptr(buf, idx) = val;
 }
 
@@ -2430,6 +2411,7 @@ void RecordType::setArrayInt16(const std::string& field, int32_t idx, int16_t va
 {
   const_member_name_iterator it = mMemberNames.find(field);
   mMemberOffsets[it->second].clearNull(buf);
+  mMemberOffsets[it->second].clearArrayNull(buf, dynamic_cast<const FixedArrayType *>(mMembers[it->second].GetType()), idx);
   *mMemberOffsets[it->second].getArrayInt16Ptr(buf, idx) = val;
 }
 
@@ -2443,6 +2425,7 @@ void RecordType::setArrayInt32(const std::string& field, int32_t idx, int32_t va
 {
   const_member_name_iterator it = mMemberNames.find(field);
   mMemberOffsets[it->second].clearNull(buf);
+  mMemberOffsets[it->second].clearArrayNull(buf, dynamic_cast<const FixedArrayType *>(mMembers[it->second].GetType()), idx);
   *mMemberOffsets[it->second].getArrayInt32Ptr(buf, idx) = val;
 }
 
@@ -2456,6 +2439,7 @@ void RecordType::setArrayInt64(const std::string& field, int32_t idx, int64_t va
 {
   const_member_name_iterator it = mMemberNames.find(field);
   mMemberOffsets[it->second].clearNull(buf);
+  mMemberOffsets[it->second].clearArrayNull(buf, dynamic_cast<const FixedArrayType *>(mMembers[it->second].GetType()), idx);
   *mMemberOffsets[it->second].getArrayInt64Ptr(buf, idx) = val;
 }
 
@@ -2469,6 +2453,7 @@ void RecordType::setArrayFloat(const std::string& field, int32_t idx, float val,
 {
   const_member_name_iterator it = mMemberNames.find(field);
   mMemberOffsets[it->second].clearNull(buf);
+  mMemberOffsets[it->second].clearArrayNull(buf, dynamic_cast<const FixedArrayType *>(mMembers[it->second].GetType()), idx);
   *mMemberOffsets[it->second].getArrayFloatPtr(buf, idx) = val;
 }
 
@@ -2482,6 +2467,7 @@ void RecordType::setArrayDouble(const std::string& field, int32_t idx, double va
 {
   const_member_name_iterator it = mMemberNames.find(field);
   mMemberOffsets[it->second].clearNull(buf);
+  mMemberOffsets[it->second].clearArrayNull(buf, dynamic_cast<const FixedArrayType *>(mMembers[it->second].GetType()), idx);
   *mMemberOffsets[it->second].getArrayDoublePtr(buf, idx) = val;
 }
 
@@ -2610,8 +2596,33 @@ Varchar * RecordType::getVarcharPtr(const std::string& field, RecordBuffer buf) 
   return mMemberOffsets[it->second].getVarcharPtr(buf);
 }
 
-bool RecordType::isArrayNull(const std::string& field, const FixedArrayType * ft, int32_t idx, RecordBuffer buf) const
+boost::asio::ip::address_v4 RecordType::getIPv4(const std::string& field, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].getIPv4(buf);
+}
+
+CidrV4 RecordType::getCIDRv4(const std::string& field, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].getCIDRv4(buf);
+}
+
+boost::asio::ip::address_v6 RecordType::getIPv6(const std::string& field, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].getIPv6(buf);
+}
+
+CidrV6 RecordType::getCIDRv6(const std::string& field, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].getCIDRv6(buf);
+}
+
+bool RecordType::isArrayNull(const std::string& field, int32_t idx, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  const FixedArrayType * ft = dynamic_cast<const FixedArrayType *>(mMembers[it->second].GetType());
   return mMemberOffsets[it->second].isArrayNull(buf, ft, idx);
 }

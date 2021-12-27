@@ -167,11 +167,37 @@ struct CidrV4
   uint8_t prefix_length;
 };
 
+struct CidrV4Runtime
+{
+  boost::asio::ip::address_v4::bytes_type prefix;
+  uint8_t prefix_length;
+};
+
+template <typename Elem, typename Traits>
+std::basic_ostream<Elem, Traits>& operator<<(
+    std::basic_ostream<Elem, Traits>& os, const CidrV4& pfx)
+{
+  return os << pfx.prefix << "/" << pfx.prefix_length;
+}
+
 struct CidrV6
 {
   boost::asio::ip::address_v6 prefix;
   uint8_t prefix_length;
 };
+
+struct CidrV6Runtime
+{
+  boost::asio::ip::address_v6::bytes_type prefix;
+  uint8_t prefix_length;
+};
+
+template <typename Elem, typename Traits>
+std::basic_ostream<Elem, Traits>& operator<<(
+    std::basic_ostream<Elem, Traits>& os, const CidrV6& pfx)
+{
+  return os << pfx.prefix << "/" << pfx.prefix_length;
+}
 
 class FieldAddress
 {
@@ -277,16 +303,17 @@ public:
   }
   void setIPv4(boost::asio::ip::address_v4 val, RecordBuffer buffer) const
   {
-    typedef boost::asio::ip::address_v4::uint_type uint_type;
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
     clearNull(buffer);
-    *(uint_type *) (buffer.Ptr + mOffset) = val.to_uint();
+    *(bytes_type *) (buffer.Ptr + mOffset) = val.to_bytes();
   }
   void setCIDRv4(CidrV4 val, RecordBuffer buffer) const
   {
-    typedef boost::asio::ip::address_v4::uint_type uint_type;
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
     clearNull(buffer);
-    *(uint_type *) (buffer.Ptr + mOffset) = val.prefix.to_uint();
-    *(buffer.Ptr + mOffset + sizeof(uint_type)) = val.prefix_length;
+    CidrV4Runtime * bufVal = (CidrV4Runtime *) (buffer.Ptr + mOffset) ;
+    bufVal->prefix = val.prefix.to_bytes();
+    bufVal->prefix_length = val.prefix_length;
   }
   void setIPv6(const boost::asio::ip::address_v6 & val, RecordBuffer buffer) const
   {
@@ -367,20 +394,27 @@ public:
   }
   boost::asio::ip::address_v4 getIPv4(RecordBuffer buffer) const
   {
-    typedef boost::asio::ip::address_v4::uint_type uint_type;
-    return boost::asio::ip::make_address_v4(*(uint_type *) (buffer.Ptr + mOffset));
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
+    return boost::asio::ip::make_address_v4(*(bytes_type *) (buffer.Ptr + mOffset));
   }
   boost::asio::ip::address_v4 getArrayIPv4(RecordBuffer buffer, int idx) const
   {
-    typedef boost::asio::ip::address_v4::uint_type uint_type;
-    return boost::asio::ip::make_address_v4(((uint_type *) (buffer.Ptr + mOffset))[idx]);
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
+    return boost::asio::ip::make_address_v4(((bytes_type *) (buffer.Ptr + mOffset))[idx]);
   }
   CidrV4 getCIDRv4(RecordBuffer buffer) const
   {
-    typedef boost::asio::ip::address_v4::uint_type uint_type;
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
     CidrV4 ret;
-    ret.prefix = boost::asio::ip::make_address_v4(*(uint_type *) (buffer.Ptr + mOffset));
-    ret.prefix_length = *(buffer.Ptr + mOffset + sizeof(uint_type));
+    ret.prefix = boost::asio::ip::make_address_v4(*(bytes_type *) (buffer.Ptr + mOffset));
+    ret.prefix_length = *(buffer.Ptr + mOffset + sizeof(bytes_type));
+    return ret;
+  }
+  CidrV4 getArrayCIDRv4(RecordBuffer buffer, int idx) const
+  {
+    CidrV4 ret;
+    ret.prefix = boost::asio::ip::make_address_v4(((CidrV4Runtime *) (buffer.Ptr + mOffset))[idx].prefix);
+    ret.prefix_length = ((CidrV4Runtime *)(buffer.Ptr + mOffset))[idx].prefix_length;
     return ret;
   }
   boost::asio::ip::address_v6 getIPv6(RecordBuffer buffer) const
@@ -389,11 +423,24 @@ public:
     memcpy(&arr[0], buffer.Ptr + mOffset, 16);
     return boost::asio::ip::make_address_v6(arr);
   }
+  boost::asio::ip::address_v6 getArrayIPv6(RecordBuffer buffer, int idx) const
+  {
+    typedef boost::asio::ip::address_v6::bytes_type bytes_type;
+    return boost::asio::ip::make_address_v6(((bytes_type *) (buffer.Ptr + mOffset))[idx]);
+  }
   CidrV6 getCIDRv6(RecordBuffer buffer) const
   {
     boost::asio::ip::address_v6::bytes_type arr;
     memcpy(&arr[0], buffer.Ptr + mOffset, 16);
     CidrV6 ret = { boost::asio::ip::make_address_v6(arr), *(buffer.Ptr + mOffset + 16) };
+    return ret;
+  }
+  CidrV6 getArrayCIDRv6(RecordBuffer buffer, int idx) const
+  {
+    boost::asio::ip::address_v6::bytes_type arr;
+    CidrV6 ret;
+    ret.prefix = boost::asio::ip::make_address_v6(((CidrV6Runtime *) (buffer.Ptr + mOffset))[idx].prefix);
+    ret.prefix_length = ((CidrV6Runtime *)(buffer.Ptr + mOffset))[idx].prefix_length;
     return ret;
   }
   void SetFixedLengthString(RecordBuffer buffer, const char * begin, std::size_t sz) const
@@ -1829,9 +1876,6 @@ public:
   const RecordTypeDeserialize& getDeserialize() const { return *mDeserialize.get(); }
   const RecordTypePrint& getPrint() const { return *mPrint.get(); }
 
-  // This does not belong here!
-  void Print(RecordBuffer buf, std::ostream& ostr) const;
-
   typedef std::vector<RecordMember>::const_iterator const_member_iterator;
   const_member_iterator begin_members() const { return mMembers.begin(); }
   const_member_iterator end_members() const { return mMembers.end(); }
@@ -1958,7 +2002,11 @@ public:
   float getFloat(const std::string& field, RecordBuffer buf) const;
   double getDouble(const std::string& field, RecordBuffer buf) const;
   Varchar * getVarcharPtr(const std::string& field, RecordBuffer buf) const;
-  bool isArrayNull(const std::string& field, const class FixedArrayType * ft, int32_t idx, RecordBuffer buf) const;
+  boost::asio::ip::address_v4 getIPv4(const std::string& field, RecordBuffer buffer) const;
+  CidrV4 getCIDRv4(const std::string& field, RecordBuffer buffer) const;
+  boost::asio::ip::address_v6 getIPv6(const std::string& field, RecordBuffer buffer) const;
+  CidrV6 getCIDRv6(const std::string& field, RecordBuffer buffer) const;
+  bool isArrayNull(const std::string& field, int32_t idx, RecordBuffer buf) const;
 };
 
 class IQLRecordTypeBuilder
