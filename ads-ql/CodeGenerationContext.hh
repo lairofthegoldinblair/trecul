@@ -69,6 +69,17 @@ std::map<std::string, std::pair<std::string, const class RecordType*> > * unwrap
 const class RecordType * unwrap(IQLRecordTypeRef r);
 IQLRecordTypeRef wrap(const class RecordType * r);
 
+class IQLToLLVMValue
+{
+public:
+  enum ValueType { eGlobal, eLocal };
+  virtual ~IQLToLLVMValue() {}
+  virtual llvm::Value * getValue(CodeGenerationContext * ctxt) const =0;
+  virtual llvm::Value * getNull(CodeGenerationContext * ctxt) const =0;
+  virtual bool isLiteralNull() const =0;
+  virtual ValueType getValueType() const =0;
+};
+
 /**
  * An IQL r-value.
  * 
@@ -87,10 +98,8 @@ IQLRecordTypeRef wrap(const class RecordType * r);
  * VARCHAR) there is heap allocated data in play and we must 
  * make sure that data is not leaked.
  */
-class IQLToLLVMValue
+class IQLToLLVMRValue : public IQLToLLVMValue
 {
-public:
-  enum ValueType { eGlobal, eShallowGlobal, eLocal };
 private:
   // The actual value
   llvm::Value * mValue;
@@ -102,23 +111,22 @@ private:
   // local value.
   ValueType mValueType;
 public:
-  IQLToLLVMValue (llvm::Value * val, ValueType globalOrLocal);
+  IQLToLLVMRValue (llvm::Value * val, ValueType globalOrLocal);
   
-  IQLToLLVMValue (llvm::Value * val, llvm::Value * isNull, 
-		  ValueType globalOrLocal);
+  IQLToLLVMRValue (llvm::Value * val, llvm::Value * isNull, 
+                   ValueType globalOrLocal);
 
-  llvm::Value * getValue() const;
-  llvm::Value * getNull() const;
-  void setNull(llvm::Value * nv);
-  bool isLiteralNull() const;
-  ValueType getValueType() const;
-  static const IQLToLLVMValue * get(CodeGenerationContext * ctxt, 
-				    llvm::Value * val, 
-				    IQLToLLVMValue::ValueType globalOrLocal);
-  static const IQLToLLVMValue * get(CodeGenerationContext * ctxt, 
-				    llvm::Value * val,
-				    llvm::Value * nv,
-				    IQLToLLVMValue::ValueType globalOrLocal);
+  llvm::Value * getValue(CodeGenerationContext * ctxt) const override;
+  llvm::Value * getNull(CodeGenerationContext * ctxt) const override;
+  bool isLiteralNull() const override;
+  ValueType getValueType() const override;
+  static const IQLToLLVMRValue * get(CodeGenerationContext * ctxt, 
+                                     llvm::Value * val, 
+                                     IQLToLLVMValue::ValueType globalOrLocal);
+  static const IQLToLLVMRValue * get(CodeGenerationContext * ctxt, 
+                                     llvm::Value * val,
+                                     llvm::Value * nv,
+                                     IQLToLLVMValue::ValueType globalOrLocal);
 };
 
 class IQLToLLVMTypedValue
@@ -127,7 +135,7 @@ private:
   const IQLToLLVMValue * mValue;
   const FieldType * mType;
 public:
-  IQLToLLVMTypedValue(const IQLToLLVMValue * value=NULL, const FieldType * ty=NULL)
+  explicit IQLToLLVMTypedValue(const IQLToLLVMValue * value=NULL, const FieldType * ty=NULL)
     :
     mValue(value),
     mType(ty)
@@ -152,7 +160,7 @@ public:
  * to allow a bit in a bitfield to represent the NULL and we cannot
  * take the address of a bit.
  */
-class IQLToLLVMLValue
+class IQLToLLVMLValue : public IQLToLLVMValue
 {
 public:
   virtual ~IQLToLLVMLValue() {}
@@ -161,11 +169,6 @@ public:
    * the NULL bit.
    */  
   virtual const IQLToLLVMValue * getValuePointer(CodeGenerationContext * ctxt) const =0;
-  /**
-   * Retrieve pointer to the value + the current value of
-   * the NULL bit.
-   */
-  virtual const IQLToLLVMValue * getEntirePointer(CodeGenerationContext * ctxt) const =0;
   virtual void setNull(CodeGenerationContext * ctxt, bool isNull) const =0;
   virtual bool isNullable() const =0;
 };
@@ -191,10 +194,13 @@ public:
 		 const std::string& memberName,
 		 llvm::Value * basePointer);
   ~IQLToLLVMField();
-  const IQLToLLVMValue * getValuePointer(CodeGenerationContext * ctxt) const;
-  const IQLToLLVMValue * getEntirePointer(CodeGenerationContext * ctxt) const;
-  void setNull(CodeGenerationContext * ctxt, bool isNull) const;
-  bool isNullable() const;
+  const IQLToLLVMValue * getValuePointer(CodeGenerationContext * ctxt) const override;
+  void setNull(CodeGenerationContext * ctxt, bool isNull) const override;
+  bool isNullable() const override;
+  llvm::Value * getValue(CodeGenerationContext * ctxt) const override;
+  llvm::Value * getNull(CodeGenerationContext * ctxt) const override;
+  bool isLiteralNull() const override;
+  ValueType getValueType() const override;
 };
 
 /**
@@ -206,40 +212,46 @@ public:
 class IQLToLLVMArrayElement : public IQLToLLVMLValue
 {
 private:
-  const IQLToLLVMValue * mValue;
+  IQLToLLVMTypedValue mValue;
   llvm::Value * mNullBytePtr;
   llvm::Value * mNullByteMask;
 public:
-  IQLToLLVMArrayElement(const IQLToLLVMValue * val,
+  IQLToLLVMArrayElement(IQLToLLVMTypedValue val,
                         llvm::Value * nullBytePtr,
                         llvm::Value * nullByteMask);
-  IQLToLLVMArrayElement(const IQLToLLVMValue * val);
+  IQLToLLVMArrayElement(IQLToLLVMTypedValue val);
   ~IQLToLLVMArrayElement();
   const IQLToLLVMValue * getValuePointer(CodeGenerationContext * ctxt) const;
-  const IQLToLLVMValue * getEntirePointer(CodeGenerationContext * ctxt) const;
   void setNull(CodeGenerationContext * ctxt, bool isNull) const;
   bool isNullable() const;
+  llvm::Value * getValue(CodeGenerationContext * ctxt) const override;
+  llvm::Value * getNull(CodeGenerationContext * ctxt) const override;
+  bool isLiteralNull() const override;
+  ValueType getValueType() const override;
 };
 
 class IQLToLLVMLocal : public IQLToLLVMLValue
 {
 private:
-  const IQLToLLVMValue * mValue;
+  IQLToLLVMTypedValue mValue;
   // Pointer to alloca'd i1 (will likely be lowered to an i8).
   // Note that IQLToLLVMValue::mNullBit is a value not a pointer/memory location
   // which is why this is here and not inside IQLToLLVMLocal::mValue.
   llvm::Value * mNullBit;
 public:
-  IQLToLLVMLocal(const IQLToLLVMValue * lval,
+  IQLToLLVMLocal(IQLToLLVMTypedValue lval,
 		 llvm::Value * lvalNull);
 
   ~IQLToLLVMLocal();
 
   const IQLToLLVMValue * getValuePointer(CodeGenerationContext * ctxt) const;
-  const IQLToLLVMValue * getEntirePointer(CodeGenerationContext * ctxt) const;
   llvm::Value * getNullBitPointer() const;
   void setNull(CodeGenerationContext * ctxt, bool isNull) const;
   bool isNullable() const;
+  llvm::Value * getValue(CodeGenerationContext * ctxt) const override;
+  llvm::Value * getNull(CodeGenerationContext * ctxt) const override;
+  bool isLiteralNull() const override;
+  ValueType getValueType() const override;
 };
 
 class IQLToLLVMStackRecord
@@ -424,8 +436,6 @@ private:
   // How does this code generator treat values of types? Does it pass them
   // around as values or does it pass references around.
   static bool isValueType(const FieldType *);
-  // Is val a pointer to value of type ft?
-  static bool isPointerToValueType(llvm::Value * val, const FieldType * ft);
   static llvm::Value * trimAlloca(llvm::Value * result, const FieldType * resultTy);
 
   static bool isChar(llvm::Type * ty);
@@ -498,6 +508,7 @@ public:
   void defineVariable(const char * name,
 		      llvm::Value * val,
 		      llvm::Value * nullVal,
+                      const FieldType * ft,
 		      IQLToLLVMValue::ValueType globalOrLocal);
 
   /**
@@ -512,11 +523,6 @@ public:
    * Lookup an l-value in the symbol table.
    */
   const IQLToLLVMLValue * lookup(const char * name, const char * name2);
-
-  /**
-   * Lookup an r-value in the symbol table.
-   */
-  const IQLToLLVMValue * lookupValue(const char * name, const char * name2);
 
   /**
    * Lookup an r-value in the symbol table.
@@ -1039,7 +1045,7 @@ public:
 
   // This method sets a value that is assumed to be non-null and type promoted.
   void buildSetValue2(const IQLToLLVMValue * iqlVal,
-		      const IQLToLLVMValue * iqllvalue,
+		      const IQLToLLVMLValue * iqllvalue,
 		      const FieldType * ft);
   // This method sets a possibly null value that is type promoted
   void buildSetNullableValue(const IQLToLLVMLValue * lval,
@@ -1263,6 +1269,8 @@ public:
 					  const char * var2,
 					  const FieldType * varTy);
   
+  // Is val a pointer to value of type ft?
+  static bool isPointerToValueType(llvm::Value * val, const FieldType * ft);
 };
 
 class AggregateFunction

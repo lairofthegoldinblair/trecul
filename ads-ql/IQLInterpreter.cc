@@ -2692,7 +2692,7 @@ void LLVMBase::ConstructFunction(const std::string& funName,
     llvm::Value * allocAVal = mContext->buildEntryBlockAlloca(argumentTypes[i], argumentNames[i]);
     llvm::Value * arg = &mContext->LLVMFunction->arg_begin()[i];
     mContext->defineVariable(argumentNames[i], allocAVal,
-			     NULL, IQLToLLVMValue::eGlobal);
+			     NULL, NULL, IQLToLLVMValue::eGlobal);
     // Set names on function arguments
     arg->setName(argumentNames[i]);
     // Store argument in the alloca 
