@@ -330,6 +330,20 @@ IQLToLLVMValueRef IQLToLLVMBuildMod(IQLCodeGenerationContextRef ctxtRef,
   return wrap(ctxt->buildMod(unwrap(lhs), lhsType, unwrap(rhs), rhsType, resultType));
 }
 
+IQLToLLVMValueRef IQLToLLVMBuildConcatenation(IQLCodeGenerationContextRef ctxtRef, 
+                                              IQLToLLVMValueRef lhs, 
+                                              void * lhsAttributes, 
+                                              IQLToLLVMValueRef rhs, 
+                                              void * rhsAttributes,
+                                              void * resultAttributes)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  const FieldType * lhsType = (const FieldType *) lhsAttributes;
+  const FieldType * rhsType = (const FieldType *) rhsAttributes;
+  const FieldType * resultType = (const FieldType *) resultAttributes;
+  return wrap(ctxt->buildArrayConcat(unwrap(lhs), lhsType, unwrap(rhs), rhsType, resultType));
+}
+
 IQLToLLVMValueRef IQLToLLVMBuildBitwiseAnd(IQLCodeGenerationContextRef ctxtRef, 
 					   IQLToLLVMValueRef lhs, 
 					   void * lhsAttributes, 
@@ -792,6 +806,13 @@ IQLFieldTypeRef IQLTypeCheckModulus(IQLTypeCheckContextRef ctxt,
 				    IQLFieldTypeRef rhs)
 {
   return wrap(unwrap(ctxt)->buildModulus(unwrap(lhs), unwrap(rhs)));
+}
+
+IQLFieldTypeRef IQLTypeCheckConcatenation(IQLTypeCheckContextRef ctxt, 
+                                          IQLFieldTypeRef lhs, 
+                                          IQLFieldTypeRef rhs)
+{
+  return wrap(unwrap(ctxt)->buildConcat(unwrap(lhs), unwrap(rhs)));
 }
 
 IQLFieldTypeRef IQLTypeCheckSub(IQLTypeCheckContextRef ctxt, 

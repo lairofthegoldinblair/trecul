@@ -39,6 +39,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 // LLVM Includes
+#include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -82,6 +83,43 @@ bool FieldAddress::isArrayNull(RecordBuffer buffer, const FixedArrayType * ty, i
   int32_t nullByte = idx >> 3;
   uint8_t mask = 1U << (idx - (nullByte << 3));
   uint8_t * nullBytePtr = (buffer.Ptr + mOffset + ty->GetNullOffset() + nullByte);
+  uint8_t ret = *nullBytePtr & mask;
+  return ret == 0;
+}
+  
+void FieldAddress::setArrayNull(RecordBuffer buffer, const VariableArrayType * ty, int32_t idx) const
+{
+  if (!ty->getElementType()->isNullable()) {
+    return;
+  }
+  int32_t nullByte = idx >> 3;
+  uint8_t mask = 1U << (idx - (nullByte << 3));
+  Vararray * arr = (Vararray *) (buffer.Ptr + mOffset);
+  uint8_t * nullBytePtr = (uint8_t *)(arr->c_str() + arr->size()*ty->getElementType()->GetAllocSize());
+  *nullBytePtr &= (~mask);
+}
+
+void FieldAddress::clearArrayNull(RecordBuffer buffer, const VariableArrayType * ty, int32_t idx) const
+{
+  if (!ty->getElementType()->isNullable()) {
+    return;
+  }
+  int32_t nullByte = idx >> 3;
+  uint8_t mask = 1U << (idx - (nullByte << 3));
+  Vararray * arr = (Vararray *) (buffer.Ptr + mOffset);
+  uint8_t * nullBytePtr = (uint8_t *)(arr->c_str() + arr->size()*ty->getElementType()->GetAllocSize());
+  *nullBytePtr |= mask;
+}
+
+bool FieldAddress::isArrayNull(RecordBuffer buffer, const VariableArrayType * ty, int32_t idx) const
+{
+  if (!ty->getElementType()->isNullable()) {
+    return false;
+  }
+  int32_t nullByte = idx >> 3;
+  uint8_t mask = 1U << (idx - (nullByte << 3));
+  Vararray * arr = (Vararray *) (buffer.Ptr + mOffset);
+  uint8_t * nullBytePtr = (uint8_t *)(arr->c_str() + arr->size()*ty->getElementType()->GetAllocSize());
   uint8_t ret = *nullBytePtr & mask;
   return ret == 0;
 }
@@ -1214,7 +1252,7 @@ FunctionType::~FunctionType()
 
 void FixedArrayType::AppendTo(struct md5_state_s * md5) const
 {
-  AppendTo(GetSize(), mElementTy, isNullable(), md5);
+  AppendTo(GetSize(), getElementType(), isNullable(), md5);
 }
 
 void FixedArrayType::AppendTo(int32_t sz, const FieldType * element,
@@ -1229,13 +1267,13 @@ void FixedArrayType::AppendTo(int32_t sz, const FieldType * element,
 
 std::string FixedArrayType::toString() const
 {
-  return (boost::format("%1%[%2%]") % mElementTy->toString() % GetSize()).str();
+  return (boost::format("%1%[%2%]") % getElementType()->toString() % GetSize()).str();
 }
 
 const FieldType * FixedArrayType::clone(bool nullable) const
 {
   if (nullable == isNullable()) return this;
-  return FixedArrayType::Get(getContext(), GetSize(), mElementTy, nullable);
+  return FixedArrayType::Get(getContext(), GetSize(), getElementType(), nullable);
 }
 
 FixedArrayType * FixedArrayType::Get(DynamicRecordContext& ctxt, 
@@ -1261,23 +1299,28 @@ llvm::Type * FixedArrayType::LLVMGetType(CodeGenerationContext * ctxt) const
 {
   if (getElementType()->isNullable()) {
     llvm::Type * fixedArrayMembers[2];
-    fixedArrayMembers[0] = llvm::ArrayType::get(mElementTy->LLVMGetType(ctxt), (unsigned) GetSize());
+    fixedArrayMembers[0] = llvm::ArrayType::get(getElementType()->LLVMGetType(ctxt), (unsigned) GetSize());
     fixedArrayMembers[1] = llvm::ArrayType::get(ctxt->LLVMBuilder->getInt8Ty(), GetNullSize());
     llvm::StructType * structTy =  llvm::StructType::get(*ctxt->LLVMContext,
                                                          llvm::makeArrayRef(&fixedArrayMembers[0], 2),
                                                          0);
-    llvm::DataLayout dl("");
-    const llvm::StructLayout * layout = dl.getStructLayout(structTy);
-    BOOST_ASSERT(layout->getElementOffset(0) == GetDataOffset());
-    BOOST_ASSERT(layout->getElementOffset(1) == GetNullOffset());
-    if (layout->getSizeInBytes() != GetAllocSize()) {
-      throw std::runtime_error((boost::format("layout->getSizeInBytes() != GetAllocSize(); layout->getSizeInBytes() = %1% GetAllocSize() = %2%") %
-                                layout->getSizeInBytes() %
-                                GetAllocSize()).str());
+    if (auto JTMBOrErr = llvm::orc::JITTargetMachineBuilder::detectHost()) {
+      llvm::Optional<llvm::orc::JITTargetMachineBuilder> JTMB = std::move(*JTMBOrErr);
+      if (auto DLOrErr = JTMB->getDefaultDataLayoutForTarget()) {
+        llvm::Optional<llvm::DataLayout> DL = std::move(*DLOrErr);
+        const llvm::StructLayout * layout = DL->getStructLayout(structTy);
+        BOOST_ASSERT(layout->getElementOffset(0) == GetDataOffset());
+        BOOST_ASSERT(layout->getElementOffset(1) == GetNullOffset());
+        if (layout->getSizeInBytes() != GetAllocSize()) {
+          throw std::runtime_error((boost::format("layout->getSizeInBytes() != GetAllocSize(); layout->getSizeInBytes() = %1% GetAllocSize() = %2%") %
+                                    layout->getSizeInBytes() %
+                                    GetAllocSize()).str());
+        }
+      }
     }
     return structTy;
   } else {
-    return llvm::ArrayType::get(mElementTy->LLVMGetType(ctxt), (unsigned) GetSize());
+    return llvm::ArrayType::get(getElementType()->LLVMGetType(ctxt), (unsigned) GetSize());
   }
 }
 
@@ -1287,7 +1330,7 @@ FixedArrayType::~FixedArrayType()
 
 void VariableArrayType::AppendTo(struct md5_state_s * md5) const
 {
-  AppendTo(mElementTy, isNullable(), md5);
+  AppendTo(getElementType(), isNullable(), md5);
 }
 
 void VariableArrayType::AppendTo(const FieldType * element,
@@ -1301,13 +1344,13 @@ void VariableArrayType::AppendTo(const FieldType * element,
 
 std::string VariableArrayType::toString() const
 {
-  return (boost::format("%1%[]") % mElementTy->toString()).str();
+  return (boost::format("%1%[]") % getElementType()->toString()).str();
 }
 
 const FieldType * VariableArrayType::clone(bool nullable) const
 {
   if (nullable == isNullable()) return this;
-  return VariableArrayType::Get(getContext(), mElementTy, nullable);
+  return VariableArrayType::Get(getContext(), getElementType(), nullable);
 }
 
 VariableArrayType * VariableArrayType::Get(DynamicRecordContext& ctxt, 
@@ -1330,13 +1373,14 @@ VariableArrayType * VariableArrayType::Get(DynamicRecordContext& ctxt,
 
 llvm::Type * VariableArrayType::LLVMGetType(CodeGenerationContext * ctxt) const
 {
-  llvm::Type * vararrayMembers[3];
-  vararrayMembers[0] = llvm::Type::getInt32Ty(*ctxt->LLVMContext);
-  vararrayMembers[1] = llvm::Type::getInt32Ty(*ctxt->LLVMContext);
-  vararrayMembers[2] = llvm::PointerType::get(mElementTy->LLVMGetType(ctxt), 0);
-  return llvm::StructType::get(*ctxt->LLVMContext,
-                               llvm::makeArrayRef(&vararrayMembers[0], 3),
-                               0);
+  // llvm::Type * vararrayMembers[3];
+  // vararrayMembers[0] = llvm::Type::getInt32Ty(*ctxt->LLVMContext);
+  // vararrayMembers[1] = llvm::Type::getInt32Ty(*ctxt->LLVMContext);
+  // vararrayMembers[2] = llvm::PointerType::get(getElementType()->LLVMGetType(ctxt), 0);
+  // return llvm::StructType::get(*ctxt->LLVMContext,
+  //                              llvm::makeArrayRef(&vararrayMembers[0], 3),
+  //                              0);
+  return ctxt->LLVMVarcharType;
 }
 
 VariableArrayType::~VariableArrayType()
@@ -2563,7 +2607,11 @@ int32_t RecordType::getInt32(const std::string& field, RecordBuffer buf) const
 int32_t RecordType::getArrayInt32(const std::string& field, int32_t idx, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
-  return mMemberOffsets[it->second].getArrayInt32(buf, idx);
+  if(FieldType::FIXED_ARRAY == mMembers[it->second].GetType()->GetEnum()) {
+    return mMemberOffsets[it->second].getArrayInt32(buf, idx);
+  } else {
+    return mMemberOffsets[it->second].getVarArrayInt32(buf, idx);
+  }
 }
 
 int64_t RecordType::getInt64(const std::string& field, RecordBuffer buf) const
@@ -2575,7 +2623,11 @@ int64_t RecordType::getInt64(const std::string& field, RecordBuffer buf) const
 int64_t RecordType::getArrayInt64(const std::string& field, int32_t idx, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
-  return mMemberOffsets[it->second].getArrayInt64(buf, idx);
+  if(FieldType::FIXED_ARRAY == mMembers[it->second].GetType()->GetEnum()) {
+    return mMemberOffsets[it->second].getArrayInt64(buf, idx);
+  } else {
+    return mMemberOffsets[it->second].getVarArrayInt64(buf, idx);
+  }
 }
 
 float RecordType::getFloat(const std::string& field, RecordBuffer buf) const
@@ -2624,5 +2676,10 @@ bool RecordType::isArrayNull(const std::string& field, int32_t idx, RecordBuffer
 {
   const_member_name_iterator it = mMemberNames.find(field);
   const FixedArrayType * ft = dynamic_cast<const FixedArrayType *>(mMembers[it->second].GetType());
-  return mMemberOffsets[it->second].isArrayNull(buf, ft, idx);
+  if (nullptr != ft) {
+    return mMemberOffsets[it->second].isArrayNull(buf, ft, idx);
+  } else {
+    const VariableArrayType * ft = dynamic_cast<const VariableArrayType *>(mMembers[it->second].GetType());
+    return mMemberOffsets[it->second].isArrayNull(buf, ft, idx);
+  }
 }

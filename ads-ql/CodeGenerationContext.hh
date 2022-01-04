@@ -56,6 +56,7 @@ namespace llvm {
 }
 class CodeGenerationContext;
 class FieldType;
+class SequentialType;
 class FieldAddress;
 class BitcpyOp;
 class BitsetOp;
@@ -432,6 +433,24 @@ private:
 			   const std::string& recordName,
 			   int * pos);
 
+  // Copy a range from an array to another.   Assumes that storage for any VARIABLE_ARRAYs has been allocated
+  void buildArrayElementwiseCopy(const IQLToLLVMValue * e, 
+                                 const SequentialType * argType,
+                                 const IQLToLLVMValue * beginIdx,
+                                 const IQLToLLVMValue * endIdx,
+                                 const IQLToLLVMValue * retBeginIdx, 
+                                 llvm::Value * ret, 
+                                 const SequentialType * retType);
+  // Copy an from an array to another when element types match and are copyable.
+  // Assumes that storage for any VARIABLE_ARRAYs has been allocated
+  void buildArrayCopyableCopy(const IQLToLLVMValue * e, 
+                              const SequentialType * argType,
+                              llvm::Value * ret, 
+                              const SequentialType * retType);
+  // Alloca a VARIABLE_ARRAY and dynamically allocate storage for arrayLen elements.
+  llvm::Value * buildVariableArrayAllocate(const SequentialType * arrayType, llvm::Value * arrayLen, bool trackAllocation);
+  // dynamically allocate storage for arrayLen elements in a pointer to VARIABLE_ARRAY
+  void buildVariableArrayAllocate(llvm::Value * e, const SequentialType * arrayType, llvm::Value * arrayLen, bool trackAllocation);
 
   // How does this code generator treat values of types? Does it pass them
   // around as values or does it pass references around.
@@ -644,6 +663,15 @@ public:
 					   const IQLToLLVMValue * idx,
                                            const FieldType * idxType,
                                            const FieldType * retType);
+
+  /**
+   * Concatenate two arrays or an element and an array
+   */
+  const IQLToLLVMValue * buildArrayConcat(const IQLToLLVMValue * lhs,
+                                          const FieldType * lhsType,
+                                          const IQLToLLVMValue * rhs,
+                                          const FieldType * rhsType,
+                                          const FieldType * retType);
 
   /**
    * Call a function.
@@ -1013,18 +1041,32 @@ public:
   llvm::Value * buildVarcharGetPtr(llvm::Value * varcharPtr);
 
   /**
-   * Interface to the VARIABLE_ARRAY datatype.
-   */
-  llvm::Value * buildVarArrayGetSize(llvm::Value * varcharPtr);
-  llvm::Value * buildVarArrayGetPtr(llvm::Value * varcharPtr, llvm::Type * retTy);
-
-  /**
    * Interface to the FIXED_ARRAY datatype.
    */
   llvm::Value * getFixedArrayData(const IQLToLLVMValue * e, const FieldType * ty);
   llvm::Value * getFixedArrayData(llvm::Value * ptr, const FieldType * ty);
   llvm::Value * getFixedArrayNull(const IQLToLLVMValue * e, const FieldType * ty);
   llvm::Value * getFixedArrayNull(llvm::Value * ptr, const FieldType * ty);
+  
+  /**
+   * Interface to the VARIABLE_ARRAY datatype.
+   */
+  llvm::Value * buildVarArrayGetSize(llvm::Value * varcharPtr);
+  llvm::Value * buildVarArrayGetPtr(llvm::Value * varcharPtr, llvm::Type * retTy);
+  llvm::Value * getVariableArrayData(const IQLToLLVMValue * e, const FieldType * ty);
+  llvm::Value * getVariableArrayData(llvm::Value * ptr, const FieldType * ty);
+  llvm::Value * getVariableArrayNull(const IQLToLLVMValue * e, const FieldType * ty);
+  llvm::Value * getVariableArrayNull(llvm::Value * ptr, const FieldType * ty);
+
+  /**
+   * Unified interface to FIXED_ARRAY and VARIABLE_ARRAY datatypes.
+   */
+  llvm::Value * getArraySize(const IQLToLLVMValue * e, const FieldType * ty);
+  llvm::Value * getArraySize(llvm::Value * ptr, const FieldType * ty);
+  llvm::Value * getArrayData(const IQLToLLVMValue * e, const FieldType * ty);
+  llvm::Value * getArrayData(llvm::Value * ptr, const FieldType * ty);
+  llvm::Value * getArrayNull(const IQLToLLVMValue * e, const FieldType * ty);
+  llvm::Value * getArrayNull(llvm::Value * ptr, const FieldType * ty);
   
   /**
    * Reuse of local variables so that we don't put too much pressure
@@ -1156,6 +1198,11 @@ public:
 				      IQLToLLVMPredicate op);
 
   const IQLToLLVMValue *
+  buildArrayElementwiseEquals(const IQLToLLVMValue * lhs, 
+                              const IQLToLLVMValue * rhs,
+                              const FieldType * promoted,
+                              const FieldType * retType);
+  const IQLToLLVMValue *
   buildArrayElementwiseCompare(const IQLToLLVMValue * lhs, 
                                const IQLToLLVMValue * rhs,
                                const FieldType * promoted,
@@ -1171,8 +1218,14 @@ public:
                                 IQLToLLVMPredicate op);
   
   /**
-   * Hash a sequence of values
+   * Hash a sequence of values with helper methods
    */
+  llvm::Value * buildHashInitValue(class DynamicRecordContext & ctxt, llvm::Value * sz, llvm::Value * previousHash, llvm::Value * firstFlag);
+  void buildHash(const std::vector<IQLToLLVMTypedValue> & args, llvm::Value * previousHash, llvm::Value * firstFlag);
+  void buildArrayElementwiseHash(const IQLToLLVMValue * e, 
+                                 const SequentialType * argType,
+                                 llvm::Value * previousHash,
+                                 llvm::Value * firstFlag);
   const IQLToLLVMValue * buildHash(const std::vector<IQLToLLVMTypedValue> & args);
 
   /**
@@ -1196,6 +1249,13 @@ public:
 					    const IQLToLLVMValue * elseVal, const FieldType * elseTy,
 					    const FieldType * retTy);
 
+  /**
+   * IF ELSE statements
+   */
+  void buildBeginIf();
+  void buildBeginElse();
+  void buildEndIf(const IQLToLLVMValue * condVal);
+  
   /**
    * SWITCH statements
    */

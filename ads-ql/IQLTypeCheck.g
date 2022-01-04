@@ -263,6 +263,7 @@ $ty = NULL;
     | ^(c='/' e1 = expression[$ctxt] e2 = expression[$ctxt] { $ty = IQLTypeCheckDivide($ctxt, e1.ty, e2.ty); $c->u = $ty; })
     | ^(c='%' e1 = expression[$ctxt] e2 = expression[$ctxt] { $ty = IQLTypeCheckModulus($ctxt, e1.ty, e2.ty); $c->u = $ty; })
     | ^(c='~' e1 = expression[$ctxt] { $ty = IQLTypeCheckUnaryBitwiseType($ctxt, e1.ty); $c->u = $ty; })
+    | ^(c='||' e1 = expression[$ctxt] e2 = expression[$ctxt] { $ty = IQLTypeCheckConcatenation($ctxt, e1.ty, e2.ty); $c->u = $ty; })
     | ^(c='#' { types = IQLFieldTypeVectorCreate(); } (e1 = expression[$ctxt] { IQLFieldTypeVectorPushBack(types, e1.ty); })*) 
         { $ty = IQLTypeCheckHash($ctxt, types); IQLFieldTypeVectorFree(types); $c->u = $ty; }
     | ^(c='$' { types = IQLFieldTypeVectorCreate(); } (e1 = expression[$ctxt] { IQLFieldTypeVectorPushBack(types, e1.ty); })*) 

@@ -161,6 +161,99 @@ typedef union tagVarchar {
   }
 } Varchar;
 
+typedef struct {
+  bool Large : 1;
+  unsigned Size : 31;
+  const char * Ptr;
+} VararrayLarge;
+
+typedef struct {
+  bool Large : 1;
+  unsigned Size : 7;
+  char Data[sizeof(VararrayLarge)-1];
+} VararraySmall;
+
+typedef union tagVararray {
+  enum Constants { MIN_LARGE_STRING_SIZE = sizeof(VararrayLarge)-1 };
+  VararrayLarge Large;
+  VararraySmall Small;
+  char * allocateLarge(int32_t len, 
+		       class InterpreterContext * ctxt);
+  void assign(const char * lhs, int32_t len, 
+	      class InterpreterContext * ctxt)
+  {
+    char * buf;
+    if (len < MIN_LARGE_STRING_SIZE) {
+      buf = &Small.Data[0];
+      Small.Size = len;
+      Small.Large = 0;
+    } else {
+      buf = allocateLarge(len+1, ctxt);
+      Large.Size = len;
+      Large.Ptr = buf;  
+      Large.Large = 1;
+    }
+    ::memcpy(buf, lhs, len);
+    buf[len] = 0;
+  }
+  void assign(const char * lhs, int32_t len)
+  {
+    char * buf;
+    if (len < MIN_LARGE_STRING_SIZE) {
+      buf = &Small.Data[0];
+      Small.Size = len;
+      Small.Large = 0;
+    } else {
+      buf = (char *) ::malloc(len + 1);
+      Large.Size = len;
+      Large.Ptr = buf;  
+      Large.Large = 1;
+    }
+    ::memcpy(buf, lhs, len);
+    buf[len] = 0;
+  }
+  void append(const char * lhs, int32_t len)
+  {
+    if (!Large.Large) {
+      int32_t before = Small.Size;
+      int32_t after = before + len;
+      if (after < MIN_LARGE_STRING_SIZE) {
+	char * buf = &Small.Data[0];
+	memcpy(buf + before, lhs, len);
+	Small.Size = after;
+	Small.Large = 0;
+	buf[after] = 0;
+      } else {
+	char * buf = (char *) ::malloc(after + 1);
+	memcpy(buf, &Small.Data[0], before);
+	memcpy(buf + before, lhs, len);
+	Large.Size = after;
+	Large.Ptr = buf;  
+	Large.Large = 1;
+	buf[after] = 0;
+      }
+    } else {
+      int32_t before = Large.Size;
+      int32_t after = before + len;
+      char * buf = (char *) ::realloc(const_cast<char *>(Large.Ptr), 
+				      after + 1);
+      memcpy(buf + before, lhs, len);
+      Large.Size = after;
+      Large.Ptr = buf;  
+      Large.Large = 1;
+      buf[after] = 0;
+    }
+  }
+  int32_t size() const
+  {
+    return Large.Large ? Large.Size : Small.Size;
+  }
+  const char * c_str() const
+  {
+    return Large.Large ? Large.Ptr : &Small.Data[0];
+  }
+} Vararray;
+
 struct CidrV4
 {
   boost::asio::ip::address_v4 prefix;
@@ -251,10 +344,14 @@ public:
       return false;
     }
   }
-  // Nullity of elements of an array
+  // Nullity of elements of a fixed array
   void setArrayNull(RecordBuffer buffer, const class FixedArrayType * ty, int32_t idx) const;
   void clearArrayNull(RecordBuffer buffer, const class FixedArrayType * ty, int32_t idx) const;
   bool isArrayNull(RecordBuffer buffer, const class FixedArrayType * ty, int32_t idx) const;
+  // Nullity of elements of a variable array
+  void setArrayNull(RecordBuffer buffer, const class VariableArrayType * ty, int32_t idx) const;
+  void clearArrayNull(RecordBuffer buffer, const class VariableArrayType * ty, int32_t idx) const;
+  bool isArrayNull(RecordBuffer buffer, const class VariableArrayType * ty, int32_t idx) const;
   
   void setInt8(int8_t val, RecordBuffer buffer) const
   {
@@ -352,6 +449,10 @@ public:
   {
     return ((int32_t *) (buffer.Ptr + mOffset))[idx];
   }
+  int32_t getVarArrayInt32(RecordBuffer buffer, int idx) const
+  {
+    return ((int32_t *) ((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx];
+  }
   int64_t getInt64(RecordBuffer buffer) const
   {
     return *(int64_t *) (buffer.Ptr + mOffset);
@@ -359,6 +460,10 @@ public:
   int64_t getArrayInt64(RecordBuffer buffer, int idx) const
   {
     return ((int64_t *) (buffer.Ptr + mOffset))[idx];
+  }
+  int64_t getVarArrayInt64(RecordBuffer buffer, int idx) const
+  {
+    return ((int64_t *) ((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx];
   }
   float getFloat(RecordBuffer buffer) const
   {
@@ -1299,20 +1404,45 @@ public:
 };
 
 /**
- * A fixed length array.
+ * Base class for homogeneous container types (e.g. arrays)
  */
-class FixedArrayType : public FieldType
+class SequentialType : public FieldType
 {
 private:
   const FieldType * mElementTy;
+
+protected:
+  SequentialType(DynamicRecordContext& ctxt,
+                 FieldTypeEnum ty,
+		 int32_t sz,
+		 const FieldType * elementTy,
+		 bool nullable)
+    :
+    FieldType(ctxt, ty, sz, nullable),    
+    mElementTy(elementTy)
+  {
+  }
+
+public:
+  const FieldType * getElementType() const 
+  {
+    return mElementTy;
+  }  
+};
+
+/**
+ * A fixed length array.
+ */
+class FixedArrayType : public SequentialType
+{
+private:
 
   FixedArrayType(DynamicRecordContext& ctxt, 
 		 int32_t sz,
 		 const FieldType * elementTy,
 		 bool nullable)
     :
-    FieldType(ctxt, FieldType::FIXED_ARRAY, sz, nullable),    
-    mElementTy(elementTy)
+    SequentialType(ctxt, FieldType::FIXED_ARRAY, sz, elementTy, nullable)
   {
   }
   static void AppendTo(int32_t sz, const FieldType * element,
@@ -1323,13 +1453,9 @@ public:
 			      const FieldType * element,
 			      bool nullable);
   ~FixedArrayType();
-  const FieldType * getElementType() const 
-  {
-    return mElementTy;
-  }
   std::size_t GetAlignment() const 
   {
-    return mElementTy->GetAlignment();
+    return getElementType()->GetAlignment();
   }
   std::size_t GetAllocSize() const
   {
@@ -1338,7 +1464,7 @@ public:
   }
   std::size_t GetDataSize() const
   {
-    return mElementTy->GetAllocSize()*((std::size_t)GetSize());
+    return getElementType()->GetAllocSize()*((std::size_t)GetSize());
   }
   std::size_t GetDataOffset() const
   {
@@ -1370,17 +1496,15 @@ public:
 /**
  * A variable length array.
  */
-class VariableArrayType : public FieldType
+class VariableArrayType : public SequentialType
 {
 private:
-  const FieldType * mElementTy;
 
   VariableArrayType(DynamicRecordContext& ctxt, 
                     const FieldType * elementTy,
                     bool nullable)
     :
-    FieldType(ctxt, FieldType::VARIABLE_ARRAY, 0, nullable),    
-    mElementTy(elementTy)
+    SequentialType(ctxt, FieldType::VARIABLE_ARRAY, 0, elementTy, nullable)
   {
   }
   static void AppendTo(const FieldType * element,
@@ -1390,17 +1514,13 @@ public:
                                  const FieldType * element,
                                  bool nullable);
   ~VariableArrayType();
-  const FieldType * getElementType() const 
-  {
-    return mElementTy;
-  }
   std::size_t GetAlignment() const 
   {
     return 8;
   }
   std::size_t GetAllocSize() const
   {
-    return sizeof(Varchar);
+    return sizeof(Vararray);
   }
   /**
    * Append my state to an md5 hash

@@ -152,6 +152,14 @@ extern "C" {
 				      void * resultAttributes);
 
   /**
+   * Concatenation of two array values. 
+   */
+  IQLToLLVMValueRef IQLToLLVMBuildConcatenation(IQLCodeGenerationContextRef ctxt, 
+                                                IQLToLLVMValueRef lhs, void * lhsAttributes, 
+                                                IQLToLLVMValueRef rhs, void * rhsAttributes,
+                                                void * resultAttributes);
+
+  /**
    * Bitwise AND of two values.
    */
   IQLToLLVMValueRef IQLToLLVMBuildBitwiseAnd(IQLCodeGenerationContextRef ctxt, 
@@ -450,6 +458,7 @@ extern "C" {
   IQLFieldTypeRef IQLTypeCheckMultiplicativeType(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs); 
   IQLFieldTypeRef IQLTypeCheckDivide(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs); 
   IQLFieldTypeRef IQLTypeCheckModulus(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
+  IQLFieldTypeRef IQLTypeCheckConcatenation(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
   IQLFieldTypeRef IQLTypeCheckBitwiseType(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
   IQLFieldTypeRef IQLTypeCheckUnaryBitwiseType(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs);
   IQLFieldTypeRef IQLTypeCheckHash(IQLTypeCheckContextRef ctxt, IQLFieldTypeVectorRef lhs);

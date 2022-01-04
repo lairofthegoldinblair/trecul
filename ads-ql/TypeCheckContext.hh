@@ -291,6 +291,8 @@ public:
 			     const FieldType * rhs);
   const FieldType * buildModulus(const FieldType * lhs, 
 				 const FieldType * rhs);
+  const FieldType * buildConcat(const FieldType * lhs, 
+                                const FieldType * rhs);
   const FieldType * buildBitwise(const FieldType * lhs, 
 				 const FieldType * rhs);
   const FieldType * buildBitwise(const FieldType * lhs);

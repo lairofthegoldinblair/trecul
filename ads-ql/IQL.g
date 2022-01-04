@@ -369,6 +369,7 @@ additiveExpression // Level (3)
 	((
 	'+'^ 
 	| '-'^
+	| '||'^
 	) multiplicativeExpression)*
 	;
 

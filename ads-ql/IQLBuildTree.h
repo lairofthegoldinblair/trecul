@@ -140,6 +140,10 @@ extern "C" {
 				 IQLExpressionRef left,
 				 IQLExpressionRef right,
 				 int line, int column);
+  IQLExpressionRef IQLBuildConcatenation(IQLTreeFactoryRef ctxtRef,
+                                         IQLExpressionRef left,
+                                         IQLExpressionRef right,
+                                         int line, int column);
   IQLExpressionRef IQLBuildUnaryPlus(IQLTreeFactoryRef ctxtRef,
 				     IQLExpressionRef left,
 				     int line, int column);

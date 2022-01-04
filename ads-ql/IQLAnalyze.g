@@ -237,6 +237,7 @@ expression[IQLTreeFactoryRef ctxt] returns [IQLExpressionRef e]
     | ^(t='/' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildDivide($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t='%' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildModulus($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t='~' e1=expression[$ctxt] { $e = IQLBuildBitwiseNot($ctxt, e1, $t->getLine($t), $t->getCharPositionInLine($t)); })
+    | ^(t='||' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildConcatenation($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t='#'  { l = IQLExpressionListCreate($ctxt); } (e1=expression[$ctxt] { IQLExpressionListAppend($ctxt, l, e1); })+ { $e = IQLBuildCall($ctxt, "#", l, $t->getLine($t), $t->getCharPositionInLine($t)); IQLExpressionListFree($ctxt, l); })
     | ^(t='$'  { l = IQLExpressionListCreate($ctxt); } (e1=expression[$ctxt] { IQLExpressionListAppend($ctxt, l, e1); })+ { $e = IQLBuildCall($ctxt, "$", l, $t->getLine($t), $t->getCharPositionInLine($t)); IQLExpressionListFree($ctxt, l); })
     | ^(t=TK_CAST ty=builtInType[$ctxt] e1=expression[$ctxt] { $e = IQLBuildCast($ctxt, ty, e1, $t->getLine($t), $t->getCharPositionInLine($t)); })

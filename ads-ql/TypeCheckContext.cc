@@ -449,6 +449,22 @@ const FieldType * TypeCheckContext::castTo(const FieldType * lhs,
       return to_type;
     else 
       return NULL;    
+  } else if (from_type->GetEnum() == FieldType::FIXED_ARRAY) {
+    if (to_type->GetEnum() == FieldType::VARIABLE_ARRAY) {
+      const SequentialType * from_arr_type = dynamic_cast<const SequentialType *>(from_type);
+      const SequentialType * to_arr_type = dynamic_cast<const SequentialType *>(to_type);
+      return nullptr != castTo(from_arr_type->getElementType(), to_arr_type->getElementType()) ? to_type : nullptr;
+    } else {
+      return NULL;
+    }
+  } else if (from_type->GetEnum() == FieldType::VARIABLE_ARRAY) {
+    if (to_type->GetEnum() == FieldType::VARIABLE_ARRAY) {
+      const SequentialType * from_arr_type = dynamic_cast<const SequentialType *>(from_type);
+      const SequentialType * to_arr_type = dynamic_cast<const SequentialType *>(to_type);
+      return nullptr != castTo(from_arr_type->getElementType(), to_arr_type->getElementType()) ? to_type : nullptr;
+    } else {
+      return NULL;
+    }
   } else {
     return NULL;
   }
@@ -833,6 +849,29 @@ const FieldType * TypeCheckContext::buildModulus(const FieldType * lhs,
   return ret;
 }
 
+const FieldType * TypeCheckContext::buildConcat(const FieldType * lhs,
+                                                const FieldType * rhs)
+{
+  bool isNullable = lhs->isNullable() || rhs->isNullable();
+  const SequentialType * lhsArrTy = dynamic_cast<const SequentialType *>(lhs);
+  const SequentialType * rhsArrTy = dynamic_cast<const SequentialType *>(rhs);
+  if (nullptr == lhsArrTy && nullptr == rhsArrTy) {
+    throw std::runtime_error("At least one argument to concatenate operator must be an array type");
+  }
+  int32_t lhsSize = nullptr != lhsArrTy ? lhsArrTy->GetSize() : 1;
+  int32_t rhsSize = nullptr != rhsArrTy ? rhsArrTy->GetSize() : 1;
+  const FieldType * lhsEltTy = nullptr != lhsArrTy ? lhsArrTy->getElementType() : lhs;
+  const FieldType * rhsEltTy = nullptr != rhsArrTy ? rhsArrTy->getElementType() : rhs;
+  const FieldType * retEltTy = leastCommonTypeNullable(lhsEltTy, rhsEltTy);
+  if (nullptr == retEltTy) {
+    throw std::runtime_error("Incompatible element types in array concatenation");
+  }
+  return lhs->GetEnum() == FieldType::VARIABLE_ARRAY ||
+    rhs->GetEnum() == FieldType::VARIABLE_ARRAY ?
+    buildVariableArrayType(retEltTy, isNullable) :
+    buildFixedArrayType(lhsSize + rhsSize, retEltTy, isNullable);
+}
+
 const FieldType * TypeCheckContext::buildBitwise(const FieldType * lhs,
 						 const FieldType * rhs)
 {
@@ -914,9 +953,9 @@ const FieldType * TypeCheckContext::buildCast(const FieldType * lhs,
 {
   bool isNullable = target->isNullable() || lhs->isNullable();
   if (target->GetEnum() == FieldType::FIXED_ARRAY) {
-    const FixedArrayType * targetArrayTy = reinterpret_cast<const FixedArrayType *>(target);
+    const FixedArrayType * targetArrayTy = dynamic_cast<const FixedArrayType *>(target);
     if (lhs->GetEnum() == FieldType::FIXED_ARRAY) {
-      const FixedArrayType * lhsArrayTy = reinterpret_cast<const FixedArrayType *>(lhs);
+      const FixedArrayType * lhsArrayTy = dynamic_cast<const FixedArrayType *>(lhs);
       if (target->GetSize() > lhs->GetSize() || lhsArrayTy->getElementType()->isNullable()) {
         return buildFixedArrayType(target->GetSize(),
                                    targetArrayTy->getElementType()->clone(true),
@@ -924,6 +963,22 @@ const FieldType * TypeCheckContext::buildCast(const FieldType * lhs,
       } else {
         return target->clone(isNullable);
       }
+    } else if (lhs->GetEnum() == FieldType::VARIABLE_ARRAY) {
+      const VariableArrayType * lhsArrayTy = dynamic_cast<const VariableArrayType *>(lhs);
+      return buildFixedArrayType(target->GetSize(),
+                                 targetArrayTy->getElementType()->clone(lhsArrayTy->getElementType()->isNullable()),
+                                 isNullable);
+    } else {
+      throw std::runtime_error("Not supporting cast of non-array type to array type");
+    }
+  } else if (target->GetEnum() == FieldType::VARIABLE_ARRAY) {
+    if (lhs->GetEnum() == FieldType::FIXED_ARRAY) {
+      const VariableArrayType * targetArrayTy = dynamic_cast<const VariableArrayType *>(target);    
+      const FixedArrayType * lhsArrayTy = dynamic_cast<const FixedArrayType *>(lhs);
+      return buildVariableArrayType(targetArrayTy->getElementType()->clone(lhsArrayTy->getElementType()->isNullable()),
+                                    isNullable);
+    } else if (lhs->GetEnum() == FieldType::VARIABLE_ARRAY) {
+      return target->clone(isNullable);
     } else {
       throw std::runtime_error("Not supporting cast of non-array type to array type");
     }

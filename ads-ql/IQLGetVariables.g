@@ -131,6 +131,7 @@ expression[IQLGetVariablesContextRef ctxt]
     | ^('*' expression[$ctxt] expression[$ctxt])
     | ^('/' expression[$ctxt] expression[$ctxt])
     | ^('%' expression[$ctxt] expression[$ctxt])
+    | ^('||' expression[$ctxt] expression[$ctxt])
     | ^('~' expression[$ctxt])
     | ^('#' (expression[$ctxt])*)
     | ^('$' (expression[$ctxt])*) 

@@ -221,6 +221,7 @@ expression[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMValueRef llvmVal,
     | ^(c='*' e1 = expression[$ctxt] e2 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildMul($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
     | ^(c='/' e1 = expression[$ctxt] e2 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildDiv($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
     | ^(c='%' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildMod($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
+    | ^(c='||' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildConcatenation($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
     | ^(c='~' e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildBitwiseNot($ctxt, e1.llvmVal, $e1.start->u, $c->u); })
     | ^('#' { values = IQLToLLVMValueVectorCreate(); } (e1 = expression[$ctxt] { IQLToLLVMValueVectorPushBack(values, e1.llvmVal, $e1.start->u); })* { $llvmVal = IQLToLLVMBuildHash($ctxt, values); IQLToLLVMValueVectorFree(values); })
     | ^(c='$' { values = IQLToLLVMValueVectorCreate(); } (e1 = expression[$ctxt] { IQLToLLVMValueVectorPushBack(values, e1.llvmVal, $e1.start->u); })* { $llvmVal = IQLToLLVMBuildSortPrefix($ctxt, values, $c->u); IQLToLLVMValueVectorFree(values); })

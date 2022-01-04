@@ -947,6 +947,14 @@ IQLExpressionRef IQLBuildModulus(IQLTreeFactoryRef ctxtRef,
   return IQLBuildBinaryFun(ctxtRef, "%", leftRef, rightRef, line, column);
 }
 
+IQLExpressionRef IQLBuildConcatenation(IQLTreeFactoryRef ctxtRef,
+                                       IQLExpressionRef leftRef,
+                                       IQLExpressionRef rightRef,
+                                       int line, int column)
+{
+  return IQLBuildBinaryFun(ctxtRef, "||", leftRef, rightRef, line, column);
+}
+
 IQLExpressionRef IQLBuildUnaryPlus(IQLTreeFactoryRef ctxtRef,
 				   IQLExpressionRef leftRef,
 				   int line, int column)
@@ -1370,6 +1378,7 @@ const char * IQLExpressionPrinter::getExpressionSymbol(uint32_t nodeType)
   case IQLExpression::TIMES: return "*";
   case IQLExpression::DIVIDE: return "/";
   case IQLExpression::MOD: return "%";
+  case IQLExpression::CONCAT: return "||";
   case IQLExpression::NIL: return "INTERVAL";
   default:
     throw std::runtime_error((boost::format("Unknown node type %1%") % nodeType).str());

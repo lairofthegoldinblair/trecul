@@ -653,6 +653,15 @@ extern "C" void InternalVarcharCopy(Varchar * lhs, Varchar * result, int32_t tra
   }
 }
 
+extern "C" void InternalVarcharAllocate(int32_t len, int32_t sz, Varchar * result, int32_t trackForDelete, InterpreterContext * ctxt) {
+  result->Large.Large = 1;
+  result->Large.Size = len;
+  char * buf = trackForDelete ? 
+    (char *) ctxt->malloc(sz) : 
+    (char*) ::malloc(sz);
+  result->Large.Ptr = buf;
+}
+
 extern "C" void InternalVarcharErase(Varchar * lhs, InterpreterContext * ctxt) {
   // Remove varchar pointer from internal heap tracking
   if (lhs->Large.Large) {
@@ -1890,6 +1899,15 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharCopy", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharAllocate", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
