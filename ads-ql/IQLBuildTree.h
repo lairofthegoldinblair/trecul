@@ -63,6 +63,7 @@ extern "C" {
   IQLFieldTypeRef IQLBuildCIDRv6ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildNVarcharType(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildVarcharType(IQLTreeFactoryRef ctxtRef, int nullable);
+  IQLFieldTypeRef IQLBuildVarcharArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildCharType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
   IQLFieldTypeRef IQLBuildBooleanType(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildBooleanArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);

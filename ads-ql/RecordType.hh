@@ -433,6 +433,10 @@ public:
   {
     return ((int8_t *) (buffer.Ptr + mOffset))[idx];
   }
+  int8_t getVarArrayInt8(RecordBuffer buffer, int idx) const
+  {
+    return ((int8_t *) ((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx];
+  }
   int16_t getInt16(RecordBuffer buffer) const
   {
     return *(int16_t *) (buffer.Ptr + mOffset);
@@ -440,6 +444,10 @@ public:
   int16_t getArrayInt16(RecordBuffer buffer, int idx) const
   {
     return ((int16_t *) (buffer.Ptr + mOffset))[idx];
+  }
+  int16_t getVarArrayInt16(RecordBuffer buffer, int idx) const
+  {
+    return ((int16_t *) ((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx];
   }
   int32_t getInt32(RecordBuffer buffer) const
   {
@@ -473,6 +481,10 @@ public:
   {
     return ((float *) (buffer.Ptr + mOffset))[idx];
   }
+  float getVarArrayFloat(RecordBuffer buffer, int idx) const
+  {
+    return ((float *) ((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx];
+  }
   double getDouble(RecordBuffer buffer) const
   {
     return *(double *) (buffer.Ptr + mOffset);
@@ -480,6 +492,10 @@ public:
   double getArrayDouble(RecordBuffer buffer, int idx) const
   {
     return ((double *) (buffer.Ptr + mOffset))[idx];
+  }
+  double getVarArrayDouble(RecordBuffer buffer, int idx) const
+  {
+    return ((double *) ((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx];
   }
   boost::posix_time::ptime getDatetime(RecordBuffer buffer) const
   {
@@ -489,6 +505,10 @@ public:
   {
     return ((boost::posix_time::ptime *) (buffer.Ptr + mOffset))[idx];
   }
+  boost::posix_time::ptime getVarArrayDatetime(RecordBuffer buffer, int idx) const
+  {
+    return ((boost::posix_time::ptime *) ((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx];
+  }
   boost::gregorian::date getDate(RecordBuffer buffer) const
   {
     return *(boost::gregorian::date *) (buffer.Ptr + mOffset);
@@ -496,6 +516,10 @@ public:
   boost::gregorian::date getArrayDate(RecordBuffer buffer, int idx) const
   {
     return ((boost::gregorian::date *) (buffer.Ptr + mOffset))[idx];
+  }
+  boost::gregorian::date getVarArrayDate(RecordBuffer buffer, int idx) const
+  {
+    return ((boost::gregorian::date *) ((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx];
   }
   boost::asio::ip::address_v4 getIPv4(RecordBuffer buffer) const
   {
@@ -506,6 +530,11 @@ public:
   {
     typedef boost::asio::ip::address_v4::bytes_type bytes_type;
     return boost::asio::ip::make_address_v4(((bytes_type *) (buffer.Ptr + mOffset))[idx]);
+  }
+  boost::asio::ip::address_v4 getVarArrayIPv4(RecordBuffer buffer, int idx) const
+  {
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
+    return boost::asio::ip::make_address_v4(((bytes_type *) ((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx]);
   }
   CidrV4 getCIDRv4(RecordBuffer buffer) const
   {
@@ -522,6 +551,13 @@ public:
     ret.prefix_length = ((CidrV4Runtime *)(buffer.Ptr + mOffset))[idx].prefix_length;
     return ret;
   }
+  CidrV4 getVarArrayCIDRv4(RecordBuffer buffer, int idx) const
+  {
+    CidrV4 ret;
+    ret.prefix = boost::asio::ip::make_address_v4(((CidrV4Runtime *) (buffer.Ptr + mOffset))[idx].prefix);
+    ret.prefix_length = ((CidrV4Runtime *)((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx].prefix_length;
+    return ret;
+  }
   boost::asio::ip::address_v6 getIPv6(RecordBuffer buffer) const
   {
     boost::asio::ip::address_v6::bytes_type arr;
@@ -532,6 +568,11 @@ public:
   {
     typedef boost::asio::ip::address_v6::bytes_type bytes_type;
     return boost::asio::ip::make_address_v6(((bytes_type *) (buffer.Ptr + mOffset))[idx]);
+  }
+  boost::asio::ip::address_v6 getVarArrayIPv6(RecordBuffer buffer, int idx) const
+  {
+    typedef boost::asio::ip::address_v6::bytes_type bytes_type;
+    return boost::asio::ip::make_address_v6(((bytes_type *) ((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx]);
   }
   CidrV6 getCIDRv6(RecordBuffer buffer) const
   {
@@ -546,6 +587,13 @@ public:
     CidrV6 ret;
     ret.prefix = boost::asio::ip::make_address_v6(((CidrV6Runtime *) (buffer.Ptr + mOffset))[idx].prefix);
     ret.prefix_length = ((CidrV6Runtime *)(buffer.Ptr + mOffset))[idx].prefix_length;
+    return ret;
+  }
+  CidrV6 getVarArrayCIDRv6(RecordBuffer buffer, int idx) const
+  {
+    CidrV6 ret;
+    ret.prefix = boost::asio::ip::make_address_v6(((CidrV6Runtime *) (buffer.Ptr + mOffset))[idx].prefix);
+    ret.prefix_length = ((CidrV6Runtime *)((Vararray *)(buffer.Ptr + mOffset))->c_str())[idx].prefix_length;
     return ret;
   }
   void SetFixedLengthString(RecordBuffer buffer, const char * begin, std::size_t sz) const
@@ -653,6 +701,16 @@ public:
   Varchar * getVarcharPtr(RecordBuffer buffer) const
   {
     return (Varchar *) (buffer.Ptr + mOffset);
+  }
+
+  Varchar * getArrayVarcharPtr(RecordBuffer buffer, int idx) const
+  {
+    return ((Varchar *) (buffer.Ptr + mOffset)) + idx;
+  }
+
+  Varchar * getVarArrayVarcharPtr(RecordBuffer buffer, int idx) const
+  {
+    return ((Varchar *) ((Vararray *)(buffer.Ptr + mOffset))->c_str()) + idx;
   }
 
   char * getCharPtr(RecordBuffer buffer) const
@@ -2109,6 +2167,7 @@ public:
   void setCIDRv6(const std::string& field, CidrV6 val, RecordBuffer buffer) const;
   // These have copy semantics
   void setVarchar(const std::string& field, const char* val, RecordBuffer buf) const;
+  void setArrayVarchar(const std::string& field, int32_t idx, const char * val, RecordBuffer buf) const;
   void setChar(const std::string& field, const char* val, RecordBuffer buf) const;
 
   int8_t getInt8(const std::string& field, RecordBuffer buf) const;
@@ -2120,8 +2179,11 @@ public:
   int64_t getInt64(const std::string& field, RecordBuffer buf) const;
   int64_t getArrayInt64(const std::string& field, int32_t idx, RecordBuffer buf) const;
   float getFloat(const std::string& field, RecordBuffer buf) const;
+  float getArrayFloat(const std::string& field, int32_t idx, RecordBuffer buf) const;
   double getDouble(const std::string& field, RecordBuffer buf) const;
+  double getArrayDouble(const std::string& field, int32_t idx, RecordBuffer buf) const;
   Varchar * getVarcharPtr(const std::string& field, RecordBuffer buf) const;
+  Varchar * getArrayVarcharPtr(const std::string& field, int32_t idx, RecordBuffer buf) const;
   boost::asio::ip::address_v4 getIPv4(const std::string& field, RecordBuffer buffer) const;
   CidrV4 getCIDRv4(const std::string& field, RecordBuffer buffer) const;
   boost::asio::ip::address_v6 getIPv6(const std::string& field, RecordBuffer buffer) const;

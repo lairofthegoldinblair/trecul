@@ -155,7 +155,7 @@ builtInTypeNoNull
 	: (TK_INTEGER^ (arrayTypeSpec)?
 	  | TK_DOUBLE^ (TK_PRECISION!) (arrayTypeSpec)?
 	  | TK_CHAR^ '('! DECIMAL_INTEGER_LITERAL ')'!
-	  | TK_VARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? 
+	  | TK_VARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? (arrayTypeSpec)?
 	  | TK_NVARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? 
 	  | TK_DECIMAL^ (arrayTypeSpec)?
 	  | TK_BOOLEAN^ (arrayTypeSpec)?
@@ -176,7 +176,7 @@ builtInType
 	: (TK_INTEGER^ (arrayTypeSpec)? 
 	  | TK_DOUBLE^ (TK_PRECISION!) (arrayTypeSpec)?
 	  | TK_CHAR^ '('! DECIMAL_INTEGER_LITERAL ')'!
-	  | TK_VARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? 
+	  | TK_VARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? (arrayTypeSpec)?
 	  | TK_NVARCHAR^ ('('! DECIMAL_INTEGER_LITERAL! ')'!)? 
 	  | TK_DECIMAL^ (arrayTypeSpec)?
 	  | TK_BOOLEAN^ (arrayTypeSpec)?

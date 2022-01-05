@@ -498,6 +498,7 @@ extern "C" {
   IQLFieldTypeRef IQLTypeCheckBuildCIDRv6ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildNVarcharType(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildVarcharType(IQLTypeCheckContextRef ctxt, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildVarcharArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildCharType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildBooleanType(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildBooleanArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);

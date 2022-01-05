@@ -176,20 +176,9 @@ BOOST_AUTO_TEST_CASE(testFixedArrayFieldType)
   }
 }
 
-BOOST_AUTO_TEST_CASE(testTransferStringLiteral)
+void checkTransferVarchar(RecordTypeTransfer & t1, RecordBuffer inputBuf)
 {
-  DynamicRecordContext ctxt;
   InterpreterContext runtimeCtxt;
-  std::vector<RecordMember> members;
-  RecordType recTy(members);
-
-  RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
-			"'small' AS a"
-			", 'laaaaaaaaaaaaaaaaaaaaaaaaaarge' AS b"
-			", 'smallstring123' AS c"
-			", 'largestring1234' AS d"
-			);
-  
   BOOST_CHECK_EQUAL(FieldType::VARCHAR, 
 		    t1.getTarget()->getMember("a").GetType()->GetEnum());
   BOOST_CHECK_EQUAL(FieldType::VARCHAR, 
@@ -198,7 +187,6 @@ BOOST_AUTO_TEST_CASE(testTransferStringLiteral)
 		    t1.getTarget()->getMember("c").GetType()->GetEnum());
   BOOST_CHECK_EQUAL(FieldType::VARCHAR, 
 		    t1.getTarget()->getMember("d").GetType()->GetEnum());
-  RecordBuffer inputBuf;
   RecordBuffer outputBuf;
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);  
   const char * actual =
@@ -219,6 +207,47 @@ BOOST_AUTO_TEST_CASE(testTransferStringLiteral)
   BOOST_CHECK(boost::algorithm::equals("largestring1234",
 				       actual));
   t1.getTarget()->getFree().free(outputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testTransferStringLiteral)
+{
+  DynamicRecordContext ctxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(members);
+
+  RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			"'small' AS a"
+			", 'laaaaaaaaaaaaaaaaaaaaaaaaaarge' AS b"
+			", 'smallstring123' AS c"
+			", 'largestring1234' AS d"
+			);
+
+  RecordBuffer inputBuf;
+  checkTransferVarchar(t1, inputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testTransferVarcharVariable)
+{
+  DynamicRecordContext ctxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", VarcharType::Get(ctxt, false)));
+  members.push_back(RecordMember("b", VarcharType::Get(ctxt, false)));
+  members.push_back(RecordMember("c", VarcharType::Get(ctxt, false)));
+  members.push_back(RecordMember("d", VarcharType::Get(ctxt, false)));
+  RecordType recTy(members);
+
+  
+  RecordTypeTransfer t1(ctxt, "xfer1", &recTy,  "a, b, c, d");
+
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setVarchar("a", "small", inputBuf);
+  recTy.setVarchar("b", "laaaaaaaaaaaaaaaaaaaaaaaaaarge", inputBuf);
+  recTy.setVarchar("c", "smallstring123", inputBuf);
+  recTy.setVarchar("d", "largestring1234", inputBuf);
+
+  checkTransferVarchar(t1, inputBuf);
+  recTy.getFree().free(inputBuf);
 }
 
 void ImplicitCastInt32ToDouble(bool int32Nullable, bool doubleNullable)
@@ -1105,7 +1134,24 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
     t1.getTarget()->getFree().free(outputBuf);
   }
 
-  // TODO: Test arrays of VARCHAR and make sure there aren't memory issues.
+  // Test arrays of VARCHAR and make sure there aren't memory issues.
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			  "ARRAY[b,substr(b, 0, 3)] AS f");
+    const FieldType * ty = t1.getTarget()->getMember("f").GetType();
+    BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, ty->GetEnum());
+    BOOST_CHECK_EQUAL(2, ty->GetSize());
+    const FixedArrayType * arrTy = static_cast<const FixedArrayType *>(ty);
+    BOOST_CHECK_EQUAL(FieldType::VARCHAR, arrTy->getElementType()->GetEnum());    
+    BOOST_CHECK(!arrTy->getElementType()->isNullable());
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+
+    BOOST_CHECK(boost::algorithm::equals("abcdefghijklmnop", t1.getTarget()->getArrayVarcharPtr("f",0,outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("abc", t1.getTarget()->getArrayVarcharPtr("f",1,outputBuf)->c_str()));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+
 
   recTy.GetFree()->free(inputBuf);
 }
@@ -8353,6 +8399,112 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullableLarge)
   internalTestIQLRecordTransfer2IntegersNullableLarge(false, 1025);
 }
 
+BOOST_AUTO_TEST_CASE(testIQLRecordTransferFixedArray)
+{
+  bool isNullable = false;
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("g", FixedArrayType::Get(ctxt, 3, VarcharType::Get(ctxt, isNullable), false)));
+  RecordType recTy(members);
+  std::vector<RecordMember> emptyMembers;
+  RecordType emptyTy(emptyMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&emptyTy);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setArrayVarchar("g", 0, "longggggggggggggggggggggggggg", inputBuf);
+  recTy.setArrayVarchar("g", 1, "alsolongggggggggggggggggggggggggg", inputBuf);
+  recTy.setArrayVarchar("g", 2, "short", inputBuf);
+
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "g");
+    for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+	it != t1.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(false, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(boost::algorithm::equals("longggggggggggggggggggggggggg",
+                                         t1.getTarget()->getArrayVarcharPtr("g", 0, outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("alsolongggggggggggggggggggggggggg",
+                                         t1.getTarget()->getArrayVarcharPtr("g", 1, outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("short",
+                                         t1.getTarget()->getArrayVarcharPtr("g", 2, outputBuf)->c_str()));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "DECLARE tmp = g, tmp AS g");
+    for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+	it != t1.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(false, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(boost::algorithm::equals("longggggggggggggggggggggggggg",
+                                         t1.getTarget()->getArrayVarcharPtr("g", 0, outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("alsolongggggggggggggggggggggggggg",
+                                         t1.getTarget()->getArrayVarcharPtr("g", 1, outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("short",
+                                         t1.getTarget()->getArrayVarcharPtr("g", 2, outputBuf)->c_str()));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "CAST(g AS VARCHAR[]) AS g");
+    for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+	it != t1.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::VARIABLE_ARRAY, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(false, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(boost::algorithm::equals("longggggggggggggggggggggggggg",
+                                         t1.getTarget()->getArrayVarcharPtr("g", 0, outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("alsolongggggggggggggggggggggggggg",
+                                         t1.getTarget()->getArrayVarcharPtr("g", 1, outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("short",
+                                         t1.getTarget()->getArrayVarcharPtr("g", 2, outputBuf)->c_str()));
+    RecordTypeTransfer t2(ctxt, "xfer1", t1.getTarget(), "g");
+    for(RecordType::const_member_iterator it = t2.getTarget()->begin_members();
+	it != t2.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::VARIABLE_ARRAY, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(false, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf2;
+    t2.execute(outputBuf, outputBuf2, &runtimeCtxt, false);
+    BOOST_CHECK(boost::algorithm::equals("longggggggggggggggggggggggggg",
+                                         t2.getTarget()->getArrayVarcharPtr("g", 0, outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("alsolongggggggggggggggggggggggggg",
+                                         t2.getTarget()->getArrayVarcharPtr("g", 1, outputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("short",
+                                         t2.getTarget()->getArrayVarcharPtr("g", 2, outputBuf)->c_str()));
+    t1.getTarget()->getFree().free(outputBuf);
+    t2.getTarget()->getFree().free(outputBuf2);
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "ARRAY[g[0] + g[1] + g[2]] AS g");
+    for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+	it != t1.getTarget()->end_members();
+	++it) {
+      BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, it->GetType()->GetEnum());
+      BOOST_CHECK_EQUAL(false, it->GetType()->isNullable());
+    }
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(boost::algorithm::equals("longgggggggggggggggggggggggggalsolonggggggggggggggggggggggggggshort",
+                                         t1.getTarget()->getArrayVarcharPtr("g", 0, outputBuf)->c_str()));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+
+  recTy.GetFree()->free(inputBuf);
+}
 
 bool iql_rlike_match(std::string regex_source, std::string target) {
   DynamicRecordContext ctxt;

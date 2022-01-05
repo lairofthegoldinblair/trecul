@@ -2562,6 +2562,15 @@ void RecordType::setVarchar(const std::string& field, const char * val, RecordBu
   mMemberOffsets[it->second].SetVariableLengthString(buf, val, sz);
 }
 
+void RecordType::setArrayVarchar(const std::string& field, int32_t idx, const char * val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].clearNull(buf);
+  mMemberOffsets[it->second].clearArrayNull(buf, dynamic_cast<const FixedArrayType *>(mMembers[it->second].GetType()), idx);
+  std::size_t sz = strlen(val);
+  mMemberOffsets[it->second].getArrayVarcharPtr(buf, idx)->assign(val, sz);
+}
+
 void RecordType::setChar(const std::string& field, const char * val, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
@@ -2583,7 +2592,11 @@ int8_t RecordType::getInt8(const std::string& field, RecordBuffer buf) const
 int8_t RecordType::getArrayInt8(const std::string& field, int32_t idx, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
-  return mMemberOffsets[it->second].getArrayInt8(buf, idx);
+  if(FieldType::FIXED_ARRAY == mMembers[it->second].GetType()->GetEnum()) {
+    return mMemberOffsets[it->second].getArrayInt8(buf, idx);
+  } else {
+    return mMemberOffsets[it->second].getVarArrayInt8(buf, idx);
+  }
 }
 
 int16_t RecordType::getInt16(const std::string& field, RecordBuffer buf) const
@@ -2595,7 +2608,11 @@ int16_t RecordType::getInt16(const std::string& field, RecordBuffer buf) const
 int16_t RecordType::getArrayInt16(const std::string& field, int32_t idx, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
-  return mMemberOffsets[it->second].getArrayInt16(buf, idx);
+  if(FieldType::FIXED_ARRAY == mMembers[it->second].GetType()->GetEnum()) {
+    return mMemberOffsets[it->second].getArrayInt16(buf, idx);
+  } else {
+    return mMemberOffsets[it->second].getVarArrayInt16(buf, idx);
+  }
 }
 
 int32_t RecordType::getInt32(const std::string& field, RecordBuffer buf) const
@@ -2636,16 +2653,46 @@ float RecordType::getFloat(const std::string& field, RecordBuffer buf) const
   return mMemberOffsets[it->second].getFloat(buf);
 }
 
+float RecordType::getArrayFloat(const std::string& field, int32_t idx, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  if(FieldType::FIXED_ARRAY == mMembers[it->second].GetType()->GetEnum()) {
+    return mMemberOffsets[it->second].getArrayFloat(buf, idx);
+  } else {
+    return mMemberOffsets[it->second].getVarArrayFloat(buf, idx);
+  }
+}
+
 double RecordType::getDouble(const std::string& field, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
   return mMemberOffsets[it->second].getDouble(buf);
 }
 
+double RecordType::getArrayDouble(const std::string& field, int32_t idx, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  if(FieldType::FIXED_ARRAY == mMembers[it->second].GetType()->GetEnum()) {
+    return mMemberOffsets[it->second].getArrayDouble(buf, idx);
+  } else {
+    return mMemberOffsets[it->second].getVarArrayDouble(buf, idx);
+  }
+}
+
 Varchar * RecordType::getVarcharPtr(const std::string& field, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
   return mMemberOffsets[it->second].getVarcharPtr(buf);
+}
+
+Varchar * RecordType::getArrayVarcharPtr(const std::string& field, int32_t idx, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  if(FieldType::FIXED_ARRAY == mMembers[it->second].GetType()->GetEnum()) {
+    return mMemberOffsets[it->second].getArrayVarcharPtr(buf, idx);
+  } else {
+    return mMemberOffsets[it->second].getVarArrayVarcharPtr(buf, idx);
+  }
 }
 
 boost::asio::ip::address_v4 RecordType::getIPv4(const std::string& field, RecordBuffer buf) const

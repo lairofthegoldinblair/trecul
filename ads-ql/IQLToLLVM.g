@@ -158,7 +158,7 @@ builtInType [IQLCodeGenerationContextRef ctxt] returns [void * llvmType]
 	: ^(c=TK_INTEGER arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=TK_DOUBLE arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=TK_CHAR DECIMAL_INTEGER_LITERAL typeNullability?) { $llvmType = $c->u; }
-	  | ^(c=TK_VARCHAR typeNullability?) { $llvmType = $c->u; }
+	  | ^(c=TK_VARCHAR arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=TK_NVARCHAR typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=TK_DECIMAL arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=TK_BOOLEAN arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }

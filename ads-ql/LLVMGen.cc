@@ -1090,6 +1090,12 @@ IQLFieldTypeRef IQLTypeCheckBuildVarcharType(IQLTypeCheckContextRef ctxtRef, int
   return wrap(ctxt->buildVarcharType(nullable != 0));
 }
 
+IQLFieldTypeRef IQLTypeCheckBuildVarcharArrayType(IQLTypeCheckContextRef ctxtRef, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildVarcharType(), nullable != 0));
+}
+
 IQLFieldTypeRef IQLTypeCheckBuildCharType(IQLTypeCheckContextRef ctxtRef,
 					  const char * sz, int nullable)
 {

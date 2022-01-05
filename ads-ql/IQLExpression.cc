@@ -1321,6 +1321,11 @@ IQLFieldTypeRef IQLBuildVarcharType(IQLTreeFactoryRef ctxtRef, int nullable)
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
   return wrap(VarcharType::Get(ctxt, nullable!=0));  
 }
+IQLFieldTypeRef IQLBuildVarcharArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return IQLBuildArrayType(ctxtRef, VarcharType::Get(ctxt, false), sz, nullable);
+}
 IQLFieldTypeRef IQLBuildCharType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));

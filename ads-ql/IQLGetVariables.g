@@ -78,7 +78,7 @@ builtInType[IQLGetVariablesContextRef ctxt]
 	: ^(TK_INTEGER arrayTypeSpec? typeNullability?)
 	  | ^(TK_DOUBLE arrayTypeSpec? typeNullability?)
 	  | ^(TK_CHAR DECIMAL_INTEGER_LITERAL typeNullability?)
-	  | ^(TK_VARCHAR typeNullability?)
+	  | ^(TK_VARCHAR arrayTypeSpec? typeNullability?)
 	  | ^(TK_NVARCHAR typeNullability?)
 	  | ^(TK_DECIMAL arrayTypeSpec? typeNullability?)
 	  | ^(TK_BOOLEAN arrayTypeSpec? typeNullability?)

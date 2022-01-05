@@ -200,7 +200,7 @@ array=NULL;
 	: ^(c=TK_INTEGER (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildInt32ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildInt32Type($ctxt, nullable); $c->u = $ty; }
 	  | ^(c=TK_DOUBLE (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildDoubleArrayType($ctxt, array, nullable) : IQLTypeCheckBuildDoubleType($ctxt, nullable); $c->u = $ty; }
 	  | ^(c=TK_CHAR DECIMAL_INTEGER_LITERAL (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildCharType($ctxt, (const char *) $DECIMAL_INTEGER_LITERAL.text->chars, nullable); $c->u = $ty; }
-	  | ^(c=TK_VARCHAR (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildVarcharType($ctxt, nullable); $c->u = $ty; }
+	  | ^(c=TK_VARCHAR (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildVarcharArrayType($ctxt, array, nullable) : IQLTypeCheckBuildVarcharType($ctxt, nullable); $c->u = $ty; }
 	  | ^(c=TK_NVARCHAR (nullable=typeNullability)?) { $ty = IQLTypeCheckBuildNVarcharType($ctxt, nullable); $c->u = $ty; }
 	  | ^(c=TK_DECIMAL (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildDecimalArrayType($ctxt, array, nullable) : IQLTypeCheckBuildDecimalType($ctxt, nullable); $c->u = $ty; } 
 	  | ^(c=TK_BOOLEAN (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildBooleanArrayType($ctxt, array, nullable) : IQLTypeCheckBuildBooleanType($ctxt, nullable); $c->u = $ty; } 

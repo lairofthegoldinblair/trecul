@@ -800,7 +800,7 @@ const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const IQLToLLVMV
                          dataPtr,
                          idxVal,
                          "arrayLValue");
-  const IQLToLLVMValue * iqlDataPtr = IQLToLLVMRValue::get(this, dataPtr, IQLToLLVMValue::eLocal);
+  const IQLToLLVMValue * iqlDataPtr = IQLToLLVMRValue::get(this, dataPtr, arr->getValueType());
   if (eltType->isNullable()) {
     // This means an array of nullable elements.
     llvm::Value * nullPtr = getArrayNull(arr, arrType);
@@ -871,25 +871,26 @@ CodeGenerationContext::buildArrayConcat(const IQLToLLVMValue * lhs,
     const SequentialType * rhsArrType = dynamic_cast<const SequentialType *>(rhsType);
     const IQLToLLVMValue * rhsSize = nullptr != rhsArrType ? IQLToLLVMRValue::get(this, getArraySize(rhs, rhsArrType), IQLToLLVMValue::eLocal) : buildTrue();
     llvm::Value * ret = buildEntryBlockAlloca(retType->LLVMGetType(this), "arrayConcatRet");
+    const IQLToLLVMValue * retVal = IQLToLLVMRValue::get(this, ret, IQLToLLVMValue::eLocal);
     if (retType->GetEnum() == FieldType::VARIABLE_ARRAY) {
       const IQLToLLVMValue * retSize = buildAdd(lhsSize, int32Type, rhsSize, int32Type, int32Type);
       buildVariableArrayAllocate(ret, retArrType, retSize->getValue(this), true);
     }
     if (nullptr != lhsArrType) {
       // TODO: Generalize the memcpy code to handle this case...
-      buildArrayElementwiseCopy(lhs, lhsArrType, buildFalse(), lhsSize, buildFalse(), ret, retArrType);
+      buildArrayElementwiseCopy(lhs, lhsArrType, buildFalse(), lhsSize, buildFalse(), retVal, retArrType);
     } else {
       const FieldType * retEltTy = retArrType->getElementType();
       const IQLToLLVMValue * converted = buildCast(lhs, lhsType, retEltTy);
-      const IQLToLLVMLValue * arrayLValue = buildArrayLValue(IQLToLLVMRValue::get(this, ret, IQLToLLVMValue::eLocal), retType, buildFalse(), int32Type, retEltTy);
+      const IQLToLLVMLValue * arrayLValue = buildArrayLValue(retVal, retType, buildFalse(), int32Type, retEltTy);
       buildSetNullableValue(arrayLValue, converted, retEltTy, retEltTy); 
     }
     if (nullptr != rhsArrType) {
-      buildArrayElementwiseCopy(rhs, rhsArrType, buildFalse(), rhsSize, lhsSize, ret, retArrType); 
+      buildArrayElementwiseCopy(rhs, rhsArrType, buildFalse(), rhsSize, lhsSize, retVal, retArrType); 
     } else {
       const FieldType * retEltTy = retArrType->getElementType();
       const IQLToLLVMValue * converted = buildCast(rhs, rhsType, retEltTy);
-      const IQLToLLVMLValue * arrayLValue = buildArrayLValue(IQLToLLVMRValue::get(this, ret, IQLToLLVMValue::eLocal), retType, lhsSize, int32Type, retEltTy);
+      const IQLToLLVMLValue * arrayLValue = buildArrayLValue(retVal, retType, lhsSize, int32Type, retEltTy);
       buildSetNullableValue(arrayLValue, converted, retEltTy, retEltTy); 
     }
     return IQLToLLVMRValue::get(this, ret, IQLToLLVMValue::eLocal);
@@ -1831,7 +1832,7 @@ void CodeGenerationContext::buildArrayElementwiseCopy(const IQLToLLVMValue * e,
                                                       const IQLToLLVMValue * beginIdx,
                                                       const IQLToLLVMValue  * endIdx,
                                                       const IQLToLLVMValue * retBeginIdx, 
-                                                      llvm::Value * ret, 
+                                                      const IQLToLLVMValue * ret, 
                                                       const SequentialType * retType)
 {
   llvm::IRBuilder<> * b = LLVMBuilder;
@@ -1868,7 +1869,7 @@ void CodeGenerationContext::buildArrayElementwiseCopy(const IQLToLLVMValue * e,
   const IQLToLLVMValue * idx = buildRef(counter, int32Type);
   const IQLToLLVMValue * converted = buildCast(buildArrayRef(e, argType, idx, int32Type, argEltTy), argEltTy, retEltTy);
   const IQLToLLVMValue * retIdx = buildRef(retCounter, int32Type);
-  const IQLToLLVMLValue * arrayLValue = buildArrayLValue(IQLToLLVMRValue::get(this, ret, IQLToLLVMValue::eLocal), retType, retIdx, int32Type, retEltTy);
+  const IQLToLLVMLValue * arrayLValue = buildArrayLValue(ret, retType, retIdx, int32Type, retEltTy);
   buildSetNullableValue(arrayLValue, converted, retEltTy, retEltTy);
 
   // SET idx = idx + 1
@@ -1997,6 +1998,56 @@ void CodeGenerationContext::buildVariableArrayAllocate(llvm::Value * e, const Se
   b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 5), "");
 }
 
+void CodeGenerationContext::buildEraseAllocationTracking(const IQLToLLVMValue * iqlVal, const FieldType * ft)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  // If VARCHAR or VARARRAY must erase tracking 
+  if (FieldType::VARCHAR == ft->GetEnum() || FieldType::VARIABLE_ARRAY == ft->GetEnum()) {
+    llvm::Value * llvmVal = iqlVal->getValue(this);
+    llvm::Value * callArgs[2];
+    llvm::Function * fn = LLVMModule->getFunction("InternalVarcharErase");
+    callArgs[0] = llvmVal;
+    callArgs[1] = b->CreateLoad(LLVMDecContextPtrType, getContextArgumentRef());
+    b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");
+  }
+  // If container type must recurse and erase members
+  if (FieldType::FIXED_ARRAY == ft->GetEnum() || FieldType::VARIABLE_ARRAY == ft->GetEnum()) {
+    const SequentialType * arrType = dynamic_cast<const SequentialType *>(ft);
+    const FieldType * eltType = arrType->getElementType();
+    if (FieldType::VARCHAR == eltType->GetEnum() || FieldType::VARIABLE_ARRAY == eltType->GetEnum() ||
+        FieldType::FIXED_ARRAY == eltType->GetEnum()) {
+      // Loop over the array and call erase
+      // Constants one is used frequently
+      const IQLToLLVMValue * one  = buildTrue();
+      // INTEGER type used frequently in this method
+      FieldType * int32Type = Int32Type::Get(ft->getContext());
+
+      // DECLARE idx = 0
+      // Allocate and initialize counter
+      llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
+      const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
+      IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(counter, int32Type), nullptr);
+      buildSetNullableValue(counterLValue, buildFalse(), int32Type, int32Type);
+
+      const IQLToLLVMValue * endIdx = IQLToLLVMRValue::get(this, getArraySize(iqlVal, ft), IQLToLLVMValue::eLocal);
+      
+      whileBegin();
+      
+      // while (idx < endIdx)
+      const IQLToLLVMValue * pred = buildCompare(buildRef(counter, int32Type), int32Type, endIdx, int32Type, int32Type, IQLToLLVMOpLT);
+      whileStatementBlock(pred, int32Type);
+
+      const IQLToLLVMValue * idx = buildRef(counter, int32Type);
+      const IQLToLLVMValue * elt = buildArrayRef(iqlVal, ft, idx, int32Type, eltType);
+      buildEraseAllocationTracking(elt, eltType);
+
+      // SET idx = idx + 1
+      buildSetNullableValue(counterLValue, buildAdd(buildRef(counter, int32Type), int32Type, one, int32Type, int32Type), int32Type, int32Type);  
+      whileFinish();      
+    }
+  }
+}
+
 IQLToLLVMValue::ValueType 
 CodeGenerationContext::buildCastFixedArray(const IQLToLLVMValue * e, 
                                            const FieldType * argType, 
@@ -2053,7 +2104,7 @@ CodeGenerationContext::buildCastFixedArray(const IQLToLLVMValue * e,
   } else if (toCopy>0) {
     buildArrayElementwiseCopy(e, dynamic_cast<const SequentialType *>(argType),
                               buildFalse(), IQLToLLVMRValue::get(this, b->getInt32(toCopy), IQLToLLVMValue::eLocal),
-                              buildFalse(), ret, dynamic_cast<const SequentialType *>(retType));
+                              buildFalse(), IQLToLLVMRValue::get(this, ret, IQLToLLVMValue::eLocal), dynamic_cast<const SequentialType *>(retType));
   }
 
   // Make sure final null byte copied from argument to result is in good shape
@@ -2108,43 +2159,8 @@ CodeGenerationContext::buildCastVariableArray(const IQLToLLVMValue * e,
       // Copy values [0,getArraySize()) from source to target
       buildArrayElementwiseCopy(e, dynamic_cast<const SequentialType *>(argType),
                                 buildFalse(), IQLToLLVMRValue::get(this, getArraySize(e, argType), IQLToLLVMValue::eLocal),
-                                buildFalse(), ret, dynamic_cast<const SequentialType *>(retType));
+                                buildFalse(), IQLToLLVMRValue::get(this, ret, IQLToLLVMValue::eLocal), dynamic_cast<const SequentialType *>(retType));
       return IQLToLLVMValue::eLocal;      
-      // const SequentialType * argArrTy = reinterpret_cast<const SequentialType *>(argType);
-      // const SequentialType * retArrTy = reinterpret_cast<const SequentialType *>(retType);
-      // // Types of elements are different so elementwise iteration and conversion is necessary
-      // const FieldType * argEltTy = argArrTy->getElementType();
-      // const FieldType * retEltTy = retArrTy->getElementType();
-      
-      // // Loop over the array and call cast between element types
-      // // Constants zero, one and toCopy are used frequently
-      // const IQLToLLVMValue * zero = buildFalse();
-      // const IQLToLLVMValue * one  = buildTrue();
-      // const IQLToLLVMValue *  sz = IQLToLLVMRValue::get(this, getArraySize(e, argType), IQLToLLVMValue::eLocal);
-      // // INTEGER type used frequently in this method
-      // FieldType * int32Type = Int32Type::Get(argType->getContext());
-      
-      // // DECLARE idx = 0
-      // // Allocate and initialize counter
-      // llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
-      // const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-      // IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(counter, int32Type), nullptr);
-      // buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
-        
-      // whileBegin();
-
-      // // while (idx < sz)
-      // const IQLToLLVMValue * pred = buildCompare(buildRef(counter, int32Type), int32Type, sz, int32Type, int32Type, IQLToLLVMOpLT);
-      // whileStatementBlock(pred, int32Type);
-      
-      // const IQLToLLVMValue * idx = buildRef(counter, int32Type);
-      // const IQLToLLVMValue * converted = buildCast(buildArrayRef(e, argType, idx, int32Type, argEltTy), argEltTy, retEltTy);
-      // const IQLToLLVMLValue * arrayLValue = buildArrayLValue(IQLToLLVMRValue::get(this, ret, IQLToLLVMValue::eLocal), retType, idx, int32Type, retEltTy);
-      // buildSetNullableValue(arrayLValue, converted, retEltTy, retEltTy);
-      
-      // // SET idx = idx + 1
-      // buildSetNullableValue(counterLValue, buildAdd(buildRef(counter, int32Type), int32Type, one, int32Type, int32Type), int32Type, int32Type);  
-      // whileFinish();
     }
   default:
     throw std::runtime_error ((boost::format("Cast to VARIABLE_ARRAY from %1% not "
@@ -3556,8 +3572,7 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
   if (ft->GetEnum() == FieldType::BIGDECIMAL ||
       ft->GetEnum() == FieldType::CHAR ||
       ft->GetEnum() == FieldType::IPV6 ||
-      ft->GetEnum() == FieldType::CIDRV6 ||
-      ft->GetEnum() == FieldType::FIXED_ARRAY) {
+      ft->GetEnum() == FieldType::CIDRV6) {
     // TODO: Should probably use memcpy rather than load/store
     llvmVal = b->CreateLoad(ft->LLVMGetType(this), llvmVal);
   } else if (ft->GetEnum() == FieldType::VARCHAR) {
@@ -3597,33 +3612,41 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
       llvmVal = callArgs[1];
     } else if (iqlVal->getValueType() == IQLToLLVMValue::eLocal &&
                iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
-      llvm::Value * callArgs[2];
-      llvm::Function * fn = LLVMModule->getFunction("InternalVarcharErase");
-      callArgs[0] = llvmVal;
-      callArgs[1] = b->CreateLoad(LLVMDecContextPtrType, getContextArgumentRef());
-      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");
+      buildEraseAllocationTracking(iqlVal, ft);
+      // llvm::Value * callArgs[2];
+      // llvm::Function * fn = LLVMModule->getFunction("InternalVarcharErase");
+      // callArgs[0] = llvmVal;
+      // callArgs[1] = b->CreateLoad(LLVMDecContextPtrType, getContextArgumentRef());
+      // b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");
     }
     // Load before store since we have a pointer to the Varchar.
     llvmVal = b->CreateLoad(ft->LLVMGetType(this), llvmVal);    
-  } else if (ft->GetEnum() == FieldType::VARIABLE_ARRAY) {
+  } else if (ft->GetEnum() == FieldType::VARIABLE_ARRAY ||
+             ft->GetEnum() == FieldType::FIXED_ARRAY) {
     if (iqlVal->getValueType() != IQLToLLVMValue::eLocal ||
         (iqllvalue->getValueType() == IQLToLLVMValue::eGlobal && nullptr != dynamic_cast<const IQLToLLVMLValue *>(iqlVal))) {
       // Allocate storage for the VARIABLE_ARRAY, tracking allocation unless the lvalue is global
-      const VariableArrayType * arrayType = dynamic_cast<const VariableArrayType *>(ft);
+      const SequentialType * arrayType = dynamic_cast<const SequentialType *>(ft);
       llvm::Value * arrayLen = getArraySize(iqlVal, ft);
-      llvmVal = buildVariableArrayAllocate(arrayType, arrayLen, iqllvalue->getValueType() != IQLToLLVMValue::eGlobal);
-
+      if (FieldType::VARIABLE_ARRAY == ft->GetEnum()) {
+        llvmVal = buildVariableArrayAllocate(arrayType, arrayLen, iqllvalue->getValueType() != IQLToLLVMValue::eGlobal);
+      } else {
+        llvmVal = buildEntryBlockAlloca(ft->LLVMGetType(this), "");
+      }
+      
       // Now we must copy over all of the elements in a loop
+      const IQLToLLVMValue * tmpArrVal = IQLToLLVMRValue::get(this, llvmVal, iqllvalue->getValueType());
       buildArrayElementwiseCopy(iqlVal, arrayType,
                                 buildFalse(), IQLToLLVMRValue::get(this, arrayLen, IQLToLLVMValue::eLocal),
-                                buildFalse(), llvmVal, arrayType);
+                                buildFalse(), tmpArrVal, arrayType);
     } else if (iqlVal->getValueType() == IQLToLLVMValue::eLocal &&
                iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
-      llvm::Value * callArgs[2];
-      llvm::Function * fn = LLVMModule->getFunction("InternalVarcharErase");
-      callArgs[0] = llvmVal;
-      callArgs[1] = b->CreateLoad(LLVMDecContextPtrType, getContextArgumentRef());
-      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");
+      buildEraseAllocationTracking(iqlVal, ft);
+      // llvm::Value * callArgs[2];
+      // llvm::Function * fn = LLVMModule->getFunction("InternalVarcharErase");
+      // callArgs[0] = llvmVal;
+      // callArgs[1] = b->CreateLoad(LLVMDecContextPtrType, getContextArgumentRef());
+      // b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");
     }
     // Load before store since we have a pointer to the VarArray
     llvmVal = b->CreateLoad(ft->LLVMGetType(this), llvmVal);    

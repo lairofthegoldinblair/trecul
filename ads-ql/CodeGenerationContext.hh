@@ -439,7 +439,7 @@ private:
                                  const IQLToLLVMValue * beginIdx,
                                  const IQLToLLVMValue * endIdx,
                                  const IQLToLLVMValue * retBeginIdx, 
-                                 llvm::Value * ret, 
+                                 const IQLToLLVMValue * ret, 
                                  const SequentialType * retType);
   // Copy an from an array to another when element types match and are copyable.
   // Assumes that storage for any VARIABLE_ARRAYs has been allocated
@@ -1085,6 +1085,8 @@ public:
    * Assignment
    */
 
+  // Helper for buildSetValue2 that removes a value from local heap tracking
+  void buildEraseAllocationTracking(const IQLToLLVMValue * iqlVal, const FieldType * ft);
   // This method sets a value that is assumed to be non-null and type promoted.
   void buildSetValue2(const IQLToLLVMValue * iqlVal,
 		      const IQLToLLVMLValue * iqllvalue,
