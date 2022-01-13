@@ -1012,7 +1012,7 @@ GroupBy<_OpType>::GroupBy(DynamicRecordContext & ctxt,
   std::vector<const RecordType *> inputOnly;
   inputOnly.push_back(inputType);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   inputOnly.push_back(&emptyTy);
   std::string hashargs;
   for(std::size_t i=0; i<groupFields.size(); i++) {

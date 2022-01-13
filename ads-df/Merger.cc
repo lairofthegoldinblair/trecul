@@ -848,7 +848,7 @@ SortMerge::SortMerge(DynamicRecordContext& ctxt,
 {
   // Start by supporting a single integer key.
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> tableOnly;
   tableOnly.push_back(mInput);
   tableOnly.push_back(&emptyTy);

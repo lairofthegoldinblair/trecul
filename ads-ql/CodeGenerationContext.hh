@@ -258,6 +258,7 @@ public:
 class IQLToLLVMStackRecord
 {
 public:
+  llvm::BasicBlock * StartBB;
   llvm::BasicBlock * ThenBB;
   llvm::BasicBlock * ElseBB;
   llvm::BasicBlock * MergeBB;
@@ -511,6 +512,8 @@ public:
   std::vector<IQLToLLVMValue *> ValueFactory;
   // Alloca cache
   local_cache * AllocaCache;
+  // String pool
+  std::map<std::string, const IQLToLLVMValue *> StringPool;
 
   CodeGenerationContext();
   ~CodeGenerationContext();
@@ -537,6 +540,26 @@ public:
 			   const char * prefix,
 			   const char * memberName,
 			   const RecordType * recordType);
+
+  /**
+   * Free all memory allocated by a record
+   */
+  void buildRecordTypeFree(const RecordType * recordType);
+
+  /** 
+   * Free all memory associated with a value
+   */
+  void buildFree(const IQLToLLVMValue * val, const FieldType * ft);
+
+  /**
+   * Print a record
+   */
+  void buildRecordTypePrint(const RecordType * recordType, char fieldDelimiter, char recordDelimiter, char escapeChar);
+
+  /** 
+   * Print a value
+   */
+  void buildPrint(const IQLToLLVMValue * val, const FieldType * ft, char fieldDelimiter, char escapeChar);
 
   /**
    * Lookup an l-value in the symbol table.
@@ -646,6 +669,7 @@ public:
 				    FieldType * arrayTy);
   const IQLToLLVMValue * buildGlobalConstArray(std::vector<IQLToLLVMTypedValue>& vals,
 					       FieldType * arrayTy);
+  const IQLToLLVMValue * buildGlobalConstString(const std::string & str);
 
   /**
    * Reference an element of an array

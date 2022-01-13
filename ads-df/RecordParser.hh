@@ -901,8 +901,22 @@ private:
 
     // TODO: When we require c++17 then we can use string_view and avoid copy (or we should not use
     // boost and just call the underlying c API to parse
-    mTargetOffset.setIPv6(boost::asio::ip::make_address_v6(std::string((const char *) source.getMark(), (const char *) s)), target);
-    return true;    
+    std::string tmp((const char *) source.getMark(), (const char *) s);
+    // Try to parse as v4 first and use that if it succeeds.
+    boost::system::error_code ec;
+    auto v4addr = boost::asio::ip::make_address_v4(tmp, ec);
+    if (!ec) {
+      mTargetOffset.setIPv6(boost::asio::ip::make_address_v6(boost::asio::ip::v4_mapped, v4addr), target);
+      return true;    
+    } else {
+      auto v6addr = boost::asio::ip::make_address_v6(tmp, ec);
+      if (!ec) {
+        mTargetOffset.setIPv6(v6addr, target);        
+        return true;
+      } else {
+        return false;
+      }
+    }
   }
   
   bool ImportCIDRv6(DataBlock & source, RecordBuffer target) const
@@ -925,10 +939,31 @@ private:
     std::array<char, 1> toks = { '/' };
     const char * sep = std::search((const char *) source.getMark(), (const char *) s,
                                    &toks[0], &toks[1]);
-    auto prefix = boost::asio::ip::make_address_v6(std::string((const char *) source.getMark(), sep));
-    uint8_t prefix_length = sep == (const char *) s || sep+1 == (const char *) s ? 128 : atoi(sep+1);
-    mTargetOffset.setCIDRv6({ prefix,  prefix_length}, target);
-    return true;    
+    // Try to parse as v4 first and use that if it succeeds.
+    std::string tmp((const char *) source.getMark(), sep);
+    boost::system::error_code ec;
+    auto v4addr = boost::asio::ip::make_address_v4(tmp, ec);
+    if (!ec) {
+      int32_t prefix_length = sep == (const char *) s || sep+1 == (const char *) s ? 32 : atoi(sep+1);
+      if (prefix_length < 0 || prefix_length > 32) {
+        return false;
+      }
+      mTargetOffset.setCIDRv6({ boost::asio::ip::make_address_v6(boost::asio::ip::v4_mapped, v4addr), (uint8_t) (prefix_length + 96) },
+                              target);
+      return true;    
+    } else {
+      auto v6addr = boost::asio::ip::make_address_v6(tmp, ec);
+      if (!ec) {
+        int32_t prefix_length = sep == (const char *) s || sep+1 == (const char *) s ? 128 : atoi(sep+1);
+        if (prefix_length < 0 || prefix_length > 128) {
+          return false;
+        }
+        mTargetOffset.setCIDRv6({ v6addr, (uint8_t) prefix_length }, target);        
+        return true;
+      } else {
+        return false;
+      }
+    }
   }
   
   bool ImportDelimitedDatetime(DataBlock & source, RecordBuffer target) const

@@ -98,9 +98,14 @@ protected:
   void InitializeLLVM();
   void ConstructFunction(const std::string& funName, const std::vector<std::string>& recordArgs);
   void ConstructFunction(const std::string& funName, const std::vector<std::string>& recordArgs, llvm::Type * returnType);
+  void ConstructFunction(const std::string& funName, 
+                         const std::vector<std::string> & argumentNames,
+                         const std::vector<llvm::Type *> & argumentTypes);
   void CreateMemcpyIntrinsic();  
   void CreateMemsetIntrinsic();  
   void CreateMemcmpIntrinsic();  
+  void createRecordTypeOperation(const std::string& funName,
+                                 const RecordType * input);
   void createTransferFunction(const std::string& funName,
 			      const RecordType * input,
 			      const RecordType * output);
@@ -219,6 +224,110 @@ public:
    * Create serializable update function.
    */
   IQLUpdateModule * create() const;
+};
+
+class IQLRecordTypeOperationModule
+{
+private:
+  std::string mFunName;
+  std::string mObjectFile;
+  typedef void (*LLVMFuncType)(char*, char*, int32_t);
+  LLVMFuncType mFunction;
+  class IQLRecordBufferMethodHandle * mImpl;
+
+  // Create the LLVM module from IR
+  void initImpl(std::unique_ptr<llvm::Module> module);
+  // Load the object file into the JIT
+  void initImpl();
+
+  // Serialization
+  friend class boost::serialization::access;
+  template <class Archive>
+  void save(Archive & ar, const unsigned int version) const
+  {
+    ar & BOOST_SERIALIZATION_NVP(mFunName);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
+  }
+  template <class Archive>
+  void load(Archive & ar, const unsigned int version) 
+  {
+    ar & BOOST_SERIALIZATION_NVP(mFunName);
+    ar & BOOST_SERIALIZATION_NVP(mObjectFile);
+    initImpl();
+  }
+  BOOST_SERIALIZATION_SPLIT_MEMBER()
+public:
+  IQLRecordTypeOperationModule()
+    :
+    mFunction(nullptr),
+    mImpl(nullptr)
+  {
+  }
+  IQLRecordTypeOperationModule(const std::string& funName, 
+                               std::unique_ptr<llvm::Module> module);
+  IQLRecordTypeOperationModule(const IQLRecordTypeOperationModule & rhs)
+    :
+    mFunName(rhs.mFunName),
+    mObjectFile(rhs.mObjectFile)
+  {
+    initImpl();
+  }
+  ~IQLRecordTypeOperationModule();
+
+  IQLRecordTypeOperationModule & operator=(const IQLRecordTypeOperationModule & rhs);
+
+  /**
+   * Execute operation on a record
+   */
+  void execute(RecordBuffer & source) const;
+  /**
+   * Execute a print operation
+   */
+  void execute(RecordBuffer & source, std::ostream & ostr, bool outputRecordDelimiter) const;
+};
+
+/**
+ * Execute a list of IQL statements in place on a collection
+ * of records.  This supports imperative programming and thus
+ * is really useful for things like updating aggregates in
+ * group by calculations.
+ */
+class RecordTypeOperations : public LLVMBase
+{
+private:
+  std::string mFunName;
+  std::unique_ptr<IQLUpdateModule> mModule;
+
+  void init(const RecordType * recordType, std::function<void()> op);
+
+public:
+
+  /**
+   * Compile a sequence of statements to execute against a collection of
+   * record buffers.
+   * Right now this will throw if there are any name collisions among
+   * the inputs.  TODO: Support aliasing or multi-part names to disambiguate.
+   */
+  RecordTypeOperations(const RecordType * recordType, const std::string& funName, std::function<void()> op);
+  
+  ~RecordTypeOperations();
+
+  /**
+   * Create serializable update function.
+   */
+  IQLRecordTypeOperationModule * create() const;
+};
+
+class RecordTypeFreeOperation : public RecordTypeOperations
+{
+public:
+  RecordTypeFreeOperation(const RecordType * recordType);
+};
+
+class RecordTypePrintOperation : public RecordTypeOperations
+{
+public:
+  RecordTypePrintOperation(const RecordType * recordType);
 };
 
 class IQLTransferModule
@@ -763,6 +872,74 @@ public:
    * create a serializable IQLAggregateModule that implements the program.
    */
   IQLAggregateModule * create() const;
+};
+
+class RecordTypeFree
+{
+private:
+  IQLRecordTypeOperationModule * mModule;
+  // Serialization
+  friend class boost::serialization::access;
+  template <class Archive>
+  void serialize(Archive & ar, const unsigned int version)
+  {
+    ar & BOOST_SERIALIZATION_NVP(mModule);
+  }
+public:
+  RecordTypeFree()
+    :
+    mModule(nullptr)
+  {
+  }
+  RecordTypeFree(const RecordTypeFree & rhs);
+  RecordTypeFree(const RecordType * recordType);
+  ~RecordTypeFree()
+  {
+    delete mModule;
+  }
+  RecordTypeFree & operator=(const RecordTypeFree & );
+  void free(RecordBuffer & buf) const
+  {
+    if (buf.Ptr != nullptr) {
+      mModule->execute(buf);
+      buf.Ptr = nullptr;
+    }
+  }
+};
+
+class RecordTypePrint
+{
+private:
+  IQLRecordTypeOperationModule * mModule;
+
+  // Serialization
+  friend class boost::serialization::access;
+  template <class Archive>
+  void serialize(Archive & ar, const unsigned int version)
+  {
+    ar & BOOST_SERIALIZATION_NVP(mModule);
+  }
+public:
+  RecordTypePrint()
+    :
+    mModule(nullptr)
+  {
+  }
+  RecordTypePrint(const RecordTypePrint & );
+  RecordTypePrint(const RecordType * recordType);
+  RecordTypePrint(const RecordType * recordType,
+		  char fieldDelimter, char recordDelimiter, 
+                  char arrayDelimiter, char escapeChar);
+  ~RecordTypePrint()
+  {
+    delete mModule;
+  }
+  RecordTypePrint & operator=(const RecordTypePrint & rhs);
+  void imbue(std::ostream& ostr) const;
+  void print(RecordBuffer buf, std::ostream& ostr, bool emitNewLine=true) const
+  {
+    mModule->execute(buf, ostr, emitNewLine);
+  }
 };
 
 #endif

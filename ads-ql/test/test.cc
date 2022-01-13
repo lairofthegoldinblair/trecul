@@ -69,7 +69,7 @@ boost::shared_ptr<RecordType> createLogInputType(DynamicRecordContext & ctxt)
   members.push_back(RecordMember("referrer", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("cookies", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("custom_field", VarcharType::Get(ctxt)));
-  return boost::shared_ptr<RecordType> (new RecordType(members));
+  return boost::shared_ptr<RecordType> (new RecordType(ctxt, members));
 }
 
 BOOST_AUTO_TEST_CASE(testVarcharDataType)
@@ -213,7 +213,7 @@ BOOST_AUTO_TEST_CASE(testTransferStringLiteral)
 {
   DynamicRecordContext ctxt;
   std::vector<RecordMember> members;
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
 			"'small' AS a"
@@ -234,7 +234,7 @@ BOOST_AUTO_TEST_CASE(testTransferVarcharVariable)
   members.push_back(RecordMember("b", VarcharType::Get(ctxt, false)));
   members.push_back(RecordMember("c", VarcharType::Get(ctxt, false)));
   members.push_back(RecordMember("d", VarcharType::Get(ctxt, false)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   
   RecordTypeTransfer t1(ctxt, "xfer1", &recTy,  "a, b, c, d");
@@ -257,7 +257,7 @@ void ImplicitCastInt32ToDouble(bool int32Nullable, bool doubleNullable)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", DoubleType::Get(ctxt, doubleNullable)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt, int32Nullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   bool resultNullable = int32Nullable || doubleNullable;
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
@@ -345,7 +345,7 @@ void ImplicitCastDecimalToDouble(bool decimalNullable, bool doubleNullable)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", DoubleType::Get(ctxt, doubleNullable)));
   members.push_back(RecordMember("b", DecimalType::Get(ctxt, decimalNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   bool resultNullable = decimalNullable || doubleNullable;
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
@@ -441,9 +441,9 @@ BOOST_AUTO_TEST_CASE(testNativeAST)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&emptyTy);
@@ -636,7 +636,7 @@ BOOST_AUTO_TEST_CASE(testEquiJoinDetector)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("y", DoubleType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
@@ -646,7 +646,7 @@ BOOST_AUTO_TEST_CASE(testEquiJoinDetector)
   rhsMembers.push_back(RecordMember("g", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("h", Int64Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("z", DoubleType::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -799,7 +799,7 @@ BOOST_AUTO_TEST_CASE(testSplitPredicateRule)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("y", DoubleType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
@@ -809,7 +809,7 @@ BOOST_AUTO_TEST_CASE(testSplitPredicateRule)
   rhsMembers.push_back(RecordMember("g", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("h", Int64Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("z", DoubleType::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -1047,7 +1047,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "123456", inputBuf);
@@ -1135,9 +1135,9 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
   }
 
   // Test arrays of VARCHAR and make sure there aren't memory issues.
-  {
+  for(int i=0; i<2; ++i) {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
-			  "ARRAY[b,substr(b, 0, 3)] AS f");
+			  i==0 ? "ARRAY[b,substr(b, 0, 3)] AS f" : "ARRAY['abcdefghijklmnop', 'abc'] AS f");
     const FieldType * ty = t1.getTarget()->getMember("f").GetType();
     BOOST_CHECK_EQUAL(FieldType::FIXED_ARRAY, ty->GetEnum());
     BOOST_CHECK_EQUAL(2, ty->GetSize());
@@ -1152,7 +1152,6 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructor)
     t1.getTarget()->getFree().free(outputBuf);
   }
 
-
   recTy.GetFree()->free(inputBuf);
 }
 
@@ -1166,7 +1165,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayConstructorNullableElement)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt, true)));
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "123456", inputBuf);
@@ -1204,9 +1203,9 @@ BOOST_AUTO_TEST_CASE(testIQLArrayDotProduct)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 4, DoubleType::Get(ctxt), false)));
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -1259,9 +1258,9 @@ BOOST_AUTO_TEST_CASE(testIQLMultipleWhile)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("y", Int32Type::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -1308,9 +1307,9 @@ BOOST_AUTO_TEST_CASE(testIQLRecordHash)
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("f", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("g", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&emptyTy);
@@ -1427,7 +1426,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   members.push_back(RecordMember("cv4", CIDRv4Type::Get(ctxt)));
   members.push_back(RecordMember("iv6", IPv6Type::Get(ctxt)));
   members.push_back(RecordMember("cv6", CIDRv6Type::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
@@ -1447,7 +1446,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
   rhsMembers.push_back(RecordMember("jv6", IPv6Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("dv6", CIDRv6Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("ev6", CIDRv6Type::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -1649,13 +1648,13 @@ BOOST_AUTO_TEST_CASE(testIQLInt32Compare)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
   rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("e", Int32Type::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -1724,13 +1723,13 @@ BOOST_AUTO_TEST_CASE(testIQLDatetimeCompare)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", DatetimeType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
   rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("e", DatetimeType::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -1799,13 +1798,13 @@ BOOST_AUTO_TEST_CASE(testIQLDecimalCompare)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", DecimalType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
   rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("e", DecimalType::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -1890,13 +1889,13 @@ BOOST_AUTO_TEST_CASE(testIQLCharCompare)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", CharType::Get(ctxt, 6)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
   rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("e", CharType::Get(ctxt, 6)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -1954,9 +1953,9 @@ BOOST_AUTO_TEST_CASE(testIQLCharKeyPrefix)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", CharType::Get(ctxt, 6)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2071,9 +2070,9 @@ BOOST_AUTO_TEST_CASE(testIQLLiteralCompares)
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("y", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("z", VarcharType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2126,13 +2125,13 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32SingleElementCompare)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 1, Int32Type::Get(ctxt), false)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
   rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("e", FixedArrayType::Get(ctxt, 1, Int32Type::Get(ctxt), false)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2171,9 +2170,9 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayCompareProgram)
   members.push_back(RecordMember("lastNotDone", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("lastRet", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("lastIndex", Int32Type::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2232,13 +2231,13 @@ void testIQLArrayInt32Compare(bool isVariable)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
   rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("e", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2318,13 +2317,13 @@ BOOST_AUTO_TEST_CASE(testIQLIPv4Compare)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", IPv4Type::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
   rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("e", IPv4Type::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2382,13 +2381,13 @@ BOOST_AUTO_TEST_CASE(testIQLCIDRv4Compare)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", CIDRv4Type::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
   rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("e", CIDRv4Type::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2457,13 +2456,13 @@ BOOST_AUTO_TEST_CASE(testIQLIPv6Compare)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", IPv6Type::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
   rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("e", IPv6Type::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2521,13 +2520,13 @@ BOOST_AUTO_TEST_CASE(testIQLCIDRv6Compare)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", CIDRv6Type::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
   rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("e", CIDRv6Type::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2600,7 +2599,7 @@ void testRecordLogicalOps(bool isNullable)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("y", DoubleType::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
@@ -2610,7 +2609,7 @@ void testRecordLogicalOps(bool isNullable)
   rhsMembers.push_back(RecordMember("g", Int32Type::Get(ctxt, isNullable)));
   rhsMembers.push_back(RecordMember("h", Int64Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("z", DoubleType::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2781,9 +2780,9 @@ void testArrayReference(bool isNullable, bool isVariable)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("g", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt, isNullable), false)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&emptyTy);
@@ -2831,9 +2830,9 @@ void testArrayUpdate(bool isNullable)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt, isNullable), false)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2883,9 +2882,9 @@ BOOST_AUTO_TEST_CASE(testIQLWhile)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("y", Int32Type::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -2970,9 +2969,9 @@ BOOST_AUTO_TEST_CASE(testIQLAscendingSortPrefix)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&emptyTy);
@@ -3049,7 +3048,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordUpdate)
   members.push_back(RecordMember("y", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("s", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("v", Int64Type::Get(ctxt, true)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
@@ -3061,7 +3060,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordUpdate)
   rhsMembers.push_back(RecordMember("z", DoubleType::Get(ctxt)));
   rhsMembers.push_back(RecordMember("t", Int32Type::Get(ctxt, true)));
   rhsMembers.push_back(RecordMember("u", Int64Type::Get(ctxt, true)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -3338,9 +3337,9 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
   members.push_back(RecordMember("g", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt), false)));
   members.push_back(RecordMember("h", Int8Type::Get(ctxt)));
   members.push_back(RecordMember("i", Int16Type::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&emptyTy);
@@ -3403,7 +3402,7 @@ BOOST_AUTO_TEST_CASE(testRecordTypeNullBitmap)
 				     CharType::Get(ctxt, 6, true)));
     }
 
-    RecordType recTy(members);
+    RecordType recTy(ctxt, members);
     RecordBuffer inputBuf = recTy.getMalloc().malloc();
     // Everything should be NULL by default
     for(std::size_t j=0; j<testCase; ++j) {
@@ -3443,9 +3442,9 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerializeNullable)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&emptyTy);
@@ -3517,7 +3516,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferIdentityDetection)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   {
     RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -3568,7 +3567,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferIntegers)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -3597,7 +3596,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordModulus)
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -3751,7 +3750,7 @@ void testRecordBinaryOp(bool isNullable1, bool isNullable2, const BinaryOp& op)
   members.push_back(RecordMember("f", Int8Type::Get(ctxt, isNullable2)));
   members.push_back(RecordMember("g", Int16Type::Get(ctxt, isNullable1)));
   members.push_back(RecordMember("h", Int16Type::Get(ctxt, isNullable2)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
 
   // Result nullability
   bool isNullable = isNullable1 || isNullable2;
@@ -4019,7 +4018,7 @@ void testIntegerUnaryOp(bool isNullable1, const UnaryOp& op)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", Int32Type::Get(ctxt, isNullable1)));
   members.push_back(RecordMember("c", Int64Type::Get(ctxt, isNullable1)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
 
   // Result nullability
   bool isNullable = isNullable1;
@@ -4080,7 +4079,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferLocalVariable)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -4109,7 +4108,7 @@ BOOST_AUTO_TEST_CASE(testIQLTransferParseErrors)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Make sure we catch an invalid separator
   try {
@@ -4136,9 +4135,9 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionParseErrors)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("e", DoubleType::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&emptyTy);
@@ -4190,7 +4189,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatement)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -4242,7 +4241,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementVarchar)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", VarcharType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -4269,7 +4268,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementDecimal)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", DecimalType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -4315,7 +4314,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementTypePromotion)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", DecimalType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -4354,7 +4353,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementNullCondition)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -4393,7 +4392,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementNullPromotion)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("c", Int64Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -4487,7 +4486,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordAggregate)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   std::vector<std::string> groupKeys;
@@ -4509,7 +4508,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordManualAggregate)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   std::vector<std::string> groupKeys;
@@ -4536,7 +4535,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordAggregateWithCase1)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   std::vector<std::string> groupKeys;
@@ -4557,7 +4556,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordAggregateWithCase2)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   std::vector<std::string> groupKeys;
@@ -4580,7 +4579,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordAggregateWithCase3)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   std::vector<std::string> groupKeys;
@@ -4603,7 +4602,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordAggregateWithInvalidGlob)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   std::vector<std::string> groupKeys;
@@ -4758,7 +4757,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferFloats)
   members.push_back(RecordMember("a", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("b", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("c", DoubleType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), "a,c,b AS d, a+b+c AS e, b+77.21e+01 AS f, b*1.0e-01 AS g"
@@ -4792,7 +4791,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionNamesNotAllowedAsVariables)
   members.push_back(RecordMember("a", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("b", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("c", DoubleType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   // Take a representative list of functions; no need to be exhaustive.
   const char * funs[5] = {"log", "exp", "year", "month", "dayofyear"};
   for(int i=0; i<5; ++i) {
@@ -4813,7 +4812,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallDouble)
   members.push_back(RecordMember("a", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("b", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("c", DoubleType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), "a,c,b AS d, a+b+c AS e, b+77.21e+01 AS f, b*1.0e-01 AS g, log(a) AS h, exp(a) as i, floor(a) as j, ceil(a) as k");
@@ -4847,7 +4846,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallDecimal)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", DecimalType::Get(ctxt)));
   members.push_back(RecordMember("b", DecimalType::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), "round(a, 2) AS a"
 			", round(a, -2) AS b"
@@ -4877,7 +4876,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallString)
   members.push_back(RecordMember("b", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("c", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("d", VarcharType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -4962,7 +4961,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallUrlDecode)
   members.push_back(RecordMember("c", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("d", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("e", VarcharType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -5010,7 +5009,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallReplace)
   members.push_back(RecordMember("c", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("d", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("e", VarcharType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -5060,7 +5059,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallLocate)
   members.push_back(RecordMember("c", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("d", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("e", VarcharType::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -5114,7 +5113,7 @@ void testDatediff(bool leftNullable, bool rightNullable)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", DateType::Get(ctxt, leftNullable)));
   members.push_back(RecordMember("b", DateType::Get(ctxt, rightNullable)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
 
   bool resultNullable = leftNullable || rightNullable;
   
@@ -5173,7 +5172,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallDatetime)
   members.push_back(RecordMember("a", DatetimeType::Get(ctxt)));
   members.push_back(RecordMember("b", DateType::Get(ctxt)));
   members.push_back(RecordMember("c", Int64Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -5224,7 +5223,7 @@ BOOST_AUTO_TEST_CASE(testIQLIntervalTypes)
   members.push_back(RecordMember("a", DatetimeType::Get(ctxt)));
   members.push_back(RecordMember("a1", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("a2", Int32Type::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -5306,7 +5305,7 @@ BOOST_AUTO_TEST_CASE(testIQLIntervalTypesNegative)
   DynamicRecordContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", DatetimeType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   try {
     RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -5371,7 +5370,7 @@ BOOST_AUTO_TEST_CASE(testIQLIntervalTypesDate)
   DynamicRecordContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", DateType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -5434,12 +5433,12 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Integers)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   members.clear();
   members.push_back(RecordMember("d", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("e", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("f", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType2(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType2(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   std::vector<AliasedRecordType> types;
@@ -5477,12 +5476,12 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersWithCompoundName)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   members.clear();
   members.push_back(RecordMember("d", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("e", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType2(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType2(new RecordType(ctxt, members));
   
   std::vector<AliasedRecordType> types;
   types.push_back(AliasedRecordType("table", recordType.get()));
@@ -5574,12 +5573,12 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersWithCompoundNameVarchar)
   members.push_back(RecordMember("a", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("b", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("c", VarcharType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   members.clear();
   members.push_back(RecordMember("d", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("e", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("a", VarcharType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType2(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType2(new RecordType(ctxt, members));
   
   std::vector<AliasedRecordType> types;
   types.push_back(AliasedRecordType("table", recordType.get()));
@@ -5689,7 +5688,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferRegex)
   members.push_back(RecordMember("d", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("eff", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("efg", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
   recordType->setInt32("a", 1, inputBuf);
   recordType->setInt32("b", 2, inputBuf);
@@ -5831,7 +5830,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Regex)
   members.push_back(RecordMember("c1", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c3", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c34", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
   recordType->setInt32("a", 1, inputBuf);
   recordType->setInt32("b", 2, inputBuf);
@@ -5844,7 +5843,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Regex)
   members.push_back(RecordMember("d", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("eff", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("efg", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType2(new RecordType(members));  
+  boost::shared_ptr<RecordType> recordType2(new RecordType(ctxt, members));  
   RecordBuffer inputBuf2 = recordType2->GetMalloc()->malloc();
   recordType2->setInt32("c4444", 6, inputBuf2);
   recordType2->setInt32("d", 7, inputBuf2);
@@ -5971,7 +5970,7 @@ void testCharCast(bool isNullable)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("e", DoubleType::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "123456", inputBuf);
@@ -6066,7 +6065,7 @@ void testDateCast(bool isNullable)
   members.push_back(RecordMember("e", DoubleType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("f", DatetimeType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("g", DateType::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "2011-03-12", inputBuf);
@@ -6137,7 +6136,7 @@ void testDatetimeCast(bool isNullable)
   members.push_back(RecordMember("c", VarcharType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("f", DatetimeType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("g", DateType::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "2011-03-12", inputBuf);
@@ -6199,7 +6198,7 @@ void testInt8Cast(bool isNullable)
   members.push_back(RecordMember("h", DateType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("i", Int16Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("j", Int8Type::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "127", inputBuf);
@@ -6276,7 +6275,7 @@ void testInt16Cast(bool isNullable)
   members.push_back(RecordMember("h", DateType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("i", Int16Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("j", Int8Type::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "127", inputBuf);
@@ -6353,7 +6352,7 @@ void testInt32Cast(bool isNullable)
   members.push_back(RecordMember("h", DateType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("i", Int16Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("j", Int8Type::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "23444", inputBuf);
@@ -6428,7 +6427,7 @@ void testInt64Cast(bool isNullable)
   members.push_back(RecordMember("g", DatetimeType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("h", DateType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("i", VarcharType::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "233444772354", inputBuf);
@@ -6501,7 +6500,7 @@ void testDoubleCast(bool isNullable)
   members.push_back(RecordMember("h", DateType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("i", DecimalType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("j", DecimalType::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "23444.324", inputBuf);
@@ -6605,7 +6604,7 @@ void testDecimalCast(bool isNullable)
   members.push_back(RecordMember("h", DateType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("i", DecimalType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("j", DecimalType::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "23444.324", inputBuf);
@@ -6694,7 +6693,7 @@ void testVarcharCast(bool isNullable)
   members.push_back(RecordMember("o", CIDRv4Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("p", IPv6Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("q", CIDRv6Type::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setChar("a", "2011-03-12", inputBuf);
@@ -6804,7 +6803,7 @@ void testNullableVarcharCast()
   members.push_back(RecordMember("f", DecimalType::Get(ctxt, true)));
   members.push_back(RecordMember("g", DatetimeType::Get(ctxt, true)));
   members.push_back(RecordMember("h", DateType::Get(ctxt, true)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.getFieldAddress("a").setNull(inputBuf);
@@ -6865,7 +6864,7 @@ void testFixedArrayInt32Cast(bool isNullable)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt, false), isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setArrayInt32("a", 0, 123456, inputBuf);
@@ -6947,7 +6946,7 @@ void testVariableArrayInt32Cast(bool isNullable)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", FixedArrayType::Get(ctxt, 3, Int32Type::Get(ctxt, false), isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setArrayInt32("a", 0, 123456, inputBuf);
@@ -7014,7 +7013,7 @@ void testIPv4Cast(bool isNullable)
   members.push_back(RecordMember("c", IPv6Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("d", CIDRv6Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("e", FixedArrayType::Get(ctxt, 4, Int32Type::Get(ctxt, isNullable), isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setIPv4("a", boost::asio::ip::make_address_v4("83.33.1.77"), inputBuf);
@@ -7070,7 +7069,7 @@ void testCIDRv4Cast(bool isNullable)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", IPv4Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("b", CIDRv4Type::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setIPv4("a", boost::asio::ip::make_address_v4("83.33.1.77"), inputBuf);
@@ -7120,7 +7119,7 @@ void testIPv6Cast(bool isNullable)
   members.push_back(RecordMember("e", FixedArrayType::Get(ctxt, 16, Int32Type::Get(ctxt, isNullable), isNullable)));
   members.push_back(RecordMember("f", FixedArrayType::Get(ctxt, 20, Int32Type::Get(ctxt, isNullable), isNullable)));
   members.push_back(RecordMember("g", FixedArrayType::Get(ctxt, 8, Int32Type::Get(ctxt, isNullable), isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setIPv4("a", boost::asio::ip::make_address_v4("83.33.1.77"), inputBuf);
@@ -7190,7 +7189,7 @@ void testCIDRv6Cast(bool isNullable)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", IPv6Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("b", CIDRv6Type::Get(ctxt, isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setIPv6("a", boost::asio::ip::make_address_v6("aaaa:bbbb::"), inputBuf);
@@ -7234,7 +7233,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddChar)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", CharType::Get(ctxt,32)));
   members.push_back(RecordMember("c", CharType::Get(ctxt, 9)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -7260,7 +7259,7 @@ BOOST_AUTO_TEST_CASE(testIQLUnaryPlusAndMinus)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("x", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("y", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -7346,7 +7345,7 @@ BOOST_AUTO_TEST_CASE(testIQLGreaterLeast)
   members.push_back(RecordMember("n", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("o", CharType::Get(ctxt, 10)));
   members.push_back(RecordMember("p", CharType::Get(ctxt, 8)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
 
   // TODO:  Implement CHAR(N) tests
   
@@ -7479,7 +7478,7 @@ BOOST_AUTO_TEST_CASE(testIQLNegate)
   members.push_back(RecordMember("y", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("z", DoubleType::Get(ctxt)));
   members.push_back(RecordMember("w", DecimalType::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -7521,7 +7520,7 @@ BOOST_AUTO_TEST_CASE(testIQLNegateNullable)
   members.push_back(RecordMember("y", Int64Type::Get(ctxt, true)));
   members.push_back(RecordMember("z", DoubleType::Get(ctxt, true)));
   members.push_back(RecordMember("w", DecimalType::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -7575,7 +7574,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableChar)
   members.push_back(RecordMember("c", CharType::Get(ctxt, 9, true)));
   // members.push_back(RecordMember("a", CharType::Get(ctxt,1, true)));
   // members.push_back(RecordMember("c", CharType::Get(ctxt, 2, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -7614,7 +7613,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableInt32)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -7651,7 +7650,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableDecimal)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", DecimalType::Get(ctxt, true)));
   members.push_back(RecordMember("c", DecimalType::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -7692,7 +7691,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableDatetime)
   DynamicRecordContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", DatetimeType::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -7725,7 +7724,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableVarchar)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", VarcharType::Get(ctxt, true)));
   members.push_back(RecordMember("c", VarcharType::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -7758,7 +7757,7 @@ void testIsNull(bool isNullable)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", VarcharType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("c", VarcharType::Get(ctxt, isNullable)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -7817,7 +7816,7 @@ void testIsNullFunction(bool isNullable1, bool isNullable2,
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", Int32Type::Get(ctxt, isNullable1)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt, isNullable2)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   bool resultNullable = isNullable1 && isNullable2;
 
@@ -7885,7 +7884,7 @@ BOOST_AUTO_TEST_CASE(testIQLIsNullFunctionTypePromotion)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", Int64Type::Get(ctxt, true)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt, false)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -7920,7 +7919,7 @@ BOOST_AUTO_TEST_CASE(testIQLIsNullFunctionTypePromotionNegative)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("c", DatetimeType::Get(ctxt, false)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   try {
     // Simple Transfer of everything
@@ -7940,7 +7939,7 @@ void internalTestTransferOfNullableIntegers(const std::string& xfer)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), xfer);
@@ -8052,7 +8051,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferAllNullableIntegers)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   testTransferWithAtLeastOneNullable(ctxt, recordType);
 }
@@ -8064,7 +8063,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferAllSomeNullableIntegers)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   testTransferWithAtLeastOneNullable(ctxt, recordType);
 }
@@ -8080,7 +8079,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferNullableToNullable)
   members.push_back(RecordMember("c", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("d", Int32Type::Get(ctxt, false)));
   members.push_back(RecordMember("e", Int32Type::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
@@ -8132,12 +8131,12 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullable)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   members.clear();
   members.push_back(RecordMember("d", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("e", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("f", Int32Type::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType2(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType2(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   std::vector<AliasedRecordType> types;
@@ -8227,12 +8226,12 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullableAndNot)
   members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   members.clear();
   members.push_back(RecordMember("d", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("e", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("f", Int32Type::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType2(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType2(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   std::vector<AliasedRecordType> types;
@@ -8310,12 +8309,12 @@ void internalTestIQLRecordTransfer2IntegersNullableLarge(bool nullability,
     std::string m = (boost::format("a%1%") % i).str();
     members.push_back(RecordMember(m, Int32Type::Get(ctxt, nullability)));
   }
-  boost::shared_ptr<RecordType> recordType(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   members.clear();
   members.push_back(RecordMember("d", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("e", Int32Type::Get(ctxt, true)));
   members.push_back(RecordMember("f", Int32Type::Get(ctxt, true)));
-  boost::shared_ptr<RecordType> recordType2(new RecordType(members));
+  boost::shared_ptr<RecordType> recordType2(new RecordType(ctxt, members));
   
   // Simple Transfer of everything.  
   std::vector<AliasedRecordType> types;
@@ -8406,9 +8405,9 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferFixedArray)
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("g", FixedArrayType::Get(ctxt, 3, VarcharType::Get(ctxt, isNullable), false)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&emptyTy);
@@ -8512,10 +8511,10 @@ bool iql_rlike_match(std::string regex_source, std::string target) {
 
   std::vector<RecordMember> lhsMembers;
   lhsMembers.push_back(RecordMember("rs", VarcharType::Get(ctxt)));
-  RecordType lhsTy(lhsMembers);
+  RecordType lhsTy(ctxt, lhsMembers);
   std::vector<RecordMember> rhsMembers;
   rhsMembers.push_back(RecordMember("t", VarcharType::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
 
   std::vector<const RecordType*> types;
   types.push_back(&lhsTy);
@@ -8539,10 +8538,10 @@ bool iql_rlike_is_null(const char* regex_source, const char* target) {
 
   std::vector<RecordMember> lhsMembers;
   lhsMembers.push_back(RecordMember("rs", VarcharType::Get(ctxt, true)));
-  RecordType lhsTy(lhsMembers);
+  RecordType lhsTy(ctxt, lhsMembers);
   std::vector<RecordMember> rhsMembers;
   rhsMembers.push_back(RecordMember("t", VarcharType::Get(ctxt, true)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
 
   std::vector<const RecordType*> types;
   types.push_back(&lhsTy);
@@ -8590,9 +8589,9 @@ bool iql_rlike_literal(const std::string& val, const std::string& expr)
 
   std::vector<RecordMember> lhsMembers;
   lhsMembers.push_back(RecordMember("a", VarcharType::Get(ctxt)));
-  RecordType lhsTy(lhsMembers);
+  RecordType lhsTy(ctxt, lhsMembers);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
 
   std::vector<const RecordType*> types;
   types.push_back(&lhsTy);
@@ -8616,7 +8615,7 @@ BOOST_AUTO_TEST_CASE(testStringLiteralEscapes)
 {
   DynamicRecordContext ctxt;
   std::vector<RecordMember> members;
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
 			"'noescapes' AS a"
 			", 'esc\\nape' AS b"
@@ -8657,7 +8656,7 @@ BOOST_AUTO_TEST_CASE(testIPv4AddressAndCidr)
   DynamicRecordContext ctxt;
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
                           "127.0.0.1 AS a"
@@ -8720,7 +8719,7 @@ BOOST_AUTO_TEST_CASE(testIPv6AddressAndCidr)
   DynamicRecordContext ctxt;
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
                           "aaaa:bbbb:cccc:dddd:eeee:ffff:0000:1111 AS a"
@@ -8804,7 +8803,7 @@ BOOST_AUTO_TEST_CASE(testVarcharMemoryManagement)
   DynamicRecordContext ctxt;
   InterpreterContext runtimeCtxt;
   std::vector<RecordMember> members;
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
                           "DECLARE tmp = 'This is a large VARCHAR allocated on the heap', tmp AS a, tmp AS b"
@@ -8900,7 +8899,7 @@ void testArrayInt32Concat(bool isNullable, bool isEltNullable)
   members.push_back(RecordMember("b", FixedArrayType::Get(ctxt, 2, Int32Type::Get(ctxt, isEltNullable), isNullable)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt, isEltNullable)));
   members.push_back(RecordMember("d", FixedArrayType::Get(ctxt, 2, Int64Type::Get(ctxt, isEltNullable), isNullable)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setArrayInt32("a", 0, 123456, inputBuf);
@@ -9092,6 +9091,194 @@ BOOST_AUTO_TEST_CASE(testIQLArrayInt32Concat)
   testArrayInt32Concat(true, false);
   testArrayInt32Concat(false, true);
   testArrayInt32Concat(true, true);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLRecordFreeModule)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(ctxt, members);
+  RecordBuffer inputBuf;
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "12 AS a, 23434.333 AS b");
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    RecordTypeFreeOperation op(t1.getTarget());
+    auto m = std::unique_ptr<IQLRecordTypeOperationModule>(op.create());
+    m->execute(outputBuf);
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "12 AS a, '23434.333' AS b");
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    RecordTypeFreeOperation op(t1.getTarget());
+    auto m = std::unique_ptr<IQLRecordTypeOperationModule>(op.create());
+    m->execute(outputBuf);
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "12 AS a, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' AS b");
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    RecordTypeFreeOperation op(t1.getTarget());
+    auto m = std::unique_ptr<IQLRecordTypeOperationModule>(op.create());
+    m->execute(outputBuf);
+  }
+  for (int i=0; i<2; ++i) {
+    {
+      RecordTypeTransfer t1(ctxt, "xfer1", &recTy, i==0 ? 
+                            "ARRAY[12, 13] AS a" :
+                            "CAST(ARRAY[12, 13] AS INTEGER[]) AS a");
+      RecordBuffer outputBuf;
+      InterpreterContext runtimeCtxt;
+      t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+      RecordTypeFreeOperation op(t1.getTarget());
+      auto m = std::unique_ptr<IQLRecordTypeOperationModule>(op.create());
+      m->execute(outputBuf);
+    }
+    {
+      RecordTypeTransfer t1(ctxt, "xfer1", &recTy, i==0 ? "ARRAY['12', '13'] AS a" : "CAST(ARRAY['12', '13'] AS VARCHAR[]) AS a");
+      RecordBuffer outputBuf;
+      InterpreterContext runtimeCtxt;
+      t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+      RecordTypeFreeOperation op(t1.getTarget());
+      auto m = std::unique_ptr<IQLRecordTypeOperationModule>(op.create());
+      m->execute(outputBuf);
+    }
+    {
+      RecordTypeTransfer t1(ctxt, "xfer1", &recTy, i==0 ?
+                            "ARRAY['12', '13333333333333333333333333333333333333333333'] AS a" :
+                            "CAST(ARRAY['12', '13333333333333333333333333333333333333333333'] AS VARCHAR[]) AS a");
+      RecordBuffer outputBuf;
+      InterpreterContext runtimeCtxt;
+      t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+      RecordTypeFreeOperation op(t1.getTarget());
+      auto m = std::unique_ptr<IQLRecordTypeOperationModule>(op.create());
+      m->execute(outputBuf);
+    }
+    {
+      RecordTypeTransfer t1(ctxt, "xfer1", &recTy, i==0 ?
+                            "ARRAY['12222222222222222222222222222222222222222', '133333333333333333333333333333333333333333'] AS a" :
+                            "CAST(ARRAY['12222222222222222222222222222222222222222', '133333333333333333333333333333333333333333'] AS VARCHAR[]) AS a");
+      RecordBuffer outputBuf;
+      InterpreterContext runtimeCtxt;
+      t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+      RecordTypeFreeOperation op(t1.getTarget());
+      auto m = std::unique_ptr<IQLRecordTypeOperationModule>(op.create());
+      m->execute(outputBuf);
+    }
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "12 AS a, ARRAY[ARRAY['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'], ARRAY['bbbbbbbbbbbbbbbbbbbbbbbb'] ] AS b, "
+                          "ARRAY[ARRAY[CAST(ARRAY[12,13] AS INTEGER[])]] AS c");
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    RecordTypeFreeOperation op(t1.getTarget());
+    auto m = std::unique_ptr<IQLRecordTypeOperationModule>(op.create());
+    m->execute(outputBuf);
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testIQLRecordPrintModule)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(ctxt, members);
+  RecordBuffer inputBuf;
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "12 AS a, 23434.333 AS b, 'this is a VARCHAR allocated on the heap' AS c");
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    RecordTypePrintOperation op(t1.getTarget());
+    auto m = std::unique_ptr<IQLRecordTypeOperationModule>(op.create());
+    {
+      std::stringstream sstr;
+      m->execute(outputBuf, sstr, true);
+      BOOST_CHECK(boost::algorithm::equals("12\t23434.333\tthis is a VARCHAR allocated on the heap\n", sstr.str()));
+    }
+    {
+      std::stringstream sstr;
+      m->execute(outputBuf, sstr, false);
+      BOOST_CHECK(boost::algorithm::equals("12\t23434.333\tthis is a VARCHAR allocated on the heap", sstr.str()));
+    }
+  }
+  {
+    RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "ARRAY[12,13] AS a, 14 AS b");
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    RecordTypePrintOperation op(t1.getTarget());
+    auto m = std::unique_ptr<IQLRecordTypeOperationModule>(op.create());
+    {
+      std::stringstream sstr;
+      m->execute(outputBuf, sstr, true);
+      BOOST_CHECK(boost::algorithm::equals("{12\t13}\t14\n", sstr.str()));
+    }
+  }
+}
+
+bool testRecordPrintModuleNullable(bool decimalNullable, bool int32Nullable)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", DecimalType::Get(ctxt, decimalNullable)));
+  members.push_back(RecordMember("b", Int32Type::Get(ctxt, int32Nullable)));
+  RecordType recTy(ctxt, members);
+
+  bool resultNullable = int32Nullable || decimalNullable;
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  decimal128 a;
+  ::decimal128FromString(&a, "8234.24344", runtimeCtxt.getDecimalContext());
+  {
+    recTy.setDecimal("a", a, inputBuf);
+    recTy.setInt32("b", 99, inputBuf);
+    
+    std::stringstream sstr;
+    recTy.getPrint().print(inputBuf, sstr, true);
+    BOOST_CHECK(boost::algorithm::equals("8234.24344\t99\n", sstr.str()));
+  }
+  
+  if (decimalNullable) {
+    recTy.setNull("a", inputBuf);
+    recTy.setInt32("b", 99, inputBuf);
+
+    std::stringstream sstr;
+    recTy.getPrint().print(inputBuf, sstr, true);
+    BOOST_CHECK(boost::algorithm::equals("\\N\t99\n", sstr.str()));
+  }
+  if (int32Nullable) {
+    recTy.setDecimal("a", a, inputBuf);
+    recTy.setNull("b", inputBuf);
+
+    std::stringstream sstr;
+    recTy.getPrint().print(inputBuf, sstr, true);
+    BOOST_CHECK(boost::algorithm::equals("8234.24344\t\\N\n", sstr.str()));
+  }
+  if (decimalNullable && int32Nullable) {
+    recTy.setNull("a", inputBuf);
+    recTy.setNull("b", inputBuf);
+
+    std::stringstream sstr;
+    recTy.getPrint().print(inputBuf, sstr, true);
+    BOOST_CHECK(boost::algorithm::equals("\\N\t\\N\n", sstr.str()));
+  }
+
+  recTy.getFree().free(inputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLRecordPrintModuleNullable)
+{
+  testRecordPrintModuleNullable(true, true);
+  testRecordPrintModuleNullable(true, false);
+  testRecordPrintModuleNullable(false, true);
+  testRecordPrintModuleNullable(false, false);
 }
 
 // Important test case with potentially important design

@@ -44,7 +44,7 @@
 #include <boost/dynamic_bitset.hpp>
 #include <boost/iterator/filter_iterator.hpp>
 
-#include "RecordType.hh"
+#include "IQLInterpreter.hh"
 
 namespace boost {
   namespace serialization {

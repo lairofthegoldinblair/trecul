@@ -465,6 +465,315 @@ void CodeGenerationContext::defineFieldVariable(llvm::Value * basePointer,
   mSymbolTable->add(prefix, memberName, field);
 }
 
+void CodeGenerationContext::buildFree(const IQLToLLVMValue * val, const FieldType * ft)
+{
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Function * f = b->GetInsertBlock()->getParent();
+
+  llvm::Value * callArgs[1];
+  llvm::Function * fn = LLVMModule->getFunction("free");
+  if (FieldType::VARCHAR == ft->GetEnum()) {
+    llvm::Value * varcharPtr = val->getValue(this);
+    // If large model varchar then free pointer
+    llvm::BasicBlock * smallBB = llvm::BasicBlock::Create(*c, "small", f);
+    llvm::BasicBlock * largeBB = llvm::BasicBlock::Create(*c, "large", f);
+    llvm::BasicBlock * contBB = llvm::BasicBlock::Create(*c, "cont", f);
+    b->CreateCondBr(buildVarArrayIsSmall(varcharPtr), smallBB, largeBB);
+    b->SetInsertPoint(smallBB);
+    // Nothing in small case
+    b->CreateBr(contBB);
+    b->SetInsertPoint(largeBB);
+    // Large case get pointer from varchar struct and free it
+    callArgs[0] = b->CreateLoad(b->getInt8PtrTy(),
+                                b->CreateStructGEP(LLVMVarcharType, varcharPtr, 2));
+    b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 1), "");
+    b->CreateBr(contBB);
+    b->SetInsertPoint(contBB);
+  } else if (FieldType::FIXED_ARRAY == ft->GetEnum() ||
+             FieldType::VARIABLE_ARRAY == ft->GetEnum()) {
+    // TODO: Optimize and only generate loop if there is another variable array or varchar below this
+    // array
+    // Types of elements are different so elementwise iteration and conversion is necessary
+    const FieldType * eltTy = dynamic_cast<const SequentialType *>(ft)->getElementType();
+    if (FieldType::VARCHAR == eltTy->GetEnum() ||
+        FieldType::FIXED_ARRAY == eltTy->GetEnum() ||
+        FieldType::VARIABLE_ARRAY == eltTy->GetEnum()) {
+      // Loop over the array call Free
+      // Constants one is used frequently
+      const IQLToLLVMValue * zero = buildFalse();
+      const IQLToLLVMValue * one  = buildTrue();
+      const IQLToLLVMValue * sz = IQLToLLVMRValue::get(this, getArraySize(val, ft), IQLToLLVMValue::eLocal);
+      // INTEGER type used frequently in this method
+      FieldType * int32Type = Int32Type::Get(ft->getContext());
+
+      // DECLARE idx = 0
+      // Allocate and initialize counter
+      llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
+      const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
+      IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(counter, int32Type), nullptr);
+      buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
+        
+      whileBegin();
+
+      // while (idx < sz)
+      const IQLToLLVMValue * pred = buildCompare(buildRef(counter, int32Type), int32Type, sz, int32Type, int32Type, IQLToLLVMOpLT);
+      whileStatementBlock(pred, int32Type);
+
+      const IQLToLLVMValue * idx = buildRef(counter, int32Type);
+      const IQLToLLVMValue * elt = buildArrayRef(val, ft, idx, int32Type, eltTy);
+      buildFree(elt, eltTy);
+      
+      // SET idx = idx + 1
+      buildSetNullableValue(counterLValue, buildAdd(buildRef(counter, int32Type), int32Type, one, int32Type, int32Type), int32Type, int32Type);  
+      whileFinish();
+    }
+    
+    if (FieldType::VARIABLE_ARRAY == ft->GetEnum()) {
+      callArgs[0] = b->CreateLoad(b->getInt8PtrTy(),
+                                  b->CreateStructGEP(LLVMVarcharType, val->getValue(this), 2));
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 1), "");
+    }
+  }
+}
+
+void CodeGenerationContext::buildRecordTypeFree(const RecordType * recordType)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  const IQLToLLVMValue * basePointer = lookupBasePointer("__BasePointer__");
+  llvm::Value * callArgs[1];
+  llvm::Function * fn = LLVMModule->getFunction("free");
+
+  for(auto it = recordType->begin_members(); it != recordType->end_members(); ++it) {
+    if (FieldType::VARCHAR == it->GetType()->GetEnum() ||
+        FieldType::FIXED_ARRAY == it->GetType()->GetEnum() ||
+        FieldType::VARIABLE_ARRAY == it->GetType()->GetEnum()) {
+      const IQLToLLVMValue * field = buildVariableRef(it->GetName().c_str(), nullptr, it->GetType());
+      buildFree(field, it->GetType());
+    }
+  }
+
+  callArgs[0] = b->CreateLoad(b->getInt8PtrTy(), basePointer->getValue(this));
+  b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 1), "");
+}
+
+void CodeGenerationContext::buildRecordTypePrint(const RecordType * recordType, char fieldDelimiter, char recordDelimiter, char escapeChar)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Value * ostrPointer = b->CreateLoad(b->getInt8PtrTy(), lookupBasePointer("__OutputStreamPointer__")->getValue(this));
+
+  // Create a C-string with the delimiters
+  llvm::Value * fieldDelimiterStringPtr = b->CreateBitCast(buildGlobalConstString(std::string(1, fieldDelimiter))->getValue(this), b->getInt8PtrTy());
+  llvm::Value * recordDelimiterStringPtr = b->CreateBitCast(buildGlobalConstString(std::string(1, recordDelimiter))->getValue(this), b->getInt8PtrTy());
+
+  // For printing delimiters
+  llvm::Value * callArgs[2];
+  callArgs[1] = ostrPointer;
+  llvm::Function * fn = LLVMModule->getFunction("InternalPrintCharRaw");
+  
+  for(auto it = recordType->begin_members(); it != recordType->end_members(); ++it) {
+    if (it != recordType->begin_members()) {
+      // output field delimiter
+      callArgs[0] = fieldDelimiterStringPtr;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");
+    }
+    const IQLToLLVMValue * field = buildVariableRef(it->GetName().c_str(), nullptr, it->GetType());
+    buildPrint(field, it->GetType(), fieldDelimiter, escapeChar);
+  }
+
+  const FieldType * int32Type = Int32Type::Get(recordType->getContext());
+
+  // If requested output record delimiter, output it.
+  // A bit of a hack here since __OutputRecordDelimiter__ local does not have
+  // type information so we add it here.
+  IQLToLLVMLocal outputRecordDelimiter(IQLToLLVMTypedValue(lookup("__OutputRecordDelimiter__", nullptr)->getValuePointer(this), int32Type), nullptr);
+  const IQLToLLVMValue * pred = buildCompare(buildRef(&outputRecordDelimiter, int32Type), int32Type, buildTrue(), int32Type, int32Type, IQLToLLVMOpEQ);
+  buildBeginIf();
+  // output record delimiter
+  callArgs[0] = recordDelimiterStringPtr;
+  b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");
+  buildEndIf(pred);
+}
+
+void CodeGenerationContext::buildPrint(const IQLToLLVMValue * val, const FieldType * ft, char fieldDelimiter, char escapeChar)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Value * ostrPointer = b->CreateLoad(b->getInt8PtrTy(), lookupBasePointer("__OutputStreamPointer__")->getValue(this));
+  llvm::Value * fieldDelimiterStringPtr = b->CreateBitCast(buildGlobalConstString(std::string(1, fieldDelimiter))->getValue(this), b->getInt8PtrTy());
+  llvm::Value * beginArrayDelimiterStringPtr = b->CreateBitCast(buildGlobalConstString("{")->getValue(this), b->getInt8PtrTy());
+  llvm::Value * endArrayDelimiterStringPtr = b->CreateBitCast(buildGlobalConstString("}")->getValue(this), b->getInt8PtrTy());
+  llvm::Value * nullStringPtr = b->CreateBitCast(buildGlobalConstString("\\N")->getValue(this), b->getInt8PtrTy());
+
+  // For printing delimiters and NULL string
+  llvm::Value * callArgs[3];
+  llvm::Function * charFn = LLVMModule->getFunction("InternalPrintCharRaw");
+
+  // // Checking for NULL (last parameter in call means we are checking IsNotNull)
+  const IQLToLLVMValue * pred = buildIsNull(val, ft, Int32Type::Get(ft->getContext()), true);
+  buildBeginIf();
+  switch(ft->GetEnum()) {
+  case FieldType::VARCHAR:
+    {
+      llvm::Function * fn = LLVMModule->getFunction("InternalPrintVarchar");
+      callArgs[0] = val->getValue(this);
+      callArgs[1] = b->getInt8(escapeChar);
+      callArgs[2] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 3), "");  
+      break;
+    }
+  case FieldType::CHAR:
+    {
+      llvm::Function * fn = LLVMModule->getFunction("InternalPrintChar");
+      callArgs[0] = b->CreateBitCast(val->getValue(this), b->getInt8PtrTy());
+      callArgs[1] = b->getInt8(escapeChar);
+      callArgs[2] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 3), "");  
+      break;
+    }
+  case FieldType::BIGDECIMAL:
+    {
+      llvm::Function * fn = LLVMModule->getFunction("InternalPrintDecimal");
+      callArgs[0] = val->getValue(this);
+      callArgs[1] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+      break;
+    }
+  case FieldType::INT8:
+  case FieldType::INT16:
+  case FieldType::INT32:
+  case FieldType::INT64:
+  case FieldType::INTERVAL:
+    {
+      llvm::Function * fn = LLVMModule->getFunction("InternalPrintInt64");
+      callArgs[0] = buildCast(val, ft, Int64Type::Get(ft->getContext()))->getValue(this);
+      callArgs[1] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+      break;
+    }
+  case FieldType::FLOAT:
+  case FieldType::DOUBLE:
+    {
+      llvm::Function * fn = LLVMModule->getFunction("InternalPrintDouble");
+      callArgs[0] = buildCast(val, ft, DoubleType::Get(ft->getContext()))->getValue(this);
+      callArgs[1] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+      break;
+    }
+  case FieldType::DATETIME:
+    {
+      llvm::Function * fn = LLVMModule->getFunction("InternalPrintDatetime");
+      callArgs[0] = val->getValue(this);
+      callArgs[1] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+      break;
+    }
+  case FieldType::DATE:
+    {
+      llvm::Function * fn = LLVMModule->getFunction("InternalPrintDate");
+      callArgs[0] = val->getValue(this);
+      callArgs[1] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+      break;
+    }
+  case FieldType::IPV4:
+    {
+      llvm::Function * fn = LLVMModule->getFunction("InternalPrintIPv4");
+      callArgs[0] = val->getValue(this);
+      callArgs[1] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+      break;
+    }
+  case FieldType::CIDRV4:
+    {
+      // Pass CIDRv4 arg as int64_t
+      llvm::Function * fn = LLVMModule->getFunction("InternalPrintCIDRv4");
+      llvm::Value * argTmp = buildEntryBlockAlloca(ft->LLVMGetType(this), "cidrv4ArgTmp");
+      b->CreateStore(val->getValue(this), argTmp);
+      llvm::Type * int64PtrTy = llvm::PointerType::get(b->getInt64Ty(), 0);
+      argTmp = LLVMBuilder->CreateBitCast(argTmp, int64PtrTy, "charcnvcasttmp1");
+      callArgs[0] = b->CreateLoad(b->getInt64Ty(), argTmp);
+      callArgs[1] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+      break;
+    }
+  case FieldType::IPV6:
+    {
+      llvm::Function * fn = LLVMModule->getFunction("InternalPrintIPv6");
+      callArgs[0] = b->CreateBitCast(val->getValue(this), b->getInt8PtrTy());
+      callArgs[1] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+      break;
+    }
+  case FieldType::CIDRV6:
+    {
+      llvm::Function * fn = LLVMModule->getFunction("InternalPrintCIDRv6");
+      callArgs[0] = b->CreateBitCast(val->getValue(this), b->getInt8PtrTy());
+      callArgs[1] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+      break;
+    }
+  case FieldType::FIXED_ARRAY:
+  case FieldType::VARIABLE_ARRAY:
+    {
+      callArgs[0] = beginArrayDelimiterStringPtr;
+      callArgs[1] = ostrPointer;
+      b->CreateCall(charFn->getFunctionType(), charFn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+
+      const SequentialType * arrType = dynamic_cast<const SequentialType *>(ft);
+      const FieldType * eltType = arrType->getElementType();
+      // // Loop over the array and print
+      // // Constants one is used frequently
+      const IQLToLLVMValue * one  = buildTrue();
+      const IQLToLLVMValue * zero  = buildFalse();
+      // INTEGER type used frequently in this method
+      FieldType * int32Type = Int32Type::Get(ft->getContext());
+
+      // DECLARE idx = 0
+      // Allocate and initialize counter
+      llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
+      const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
+      IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(counter, int32Type), nullptr);
+      buildSetNullableValue(counterLValue, buildFalse(), int32Type, int32Type);
+      
+      const IQLToLLVMValue * endIdx = IQLToLLVMRValue::get(this, getArraySize(val, ft), IQLToLLVMValue::eLocal);
+      
+      whileBegin();
+      
+      // while (idx < endIdx)
+      const IQLToLLVMValue * loopPred = buildCompare(buildRef(counter, int32Type), int32Type, endIdx, int32Type, int32Type, IQLToLLVMOpLT);
+      whileStatementBlock(loopPred, int32Type);
+
+      // IF idx > 0 PRINT fieldDelimiter
+      loopPred = buildCompare(buildRef(counter, int32Type), int32Type, zero, int32Type, int32Type, IQLToLLVMOpGT);
+      buildBeginIf();
+      callArgs[0] = fieldDelimiterStringPtr;
+      callArgs[1] = ostrPointer;
+      b->CreateCall(charFn->getFunctionType(), charFn, llvm::makeArrayRef(&callArgs[0], 2), "");
+      buildEndIf(loopPred);
+
+      const IQLToLLVMValue * idx = buildRef(counter, int32Type);
+      const IQLToLLVMValue * elt = buildArrayRef(val, ft, idx, int32Type, eltType);
+      buildPrint(elt, eltType, fieldDelimiter, escapeChar);
+
+      // SET idx = idx + 1
+      buildSetNullableValue(counterLValue, buildAdd(buildRef(counter, int32Type), int32Type, one, int32Type, int32Type), int32Type, int32Type);  
+      whileFinish();      
+
+      callArgs[0] = endArrayDelimiterStringPtr;
+      callArgs[1] = ostrPointer;
+      b->CreateCall(charFn->getFunctionType(), charFn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+      break;
+    }
+  default:
+    throw std::runtime_error("Print not implemented");
+  }
+  buildBeginElse();
+  callArgs[0] = nullStringPtr;
+  callArgs[1] = ostrPointer;
+  b->CreateCall(charFn->getFunctionType(), charFn, llvm::makeArrayRef(&callArgs[0], 2), "");  
+  buildEndIf(pred);
+}
+
 const IQLToLLVMLValue * 
 CodeGenerationContext::lookup(const char * name, const char * name2)
 {
@@ -699,7 +1008,7 @@ CodeGenerationContext::buildArray(std::vector<IQLToLLVMTypedValue>& vals,
   bool isConstArray=true;
   for(std::vector<IQLToLLVMTypedValue>::iterator v = vals.begin(),
 	e = vals.end(); v != e; ++v) {
-    if (!llvm::isa<llvm::Constant>(v->getValue()->getValue(this))) {
+    if (!v->getType()->isNumeric() || !llvm::isa<llvm::Constant>(v->getValue()->getValue(this))) {
       isConstArray = false;
       break;
     }
@@ -759,6 +1068,38 @@ CodeGenerationContext::buildGlobalConstArray(std::vector<IQLToLLVMTypedValue>& v
 
   
   return IQLToLLVMRValue::get(this, globalArray, IQLToLLVMValue::eLocal);
+}
+
+const IQLToLLVMValue * 
+CodeGenerationContext::buildGlobalConstString(const std::string & str)
+{
+  auto it = StringPool.find(str);
+  if (StringPool.end() != it) {
+    return it->second;
+  }
+  llvm::Module * m = LLVMModule;
+  llvm::LLVMContext * c = LLVMContext;
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::ArrayType * arrayType = llvm::ArrayType::get(b->getInt8Ty(), str.size()+1);
+  llvm::GlobalVariable * globalArray = 
+    new llvm::GlobalVariable(*m, arrayType, true, llvm::GlobalValue::InternalLinkage,
+                             0, "constArray");
+  globalArray->setAlignment(llvm::MaybeAlign(16));
+
+  // Make initializer for the global.
+  std::vector<llvm::Constant *> initializerArgs;
+  for(auto & v : str) {
+    initializerArgs.push_back(llvm::cast<llvm::Constant>(b->getInt8(v)));
+  }
+  initializerArgs.push_back(llvm::cast<llvm::Constant>(b->getInt8(0)));
+  llvm::Constant * constArrayInitializer = 
+    llvm::ConstantArray::get(arrayType, initializerArgs);
+  globalArray->setInitializer(constArrayInitializer);
+
+  
+  auto ret = IQLToLLVMRValue::get(this, globalArray, IQLToLLVMValue::eLocal);
+  StringPool[str] = ret;
+  return ret;
 }
 
 const IQLToLLVMValue * CodeGenerationContext::buildArrayRef(const IQLToLLVMValue * arr,
@@ -1197,6 +1538,7 @@ CodeGenerationContext::buildCastInt32(const IQLToLLVMValue * e,
       b->CreateStore(r, ret);
       return IQLToLLVMValue::eLocal;
     }
+  case FieldType::INTERVAL:
   case FieldType::INT32:
     b->CreateStore(e1, ret);
     return IQLToLLVMValue::eLocal;
@@ -1267,6 +1609,7 @@ CodeGenerationContext::buildCastInt64(const IQLToLLVMValue * e,
   case FieldType::INT8:
   case FieldType::INT16:
   case FieldType::INT32:
+  case FieldType::INTERVAL:
     {
       llvm::Value * r = b->CreateSExt(e1, 
 				      b->getInt64Ty(),
@@ -5060,9 +5403,10 @@ void CodeGenerationContext::buildBeginIf()
   // Create blocks for the then and else cases.  Insert the 'then' block at the
   // end of the function.
   IQLStack.push(new IQLToLLVMStackRecord());
+  IQLStack.top()->StartBB = b->GetInsertBlock();
   IQLStack.top()->ThenBB = llvm::BasicBlock::Create(*c, "then", TheFunction);
   IQLStack.top()->ElseBB = nullptr;
-  IQLStack.top()->MergeBB = b->GetInsertBlock();
+  IQLStack.top()->MergeBB = llvm::BasicBlock::Create(*c, "ifcont");
   b->SetInsertPoint(IQLStack.top()->ThenBB);  
 }
 
@@ -5071,11 +5415,13 @@ void CodeGenerationContext::buildBeginElse()
   // Unwrap to C++
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
+  // Unconditional branch to the continue block.  
+  b->CreateBr(IQLStack.top()->MergeBB);
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
-  // Create blocks for the then and else cases.  Insert the 'then' block at the
+  // Create blocks for the else case.  Insert the 'else' block at the
   // end of the function.
-  IQLStack.top()->ElseBB = llvm::BasicBlock::Create(*c, "then", TheFunction);
+  IQLStack.top()->ElseBB = llvm::BasicBlock::Create(*c, "else", TheFunction);
   b->SetInsertPoint(IQLStack.top()->ElseBB);
 }
 
@@ -5083,14 +5429,16 @@ void CodeGenerationContext::buildEndIf(const IQLToLLVMValue * condVal)
 {
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
+
+  // Unconditional branch from then/else to continue
+  b->CreateBr(IQLStack.top()->MergeBB);
+
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
-  // Now create the continue block
-  llvm::BasicBlock * contBlock = llvm::BasicBlock::Create(*c, "ifcont", TheFunction);
 
-  // We saved the original BB in MergeBB.   Now that we know if we have an else block
+  // We saved the original BB in StartBB.   Now that we know if we have an else block
   // we can emit the conditional branch into this block
-  b->SetInsertPoint(IQLStack.top()->MergeBB);  
+  b->SetInsertPoint(IQLStack.top()->StartBB);  
 
   // Cast back to i1 by comparing to zero.
   llvm::Value * boolVal = b->CreateICmpNE(condVal->getValue(this),
@@ -5098,23 +5446,15 @@ void CodeGenerationContext::buildEndIf(const IQLToLLVMValue * condVal)
 					  "boolCast");
 
   // Branch and set block (either else block or directly to continue)
-  b->CreateCondBr(boolVal, IQLStack.top()->ThenBB, nullptr != IQLStack.top()->ElseBB ? IQLStack.top()->ElseBB : contBlock);
+  b->CreateCondBr(boolVal, IQLStack.top()->ThenBB, nullptr != IQLStack.top()->ElseBB ? IQLStack.top()->ElseBB : IQLStack.top()->MergeBB);
 
-  // Emit unconditional branch to contBlock
-  b->SetInsertPoint(IQLStack.top()->ThenBB);
-  b->CreateBr(contBlock);
-
-  if (nullptr != IQLStack.top()->ElseBB) {
-    b->SetInsertPoint(IQLStack.top()->ElseBB);
-    b->CreateBr(contBlock);
-  }
+  // Resume emitting into contBlock
+  TheFunction->getBasicBlockList().push_back(IQLStack.top()->MergeBB);
+  b->SetInsertPoint(IQLStack.top()->MergeBB);
 
   // Done with the stack record
   delete IQLStack.top();
   IQLStack.pop();
-
-  // Resume emitting into contBlock
-  b->SetInsertPoint(contBlock);
 }
 
 void CodeGenerationContext::buildBeginIfThenElse(const IQLToLLVMValue * condVal)

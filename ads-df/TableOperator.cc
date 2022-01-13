@@ -381,7 +381,7 @@ void ColumnGroupOutput::check(PlanCheckContext & ctxt)
 
     // Filter largest version
     std::vector<RecordMember> emptyMembers;
-    RecordType emptyTy(emptyMembers);
+    RecordType emptyTy(ctxt, emptyMembers);
     std::vector<const RecordType *> inputs;
     inputs.push_back(mAggregate->getTarget());
     inputs.push_back(&emptyTy);

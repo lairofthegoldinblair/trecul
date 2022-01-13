@@ -91,7 +91,7 @@ BOOST_AUTO_TEST_CASE(testImportDecimalInt32)
   DynamicRecordContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", Int32Type::Get(ctxt, false)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   RecordBuffer buf = recTy.getMalloc().malloc();
   const char * testString = "1392342\t";
   recTy.getFieldAddress("a").setInt32(0, buf);
@@ -127,7 +127,7 @@ BOOST_AUTO_TEST_CASE(testImportFixedLengthString)
   DynamicRecordContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", CharType::Get(ctxt, 14, true)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   RecordBuffer buf = recTy.getMalloc().malloc();
   const char * testString = "13923429923434\t";
   recTy.getFieldAddress("a").setNull(buf);
@@ -195,7 +195,7 @@ BOOST_AUTO_TEST_CASE(testImportDouble)
   DynamicRecordContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", DoubleType::Get(ctxt, false)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   RecordBuffer buf = recTy.getMalloc().malloc();
   const char * testString = "1392342.2384452\t";
   // Fast path
@@ -329,13 +329,13 @@ BOOST_AUTO_TEST_CASE(testCustomImporter)
   baseMembers.push_back(RecordMember("rev_calc", Int32Type::Get(ctxt, true)));
   baseMembers.push_back(RecordMember("coop_id", Int32Type::Get(ctxt, true)));
   baseMembers.push_back(RecordMember("dummy", VarcharType::Get(ctxt, true)));
-  RecordType baseTy(baseMembers);
+  RecordType baseTy(ctxt, baseMembers);
   std::vector<RecordMember> members;
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22, false)));
   members.push_back(RecordMember("cre_date", CharType::Get(ctxt, 19, false)));
   members.push_back(RecordMember("coop_id", Int32Type::Get(ctxt, false)));
 
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<ImporterSpec*> specs;
   ImporterSpec::createDefaultImport(&recTy, &baseTy, '\t', '\n', specs);
   RecordBuffer buf = recTy.getMalloc().malloc();

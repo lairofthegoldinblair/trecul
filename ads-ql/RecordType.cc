@@ -49,6 +49,7 @@
 #include "CodeGenerationContext.hh"
 #include "RecordType.hh"
 #include "IQLExpression.hh"
+#include "IQLInterpreter.hh"
 
 #include "decimal128.h"
 #include "md5.h"
@@ -1975,62 +1976,62 @@ void TaggedFieldAddress::print(RecordBuffer buf,
   }  
 }
 
-RecordTypePrint::RecordTypePrint(const std::vector<TaggedFieldAddress>& fields)
-  :
-  mFields(fields),
-  mFieldDelimiter('\t'),
-  mRecordDelimiter('\n'),
-  mArrayDelimiter(','),
-  mEscapeChar('\\')
-{
-}
+// RecordTypePrint::RecordTypePrint(const std::vector<TaggedFieldAddress>& fields)
+//   :
+//   mFields(fields),
+//   mFieldDelimiter('\t'),
+//   mRecordDelimiter('\n'),
+//   mArrayDelimiter(','),
+//   mEscapeChar('\\')
+// {
+// }
 
-RecordTypePrint::RecordTypePrint(const std::vector<TaggedFieldAddress>& fields,
-				 char fieldDelimiter, char recordDelimiter,
-				 char arrayDelimiter, char escapeChar)
-  :
-  mFields(fields),
-  mFieldDelimiter(fieldDelimiter),
-  mRecordDelimiter(recordDelimiter),
-  mArrayDelimiter(arrayDelimiter),
-  mEscapeChar(escapeChar)
-{
-}
+// RecordTypePrint::RecordTypePrint(const std::vector<TaggedFieldAddress>& fields,
+// 				 char fieldDelimiter, char recordDelimiter,
+// 				 char arrayDelimiter, char escapeChar)
+//   :
+//   mFields(fields),
+//   mFieldDelimiter(fieldDelimiter),
+//   mRecordDelimiter(recordDelimiter),
+//   mArrayDelimiter(arrayDelimiter),
+//   mEscapeChar(escapeChar)
+// {
+// }
 
-RecordTypePrint::RecordTypePrint()
-  :
-  mFieldDelimiter('\t'),
-  mRecordDelimiter('\n'),
-  mEscapeChar('\\')
-{
-}
+// RecordTypePrint::RecordTypePrint()
+//   :
+//   mFieldDelimiter('\t'),
+//   mRecordDelimiter('\n'),
+//   mEscapeChar('\\')
+// {
+// }
 
-RecordTypePrint::~RecordTypePrint()
-{
-}
+// RecordTypePrint::~RecordTypePrint()
+// {
+// }
 
-void RecordTypePrint::imbue(std::ostream& ostr) const
-{
-  // stream takes ownership of the facet.
-  boost::posix_time::time_facet * facet =
-    new boost::posix_time::time_facet("%Y-%m-%d %H:%M:%S");
-  boost::gregorian::date_facet * dateFacet =
-    new boost::gregorian::date_facet("%Y-%m-%d");
-  ostr.imbue(std::locale(std::locale(ostr.getloc(), facet), dateFacet));
-  ostr << std::fixed << std::setprecision(9);
-}
+// void RecordTypePrint::imbue(std::ostream& ostr) const
+// {
+//   // stream takes ownership of the facet.
+//   boost::posix_time::time_facet * facet =
+//     new boost::posix_time::time_facet("%Y-%m-%d %H:%M:%S");
+//   boost::gregorian::date_facet * dateFacet =
+//     new boost::gregorian::date_facet("%Y-%m-%d");
+//   ostr.imbue(std::locale(std::locale(ostr.getloc(), facet), dateFacet));
+//   ostr << std::fixed << std::setprecision(9);
+// }
 
-void RecordTypePrint::print(RecordBuffer buf, std::ostream& ostr, bool emitNewLine) const
-{
-  for(std::vector<TaggedFieldAddress>::const_iterator it = mFields.begin();
-      it != mFields.end();
-      ++it) {
-    if (mFields.begin() != it) ostr << mFieldDelimiter;
-    it->print(buf, mArrayDelimiter, mEscapeChar, ostr);    
-  }
-  if (emitNewLine)
-    ostr << mRecordDelimiter;
-}
+// void RecordTypePrint::print(RecordBuffer buf, std::ostream& ostr, bool emitNewLine) const
+// {
+//   for(std::vector<TaggedFieldAddress>::const_iterator it = mFields.begin();
+//       it != mFields.end();
+//       ++it) {
+//     if (mFields.begin() != it) ostr << mFieldDelimiter;
+//     it->print(buf, mArrayDelimiter, mEscapeChar, ostr);    
+//   }
+//   if (emitNewLine)
+//     ostr << mRecordDelimiter;
+// }
 
 RecordTypeSerialize::RecordTypeSerialize()
   :
@@ -2168,37 +2169,37 @@ bool RecordTypeDeserialize::Do(uint8_t * & input, uint8_t * inputEnd, RecordBuff
   return true;
 }
 
-RecordTypeFree::RecordTypeFree()
-  :
-  mSize(0)
-{
-}
+// RecordTypeFree::RecordTypeFree()
+//   :
+//   mSize(0)
+// {
+// }
 
-RecordTypeFree::RecordTypeFree(std::size_t sz, const std::vector<FieldAddress>& offsets)
-  :
-  mOffsets(offsets),
-  mSize(sz)
-{
-}
+// RecordTypeFree::RecordTypeFree(std::size_t sz, const std::vector<FieldAddress>& offsets)
+//   :
+//   mOffsets(offsets),
+//   mSize(sz)
+// {
+// }
 
-RecordTypeFree::~RecordTypeFree()
-{
-}
+// RecordTypeFree::~RecordTypeFree()
+// {
+// }
 
-void RecordTypeFree::free(RecordBuffer & buf) const
-{
-  if (buf.Ptr == NULL) return;
+// void RecordTypeFree::free(RecordBuffer & buf) const
+// {
+//   if (buf.Ptr == NULL) return;
 
-  for(std::vector<FieldAddress>::const_iterator it = mOffsets.begin();
-      it != mOffsets.end();
-      ++it) {
-    // Free
-    if (it->getVarcharPtr(buf)->Large.Large) {
-      ::free(const_cast<char *>(it->getVarcharPtr(buf)->Large.Ptr));
-    }
-  }
-  RecordBuffer::free(buf);
-}
+//   for(std::vector<FieldAddress>::const_iterator it = mOffsets.begin();
+//       it != mOffsets.end();
+//       ++it) {
+//     // Free
+//     if (it->getVarcharPtr(buf)->Large.Large) {
+//       ::free(const_cast<char *>(it->getVarcharPtr(buf)->Large.Ptr));
+//     }
+//   }
+//   RecordBuffer::free(buf);
+// }
 
 RecordTypeMalloc::RecordTypeMalloc(std::size_t sz)
   :
@@ -2218,13 +2219,14 @@ RecordBuffer RecordTypeMalloc::malloc() const
 const RecordType * RecordType::get(DynamicRecordContext & ctxt,
 				   const std::vector<RecordMember>& members)
 {
-  const RecordType * tmp = new RecordType(members);
+  const RecordType * tmp = new RecordType(ctxt, members);
   ctxt.add(tmp);
   return tmp;
 }
 
-RecordType::RecordType(const std::vector<RecordMember>& members)
+RecordType::RecordType(DynamicRecordContext & ctxt, const std::vector<RecordMember>& members)
   :
+  mContext(ctxt),
   mMembers(members),
   mHasNullFields(false)
 {
@@ -2271,10 +2273,10 @@ RecordType::RecordType(const std::vector<RecordMember>& members)
   }
 
   mMalloc = boost::shared_ptr<RecordTypeMalloc>(new RecordTypeMalloc(sz));
-  mFree = boost::shared_ptr<RecordTypeFree>(new RecordTypeFree(sz, offsets));
+  mFree = boost::shared_ptr<RecordTypeFree>(new RecordTypeFree(this));
   mSerialize = boost::shared_ptr<RecordTypeSerialize>(new RecordTypeSerialize(sz, offsets));
   mDeserialize = boost::shared_ptr<RecordTypeDeserialize>(new RecordTypeDeserialize(sz, offsets));
-  mPrint = boost::shared_ptr<RecordTypePrint>(new RecordTypePrint(taggedOffsets));
+  mPrint = boost::shared_ptr<RecordTypePrint>(new RecordTypePrint(this));
 }
 
 RecordType::~RecordType()
@@ -2515,6 +2517,20 @@ void RecordType::setArrayDouble(const std::string& field, int32_t idx, double va
   *mMemberOffsets[it->second].getArrayDoublePtr(buf, idx) = val;
 }
 
+void RecordType::setDecimal(const std::string& field, decimal128 & val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].setDecimal(val,buf);
+}
+
+void RecordType::setArrayDecimal(const std::string& field, int32_t idx, decimal128 & val, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].clearNull(buf);
+  mMemberOffsets[it->second].clearArrayNull(buf, dynamic_cast<const FixedArrayType *>(mMembers[it->second].GetType()), idx);
+  *mMemberOffsets[it->second].getArrayDecimalPtr(buf, idx) = val;
+}
+
 void RecordType::setDatetime(const std::string& field, 
 			     boost::posix_time::ptime val, 
 			     RecordBuffer buf) const
@@ -2581,6 +2597,12 @@ void RecordType::setChar(const std::string& field, const char * val, RecordBuffe
   memcpy(ptr, val, sz);
   ptr[sz] = 0;
   
+}
+
+void RecordType::setNull(const std::string& field, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  mMemberOffsets[it->second].setNull(buf);
 }
 
 int8_t RecordType::getInt8(const std::string& field, RecordBuffer buf) const

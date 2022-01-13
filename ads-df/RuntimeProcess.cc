@@ -555,6 +555,16 @@ void RuntimeProcess::run()
   }
 }
 
+class Timer
+{
+private:
+  boost::posix_time::ptime mTick;
+  int32_t mPartition;
+public:
+  Timer(int32_t partition);
+  ~Timer();
+};
+
 Timer::Timer(int32_t partition)
   :
   mPartition(partition)

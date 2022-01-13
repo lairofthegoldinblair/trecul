@@ -64,6 +64,8 @@ extern "C" {
 class CodeGenerationContext;
 class FieldType;
 class RecordType;
+class RecordTypeFree;
+class RecordTypePrint;
 
 // Runtime representations of primitive fields.
 // We require a C interface for these so LLVM can
@@ -406,7 +408,6 @@ public:
   }
   void setCIDRv4(CidrV4 val, RecordBuffer buffer) const
   {
-    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
     clearNull(buffer);
     CidrV4Runtime * bufVal = (CidrV4Runtime *) (buffer.Ptr + mOffset) ;
     bufVal->prefix = val.prefix.to_bytes();
@@ -583,7 +584,6 @@ public:
   }
   CidrV6 getArrayCIDRv6(RecordBuffer buffer, int idx) const
   {
-    boost::asio::ip::address_v6::bytes_type arr;
     CidrV6 ret;
     ret.prefix = boost::asio::ip::make_address_v6(((CidrV6Runtime *) (buffer.Ptr + mOffset))[idx].prefix);
     ret.prefix_length = ((CidrV6Runtime *)(buffer.Ptr + mOffset))[idx].prefix_length;
@@ -1696,45 +1696,45 @@ public:
   void print(RecordBuffer buf, char arrayDelimiter, char escapeChar, std::ostream& ostr) const;
 };
 
-class RecordTypePrint
-{
-private:
-  std::vector<TaggedFieldAddress> mFields;
-  char mFieldDelimiter;
-  char mRecordDelimiter;
-  char mArrayDelimiter;
-  char mEscapeChar;
+// class RecordTypePrint
+// {
+// private:
+//   std::vector<TaggedFieldAddress> mFields;
+//   char mFieldDelimiter;
+//   char mRecordDelimiter;
+//   char mArrayDelimiter;
+//   char mEscapeChar;
 
-  // Serialization
-  friend class boost::serialization::access;
-  template <class Archive>
-  void serialize(Archive & ar, const unsigned int version)
-  {
-    ar & BOOST_SERIALIZATION_NVP(mFields);
-    ar & BOOST_SERIALIZATION_NVP(mFieldDelimiter);
-    ar & BOOST_SERIALIZATION_NVP(mRecordDelimiter);
-    ar & BOOST_SERIALIZATION_NVP(mArrayDelimiter);
-    ar & BOOST_SERIALIZATION_NVP(mEscapeChar);
-  }
-public:
-  RecordTypePrint();
-  RecordTypePrint(const std::vector<TaggedFieldAddress>& fields);
-  RecordTypePrint(const std::vector<TaggedFieldAddress>& fields,
-		  char fieldDelimter, char recordDelimiter, 
-                  char arrayDelimiter, char escapeChar);
-  RecordTypePrint(const TaggedFieldAddress& field)
-    :
-    mFields(1, field),
-    mFieldDelimiter('\t'),
-    mRecordDelimiter('\n'),
-    mArrayDelimiter(','),
-    mEscapeChar('\\')
-  {
-  }
-  ~RecordTypePrint();
-  void imbue(std::ostream& ostr) const;
-  void print(RecordBuffer buf, std::ostream& ostr, bool emitNewLine=true) const;
-};
+//   // Serialization
+//   friend class boost::serialization::access;
+//   template <class Archive>
+//   void serialize(Archive & ar, const unsigned int version)
+//   {
+//     ar & BOOST_SERIALIZATION_NVP(mFields);
+//     ar & BOOST_SERIALIZATION_NVP(mFieldDelimiter);
+//     ar & BOOST_SERIALIZATION_NVP(mRecordDelimiter);
+//     ar & BOOST_SERIALIZATION_NVP(mArrayDelimiter);
+//     ar & BOOST_SERIALIZATION_NVP(mEscapeChar);
+//   }
+// public:
+//   RecordTypePrint();
+//   RecordTypePrint(const std::vector<TaggedFieldAddress>& fields);
+//   RecordTypePrint(const std::vector<TaggedFieldAddress>& fields,
+// 		  char fieldDelimter, char recordDelimiter, 
+//                   char arrayDelimiter, char escapeChar);
+//   RecordTypePrint(const TaggedFieldAddress& field)
+//     :
+//     mFields(1, field),
+//     mFieldDelimiter('\t'),
+//     mRecordDelimiter('\n'),
+//     mArrayDelimiter(','),
+//     mEscapeChar('\\')
+//   {
+//   }
+//   ~RecordTypePrint();
+//   void imbue(std::ostream& ostr) const;
+//   void print(RecordBuffer buf, std::ostream& ostr, bool emitNewLine=true) const;
+// };
 
 struct RecordBufferIterator
 {
@@ -1805,25 +1805,25 @@ public:
   bool Do(uint8_t * & input, uint8_t * inputEnd, RecordBufferIterator & outputPos, RecordBuffer buf) const;
 };
 
-class RecordTypeFree
-{
-private:
-  std::vector<FieldAddress> mOffsets;
-  std::size_t mSize;
-  // Serialization
-  friend class boost::serialization::access;
-  template <class Archive>
-  void serialize(Archive & ar, const unsigned int version)
-  {
-    ar & BOOST_SERIALIZATION_NVP(mOffsets);
-    ar & BOOST_SERIALIZATION_NVP(mSize);
-  }
-public:
-  RecordTypeFree();
-  RecordTypeFree(std::size_t sz, const std::vector<FieldAddress>& offsets);
-  ~RecordTypeFree();
-  void free(RecordBuffer & buf) const;
-};
+// class RecordTypeFree
+// {
+// private:
+//   std::vector<FieldAddress> mOffsets;
+//   std::size_t mSize;
+//   // Serialization
+//   friend class boost::serialization::access;
+//   template <class Archive>
+//   void serialize(Archive & ar, const unsigned int version)
+//   {
+//     ar & BOOST_SERIALIZATION_NVP(mOffsets);
+//     ar & BOOST_SERIALIZATION_NVP(mSize);
+//   }
+// public:
+//   RecordTypeFree();
+//   RecordTypeFree(std::size_t sz, const std::vector<FieldAddress>& offsets);
+//   ~RecordTypeFree();
+//   void free(RecordBuffer & buf) const;
+// };
 
 class RecordTypeMalloc
 {
@@ -2001,6 +2001,7 @@ class RecordType
   friend class RecordTypeCopy;
 
 private:
+  DynamicRecordContext & mContext;
   std::vector<RecordMember> mMembers;
   std::map<std::string, std::size_t> mMemberNames;
 
@@ -2044,7 +2045,7 @@ public:
     return get(ctxt, members);
   }
 
-  RecordType(const std::vector<RecordMember>& members);
+  RecordType(DynamicRecordContext & ctxt, const std::vector<RecordMember>& members);
   ~RecordType();
   const RecordTypeMalloc * GetMalloc() const;
   const RecordTypeFree * GetFree() const;
@@ -2135,6 +2136,11 @@ public:
     return !this->operator==(rhs);
   }
 
+  DynamicRecordContext & getContext() const
+  {
+    return mContext;
+  }
+  
   /**
    * Physical format descriptor of the default text layout associated
    * with this record type.
@@ -2155,6 +2161,8 @@ public:
   void setArrayFloat(const std::string& field, int32_t idx, float val, RecordBuffer buf) const;
   void setDouble(const std::string& field, double val, RecordBuffer buf) const;
   void setArrayDouble(const std::string& field, int32_t idx, double val, RecordBuffer buf) const;
+  void setDecimal(const std::string& field, decimal128 & val, RecordBuffer buf) const;
+  void setArrayDecimal(const std::string& field, int32_t idx, decimal128 & val, RecordBuffer buf) const;
   void setDatetime(const std::string& field, 
 		   boost::posix_time::ptime val, 
 		   RecordBuffer buf) const;
@@ -2169,6 +2177,7 @@ public:
   void setVarchar(const std::string& field, const char* val, RecordBuffer buf) const;
   void setArrayVarchar(const std::string& field, int32_t idx, const char * val, RecordBuffer buf) const;
   void setChar(const std::string& field, const char* val, RecordBuffer buf) const;
+  void setNull(const std::string& field, RecordBuffer buf) const;
 
   int8_t getInt8(const std::string& field, RecordBuffer buf) const;
   int8_t getArrayInt8(const std::string& field, int32_t idx, RecordBuffer buf) const;

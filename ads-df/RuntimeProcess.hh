@@ -68,16 +68,6 @@ namespace boost {
   class thread;
 }
 
-class Timer
-{
-private:
-  boost::posix_time::ptime mTick;
-  int32_t mPartition;
-public:
-  Timer(int32_t partition);
-  ~Timer();
-};
-
 /**
  * The following methods are implemented for a remoting strategy.
  * Default implementation is to throw an exception

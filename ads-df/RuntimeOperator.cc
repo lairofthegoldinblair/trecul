@@ -64,7 +64,7 @@ RecordTypeFunction * HashFunction::get(DynamicRecordContext & ctxt,
   std::vector<const RecordType *> inputOnly;
   inputOnly.push_back(inputType);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   inputOnly.push_back(&emptyTy);
   std::string hashargs;
   for(std::size_t i=0; i<fields.size(); i++) {
@@ -127,7 +127,7 @@ RecordTypeFunction * KeyPrefixFunction::get(DynamicRecordContext & ctxt,
   std::vector<const RecordType *> inputOnly;
   inputOnly.push_back(inputType);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   inputOnly.push_back(&emptyTy);
   std::string hashargs;
   for(std::size_t i=0; i<fields.size(); i++) {
@@ -261,7 +261,7 @@ SortKeyPrefixFunction::get(DynamicRecordContext & ctxt,
 {
   // TODO: Handle case in which first field doesn't provide a full 31 bits
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> tableOnly;
   tableOnly.push_back(input);
   tableOnly.push_back(&emptyTy);
@@ -351,7 +351,7 @@ void LogicalFilter::check(PlanCheckContext& log)
   // we should warn.
   if (predicate.size()) {
     std::vector<RecordMember> emptyMembers;
-    RecordType emptyTy(emptyMembers);
+    RecordType emptyTy(log, emptyMembers);
     std::vector<const RecordType *> inputs;
     inputs.push_back(getInput(0)->getRecordType());
     inputs.push_back(&emptyTy);
@@ -801,7 +801,7 @@ void LogicalPrint::check(PlanCheckContext& log)
 
   if (predicate.size()) {
     std::vector<RecordMember> emptyMembers;
-    RecordType emptyTy(emptyMembers);
+    RecordType emptyTy(log, emptyMembers);
     std::vector<const RecordType *> inputs;
     inputs.push_back(getInput(0)->getRecordType());
     inputs.push_back(&emptyTy);
@@ -1057,11 +1057,11 @@ RuntimeGenerateOperatorType::RuntimeGenerateOperatorType(DynamicRecordContext & 
 {
   // Create the state type here.
   std::vector<RecordMember> members;
-  RecordType emptyType(members);
+  RecordType emptyType(ctxt, members);
   members.push_back(RecordMember("RECORDCOUNT", Int64Type::Get(ctxt)));
   members.push_back(RecordMember("PARTITIONCOUNT", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("PARTITION", Int32Type::Get(ctxt)));
-  RecordType stateType(members);
+  RecordType stateType(ctxt, members);
   mRecordCount = stateType.getFieldAddress("RECORDCOUNT");
   mPartitionCount = stateType.getFieldAddress("PARTITIONCOUNT");
   mPartition = stateType.getFieldAddress("PARTITION");
@@ -2171,7 +2171,7 @@ void HashJoin::init(DynamicRecordContext & ctxt,
 		    const std::string& transfer)
 {
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> tableOnly;
   tableOnly.push_back(mTableInput);
   tableOnly.push_back(&emptyTy);
@@ -3957,7 +3957,7 @@ void LogicalSwitch::check(PlanCheckContext& log)
     log.logError(*this, "Must set 'on' argument");
   } else {
     std::vector<RecordMember> emptyMembers;
-    RecordType emptyTy(emptyMembers);
+    RecordType emptyTy(log, emptyMembers);
     std::vector<const RecordType *> inputs;
     inputs.push_back(getInput(0)->getRecordType());
     inputs.push_back(&emptyTy);

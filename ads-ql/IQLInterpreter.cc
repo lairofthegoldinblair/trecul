@@ -523,6 +523,155 @@ extern "C" void InternalDecimalFromChar(const char * arg,
   ::decimal128FromString(ret, arg, ctxt->getDecimalContext());
 }
 
+static void printEscaped(const char * begin, int32_t sz, 
+                         char escapeChar, std::ostream& ostr)
+{
+  if (escapeChar != 0) {
+    const char * it = begin;
+    const char * end = begin + sz;
+    for(; it!=end; it++) {
+      switch(*it) {
+      case '\n':
+	ostr << escapeChar << 'n';
+	break;
+      case '\b':
+	ostr << escapeChar << 'b';
+	break;
+      case '\f':
+	ostr << escapeChar << 'f';
+	break;
+      case '\t':
+	ostr << escapeChar << 't';
+	break;
+      case '\r':
+	ostr << escapeChar << 'r';
+	break;
+      case '\\':
+	ostr << escapeChar << '\\';
+	break;
+      default:
+	ostr << *it;
+	break;
+      }
+    }
+  } else {
+    // Raw output
+    ostr << begin;
+  }
+}
+
+extern "C" void InternalPrintVarchar(const Varchar * arg,
+                                     char escapeChar,
+                                     uint8_t * ostr)
+{
+  const char * begin = arg->c_str();
+  int32_t sz = arg->size();
+  printEscaped(begin, sz, escapeChar, *(reinterpret_cast<std::ostream *>(ostr)));
+}
+
+extern "C" void InternalPrintChar(const char * arg,
+                                  char escapeChar,
+                                  uint8_t * ostr)
+{
+  const char * begin = arg;
+  // TODO: Pad to static length
+  int32_t sz = ::strlen(begin);
+  printEscaped(begin, sz, escapeChar, *reinterpret_cast<std::ostream *>(ostr));
+}
+
+extern "C" void InternalPrintCharRaw(const char * arg,
+                                     uint8_t * ostr)
+{
+  *reinterpret_cast<std::ostream *>(ostr) << arg;
+}
+
+extern "C" void InternalPrintDecimal(decimal128 * arg,
+                                     uint8_t * ostr)
+{
+  char buffer[DECIMAL128_String];
+  decimal128ToString(arg, &buffer[0]);
+  *reinterpret_cast<std::ostream *>(ostr) << buffer;
+}
+
+extern "C" void InternalPrintInt64(int64_t arg,
+                                   uint8_t * ostr)
+{
+  *reinterpret_cast<std::ostream *>(ostr) << arg;
+}
+
+extern "C" void InternalPrintDouble(double arg,
+                                    uint8_t * ostr)
+{
+  *reinterpret_cast<std::ostream *>(ostr) << arg;
+}
+
+extern "C" void InternalPrintDatetime(boost::posix_time::ptime arg,
+                                      uint8_t * ostr)
+{
+  *reinterpret_cast<std::ostream *>(ostr) << arg;
+}
+
+extern "C" void InternalPrintDate(boost::gregorian::date arg,
+                                      uint8_t * ostr)
+{
+  *reinterpret_cast<std::ostream *>(ostr) << arg;
+}
+
+extern "C" void InternalPrintIPv4(boost::asio::ip::address_v4::bytes_type network_order,
+                                  uint8_t * ostr)
+{
+  boost::asio::ip::address_v4 addr(network_order);
+  *reinterpret_cast<std::ostream *>(ostr) << addr;
+}
+
+extern "C" void InternalPrintCIDRv4(int64_t arg,
+                                    uint8_t * ostr)
+{
+  const CidrV4Runtime * cidr = (const CidrV4Runtime *) &arg;
+  boost::asio::ip::address_v4 addr(cidr->prefix);
+  *reinterpret_cast<std::ostream *>(ostr) << addr;
+  *reinterpret_cast<std::ostream *>(ostr) <<  "/";
+  *reinterpret_cast<std::ostream *>(ostr) <<  boost::lexical_cast<std::string>((int) cidr->prefix_length);
+}
+
+static const unsigned char v4MappedPrefix[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF };
+
+extern "C" void InternalPrintIPv6(const char * lhs, 
+                                  uint8_t * ostr)
+{
+  const uint8_t * octets = (const uint8_t *) lhs;
+  char buf[INET6_ADDRSTRLEN];
+  if (memcmp(lhs, v4MappedPrefix, sizeof(v4MappedPrefix)) == 0) {
+    snprintf(buf, sizeof(buf), "%u.%u.%u.%u", octets[12], octets[13], octets[14], octets[15]);
+  } else {
+    const char * result = ::inet_ntop(AF_INET6, (struct in6_addr *) lhs, buf, sizeof(buf));
+    if (result == 0) {
+      buf[0] = 0;
+    }
+  }
+  *reinterpret_cast<std::ostream *>(ostr) << buf;
+}
+
+extern "C" void InternalPrintCIDRv6(const char * lhs, 
+                                    uint8_t * ostr)
+{
+  const uint8_t * octets = (const uint8_t *) lhs;
+  char buf[INET6_ADDRSTRLEN+4];
+  if (memcmp(lhs, v4MappedPrefix, sizeof(v4MappedPrefix)) == 0 && octets[16]>96) {
+    snprintf(buf, sizeof(buf), "%u.%u.%u.%u/%u", octets[12], octets[13], octets[14], octets[15], octets[16]-96);
+  } else {
+    const char * result = ::inet_ntop(AF_INET6, (struct in6_addr *) lhs, buf, sizeof(buf));
+    if (result == 0) {
+      buf[0] = 0;
+    } else {
+      auto len = ::strlen(result);
+      snprintf(&buf[len], sizeof(buf)-len, "/%u", octets[16]);      
+    }
+  }
+  
+  *reinterpret_cast<std::ostream *>(ostr) << buf;
+}
+
 extern "C" void InternalDecimalFromInt8(int8_t val, decimal128 * result, InterpreterContext * ctxt) {
   decNumber a;
   decNumberFromInt32(&a, val);
@@ -1077,7 +1226,6 @@ extern "C" void InternalVarcharFromCIDRv4(int64_t arg,
   copyFromString(&buf[0], result, ctxt);
 }
 
-static const unsigned char v4MappedPrefix[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF };
 extern "C" void InternalVarcharFromIPv6(const char * lhs, 
                                         Varchar * result,
                                         InterpreterContext * ctxt) {
@@ -2564,6 +2712,81 @@ void LLVMBase::InitializeLLVM()
   funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "SuperFastHash", funTy);
 
+  // Print Functions
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintChar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintCharRaw", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintDecimal", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintInt64", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintDouble", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintDatetime", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintIPv4", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintCIDRv4", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintIPv6", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintCIDRv6", funTy);
+
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
   funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
@@ -2608,6 +2831,11 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
   funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "acos", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = ::LoadAndValidateExternalFunction(*this, "free", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
@@ -2716,6 +2944,46 @@ void LLVMBase::ConstructFunction(const std::string& funName,
     // Store argument in the alloca 
     mContext->LLVMBuilder->CreateStore(arg, allocAVal);
   }  
+}
+
+void LLVMBase::ConstructFunction(const std::string& funName, 
+                                 const std::vector<std::string> & argumentNames,
+                                 const std::vector<llvm::Type *> & argumentTypes)
+{
+  llvm::FunctionType * funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext),
+						       llvm::makeArrayRef(&argumentTypes[0], argumentTypes.size()),
+						       0);
+  mContext->LLVMFunction = llvm::Function::Create(funTy, llvm::GlobalValue::ExternalLinkage, funName.c_str(), mContext->LLVMModule);
+  llvm::BasicBlock * entryBlock = llvm::BasicBlock::Create(*mContext->LLVMContext, "EntryBlock", mContext->LLVMFunction);
+  mContext->LLVMBuilder->SetInsertPoint(entryBlock);
+  for(unsigned int i = 0; i<argumentNames.size(); i++) {
+    llvm::Value * allocAVal = mContext->buildEntryBlockAlloca(argumentTypes[i], argumentNames[i].c_str());
+    llvm::Value * arg = &mContext->LLVMFunction->arg_begin()[i];
+    mContext->defineVariable(argumentNames[i].c_str(), allocAVal,
+			     NULL, NULL, IQLToLLVMValue::eGlobal);
+    // Set names on function arguments
+    arg->setName(argumentNames[i]);
+    // Store argument in the alloca 
+    mContext->LLVMBuilder->CreateStore(arg, allocAVal);
+  }  
+}
+
+void LLVMBase::createRecordTypeOperation(const std::string& funName,
+                                         const RecordType * input)
+{
+  std::vector<std::string> argumentNames;
+  argumentNames.push_back("__BasePointer__");
+  argumentNames.push_back("__OutputStreamPointer__");
+  argumentNames.push_back("__OutputRecordDelimiter__");
+  std::vector<llvm::Type *> argumentTypes;
+  argumentTypes.push_back(llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0));
+  argumentTypes.push_back(llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0));
+  argumentTypes.push_back(llvm::Type::getInt32Ty(*mContext->LLVMContext));
+  // Create the function object with its arguments (these go into the
+  // new freshly created symbol table).
+  ConstructFunction(funName, argumentNames, argumentTypes);
+  // Inject the members of the input struct into the symbol table.
+  mContext->addInputRecordType("input", "__BasePointer__", input);
 }
 
 void LLVMBase::createTransferFunction(const std::string& funName,
@@ -3548,6 +3816,112 @@ IQLUpdateModule * RecordTypeInPlaceUpdate::create() const
   return new IQLUpdateModule(mFunName, llvm::CloneModule(*mContext->LLVMModule));
 }
 
+RecordTypeOperations::RecordTypeOperations(const RecordType * recordType, const std::string& funName, std::function<void()> op)
+  :
+  mFunName(funName)
+{
+  init(recordType, op);
+}
+
+RecordTypeOperations::~RecordTypeOperations()
+{
+}
+
+void RecordTypeOperations::init(const RecordType * recordType, std::function<void()> op)
+{
+  InitializeLLVM();
+
+  // Create the LLVM function and populate variables in
+  // symbol table to prepare for code gen.
+  createRecordTypeOperation(mFunName, recordType);
+
+  // Special context entry for output record required by 
+  // transfer but not by in place update.
+  mContext->IQLMoveSemantics = 0;
+  mContext->IQLOutputRecord = nullptr;
+
+  op();
+  
+  mContext->LLVMBuilder->CreateRetVoid();
+
+  llvm::verifyFunction(*mContext->LLVMFunction);
+  // llvm::outs() << "We just constructed this LLVM module:\n\n" << *mContext->LLVMModule;
+  // // Now run optimizer over the IR
+  mFPM->run(*mContext->LLVMFunction);
+  // llvm::outs() << "We just optimized this LLVM module:\n\n" << *mContext->LLVMModule;
+  // llvm::outs() << "\n\nRunning foo: ";
+  // llvm::outs().flush();
+}
+
+IQLRecordTypeOperationModule * RecordTypeOperations::create() const
+{
+  return new IQLRecordTypeOperationModule(mFunName, llvm::CloneModule(*mContext->LLVMModule));
+}
+
+RecordTypeFreeOperation::RecordTypeFreeOperation(const RecordType * recordType)
+  :
+  RecordTypeOperations(recordType, "RecordTypeFree", [this, recordType]() { this->mContext->buildRecordTypeFree(recordType); })
+{
+}
+
+RecordTypePrintOperation::RecordTypePrintOperation(const RecordType * recordType)
+  :
+  RecordTypeOperations(recordType, "RecordTypePrint", [this, recordType]() { this->mContext->buildRecordTypePrint(recordType, '\t', '\n', '\\'); })
+{
+}
+
+IQLRecordTypeOperationModule::IQLRecordTypeOperationModule(const std::string& funName, 
+                                                           std::unique_ptr<llvm::Module> module)
+  :
+  mFunName(funName),
+  mFunction(NULL),
+  mImpl(NULL)
+{
+  initImpl(std::move(module));
+}
+
+IQLRecordTypeOperationModule::~IQLRecordTypeOperationModule()
+{
+  if (mImpl) {
+    delete mImpl;
+  }
+}
+
+void IQLRecordTypeOperationModule::initImpl(std::unique_ptr<llvm::Module> module)
+{
+  std::vector<std::string> funNames;
+  funNames.push_back(mFunName);
+  mImpl = new IQLRecordBufferMethodHandle(std::move(module), funNames, mObjectFile);
+  mFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
+}
+
+void IQLRecordTypeOperationModule::initImpl()
+{
+  mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
+  mFunction = (LLVMFuncType) mImpl->getFunPtr(mFunName);
+}
+
+IQLRecordTypeOperationModule & IQLRecordTypeOperationModule::operator=(const IQLRecordTypeOperationModule & rhs)
+{
+  if (mImpl != nullptr) {
+    delete mImpl;
+  }
+  mFunName = rhs.mFunName;
+  mObjectFile = rhs.mObjectFile;
+  initImpl();
+  return *this;
+}
+
+void IQLRecordTypeOperationModule::execute(RecordBuffer & source) const
+{
+  (*mFunction)((char *) source.Ptr, nullptr, 0);
+}
+
+void IQLRecordTypeOperationModule::execute(RecordBuffer & source, std::ostream & ostr, bool outputRecordDelimiter) const
+{
+  (*mFunction)((char *) source.Ptr, (char *)&ostr, outputRecordDelimiter);
+}
+
 IQLFunctionModule::IQLFunctionModule(const std::string& funName, 
 				     std::unique_ptr<llvm::Module> module)
   :
@@ -4205,3 +4579,71 @@ void IQLAggregateModule::executeTransfer(RecordBuffer & source1,
   ctxt->clear();
 }
 
+RecordTypeFree::RecordTypeFree(const RecordType * recordType)
+{
+  RecordTypeFreeOperation op(recordType);
+  mModule = op.create();
+}
+
+RecordTypeFree::RecordTypeFree(const RecordTypeFree & rhs)
+  :
+  mModule(nullptr)
+{
+  if(rhs.mModule != nullptr) {
+    mModule = new IQLRecordTypeOperationModule(*rhs.mModule);
+  }
+}
+
+RecordTypeFree & RecordTypeFree::operator=(const RecordTypeFree & rhs)
+{
+  delete mModule;
+  mModule;
+  if(rhs.mModule != nullptr) {
+    mModule = new IQLRecordTypeOperationModule(*rhs.mModule);
+  }
+  return *this;
+}
+
+RecordTypePrint::RecordTypePrint(const RecordType * recordType)
+{
+  RecordTypePrintOperation op(recordType);
+  mModule = op.create();
+}
+
+RecordTypePrint::RecordTypePrint(const RecordType * recordType,
+                                 char fieldDelimter, char recordDelimiter, 
+                                 char arrayDelimiter, char escapeChar)
+{
+  RecordTypePrintOperation op(recordType);
+  mModule = op.create();
+}
+
+RecordTypePrint::RecordTypePrint(const RecordTypePrint & rhs)
+  :
+  mModule(nullptr)
+{
+  if(rhs.mModule != nullptr) {
+    mModule = new IQLRecordTypeOperationModule(*rhs.mModule);
+  }
+}
+
+RecordTypePrint & RecordTypePrint::operator=(const RecordTypePrint & rhs)
+{
+  delete mModule;
+  mModule;
+  if(rhs.mModule != nullptr) {
+    mModule = new IQLRecordTypeOperationModule(*rhs.mModule);
+  }
+  return *this;
+}
+
+void RecordTypePrint::imbue(std::ostream& ostr) const
+{
+  // stream takes ownership of the facet.
+  boost::posix_time::time_facet * facet =
+    new boost::posix_time::time_facet("%Y-%m-%d %H:%M:%S");
+  boost::gregorian::date_facet * dateFacet =
+    new boost::gregorian::date_facet("%Y-%m-%d");
+  ostr.imbue(std::locale(std::locale(ostr.getloc(), facet), dateFacet));
+  ostr << std::fixed << std::setprecision(9);
+}

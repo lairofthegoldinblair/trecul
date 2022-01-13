@@ -843,7 +843,7 @@ BOOST_AUTO_TEST_CASE(testPagedHashTable)
   members.push_back(RecordMember("b", VarcharType::Get(ctxt)));
   members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
-  RecordType recTy(members);
+  RecordType recTy(ctxt, members);
   std::vector<RecordMember> rhsMembers;
   // dummy field to make sure that the offsets of fields we are comparing
   // are different.
@@ -852,9 +852,9 @@ BOOST_AUTO_TEST_CASE(testPagedHashTable)
   rhsMembers.push_back(RecordMember("f", VarcharType::Get(ctxt)));
   rhsMembers.push_back(RecordMember("g", Int32Type::Get(ctxt)));
   rhsMembers.push_back(RecordMember("h", Int64Type::Get(ctxt)));
-  RecordType rhsTy(rhsMembers);
+  RecordType rhsTy(ctxt, rhsMembers);
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> types;
   types.push_back(&recTy);
   types.push_back(&rhsTy);
@@ -1583,7 +1583,7 @@ BOOST_AUTO_TEST_CASE(testLessThan1)
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22)));
   members.push_back(RecordMember("coop_id", Int32Type::Get(ctxt)));
-  RecordType recTy (members);
+  RecordType recTy(ctxt, members);
   std::vector<std::string> fields;
   fields.push_back("akid");
   
@@ -1624,7 +1624,7 @@ BOOST_AUTO_TEST_CASE(testLessThan2)
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22)));
   members.push_back(RecordMember("coop_id", Int32Type::Get(ctxt)));
-  RecordType recTy (members);
+  RecordType recTy(ctxt, members);
   std::vector<std::string> fields;
   fields.push_back("akid");
   fields.push_back("coop_id");
@@ -1683,7 +1683,7 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22)));
   members.push_back(RecordMember("coop_id", Int32Type::Get(ctxt)));
-  RecordType recTy (members);
+  RecordType recTy(ctxt, members);
   std::vector<std::string> fields;
   fields.push_back("akid");
   fields.push_back("coop_id");
@@ -1858,7 +1858,7 @@ BOOST_AUTO_TEST_CASE(testLessThan7)
       fields.push_back(field);
     }
   }
-  RecordType recTy (members);  
+  RecordType recTy(ctxt, members);  
   RecordTypeFunction * lessThan = LessThanFunction::get(ctxt, &recTy, &recTy, 
 							fields, "testEq");
   InterpreterContext runtimeCtxt;  
@@ -1902,7 +1902,7 @@ BOOST_AUTO_TEST_CASE(testCompare1)
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22)));
   members.push_back(RecordMember("coop_id", Int32Type::Get(ctxt)));
-  RecordType recTy (members);
+  RecordType recTy(ctxt, members);
   std::vector<SortKey> fields;
   fields.push_back(SortKey("akid"));
   
@@ -1945,7 +1945,7 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22)));
   members.push_back(RecordMember("coop_id", Int32Type::Get(ctxt)));
-  RecordType recTy (members);
+  RecordType recTy(ctxt, members);
   std::vector<SortKey> fields;
   fields.push_back(SortKey("akid"));
   fields.push_back(SortKey("coop_id"));
@@ -2114,7 +2114,7 @@ BOOST_AUTO_TEST_CASE(testCompareNull)
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt, true)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22, true)));
   members.push_back(RecordMember("coop_id", Int32Type::Get(ctxt, true)));
-  RecordType recTy (members);
+  RecordType recTy(ctxt, members);
   std::vector<SortKey> fields;
   fields.push_back(SortKey("akid"));
   
@@ -2603,7 +2603,7 @@ BOOST_AUTO_TEST_CASE(testSimpleSchedulerWithHashJoin)
   DynamicRecordContext ctxt;
   DataflowScheduler scheduler;
   std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(emptyMembers);
+  RecordType emptyTy(ctxt, emptyMembers);
   RuntimeGenerateOperatorType opType1(ctxt, "RECORDCOUNT AS a", 24);
   RuntimeGenerateOperatorType opType2(ctxt, "RECORDCOUNT+RECORDCOUNT AS c, RECORDCOUNT AS b", 12);
   std::vector<const RecordType *> tableOnly;
