@@ -465,6 +465,16 @@ const FieldType * TypeCheckContext::castTo(const FieldType * lhs,
     } else {
       return NULL;
     }
+  } else if (from_type->GetEnum() == FieldType::IPV4) {
+    if (to_type->GetEnum() == FieldType::IPV6)
+      return to_type;
+    else 
+      return NULL;    
+  } else if (from_type->GetEnum() == FieldType::CIDRV4) {
+    if (to_type->GetEnum() == FieldType::CIDRV6)
+      return to_type;
+    else 
+      return NULL;    
   } else {
     return NULL;
   }
@@ -718,6 +728,8 @@ const FieldType * TypeCheckContext::buildCall(const char * f, std::vector<const 
   } else if (boost::algorithm::iequals(f, "isnull") ||
 	     boost::algorithm::iequals(f, "ifnull")) {
     return buildIsNull(args);
+  } else if (boost::algorithm::iequals(f, "hash")) {
+    return buildHash(args);
   }
   // TODO: Implement operator/function overloading.
   const FieldType * fType = lookupType(f, NULL);

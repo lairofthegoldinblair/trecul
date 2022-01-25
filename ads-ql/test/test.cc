@@ -1395,8 +1395,9 @@ BOOST_AUTO_TEST_CASE(testIQLRecordHash)
     expected = SuperFastHash((char *) &arr[0], sizeof(arr), expected);
     BOOST_CHECK_EQUAL(val, expected);
   }
-  {
-    RecordTypeFunction hasher(ctxt, "int64hash", types, "#(d,a)");
+  for(int i=0; i<2; ++i) {
+    // Verify multiple arguments but also that you can invoke hash with # and hash
+    RecordTypeFunction hasher(ctxt, "int64hash", types, (boost::format("%1%(d,a)") % (i==0 ? "#" : "hash")).str().c_str());
     uint32_t val = (uint32_t) hasher.execute(inputBuf, RecordBuffer(NULL), &runtimeCtxt);
     int64_t tmp = 1239923432;
     uint32_t expected = SuperFastHash((char *) &tmp, 8, 8);
@@ -7189,16 +7190,19 @@ void testCIDRv6Cast(bool isNullable)
   std::vector<RecordMember> members;
   members.push_back(RecordMember("a", IPv6Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("b", CIDRv6Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("c", CIDRv4Type::Get(ctxt, isNullable)));
   RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
   recTy.setIPv6("a", boost::asio::ip::make_address_v6("aaaa:bbbb::"), inputBuf);
   recTy.setCIDRv6("b", { boost::asio::ip::make_address_v6("aaaa:cccc::"), 32 }, inputBuf);
+  recTy.setCIDRv4("c", { boost::asio::ip::make_address_v4("1.2.3.0"), 24 }, inputBuf);
 
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
                           "CAST(a AS CIDRV6) AS a"
-                          ", CAST(b AS CIDRV6) AS b");
+                          ", CAST(b AS CIDRV6) AS b"
+                          ", CAST(c AS CIDRV6) AS c");
     for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
 	it != t1.getTarget()->end_members();
 	++it) {
@@ -7216,6 +7220,10 @@ void testCIDRv6Cast(bool isNullable)
                       t1.getTarget()->getCIDRv6("b", outputBuf).prefix);
     BOOST_CHECK(32U == 
                       t1.getTarget()->getCIDRv6("b", outputBuf).prefix_length);
+    BOOST_CHECK(boost::asio::ip::make_address_v6(boost::asio::ip::v4_mapped_t::v4_mapped, boost::asio::ip::make_address_v4("1.2.3.0")) == 
+                      t1.getTarget()->getCIDRv6("c", outputBuf).prefix);
+    BOOST_CHECK(120U == 
+                      t1.getTarget()->getCIDRv6("c", outputBuf).prefix_length);
     
     t1.getTarget()->getFree().free(outputBuf);
   }

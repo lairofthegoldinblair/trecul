@@ -1354,6 +1354,8 @@ CodeGenerationContext::buildCall(const char * f,
   } else if (boost::algorithm::iequals(f, "isnull") ||
 	     boost::algorithm::iequals(f, "ifnull")) {
     return buildIsNullFunction(args, retType);
+  } else if (boost::algorithm::iequals(f, "hash")) {
+    return buildHash(args);
   } else {
     llvm::Type * retTy = retType->LLVMGetType(this);
     llvm::Value * retTmp = buildEntryBlockAlloca(retTy, "callReturnTemp");
@@ -2780,6 +2782,27 @@ CodeGenerationContext::buildCastCIDRv6(const IQLToLLVMValue * e,
       const FieldType * prefixLengthTy = Int8Type::Get(retType->getContext());
       const IQLToLLVMValue * prefixLength = IQLToLLVMRValue::get(this, b->getInt8(128), IQLToLLVMValue::eLocal);
       return buildDiv(e, argType, prefixLength, prefixLengthTy, ret, retType); 
+    }
+  case FieldType::CIDRV4:
+    {
+      const IPv4Type * ipv4Ty = IPv4Type::Get(argType->getContext(), false);
+      const IPv6Type * ipv6Ty = IPv6Type::Get(argType->getContext(), false);
+      llvm::Type * llvmIpv6Ty = llvm::PointerType::get(ipv6Ty->LLVMGetType(this), 0);
+      // Cast prefix from v4 to v6
+      const IQLToLLVMValue * prefix = buildCastIPv4(e, argType, ipv4Ty);
+      buildCastIPv6(prefix, ipv4Ty, b->CreateBitCast(ret, llvmIpv6Ty), ipv6Ty);
+      // prefix length of cidr + 96, to access prefix length, alloca and copy so we can GEP
+      llvm::Value * prefix_length = buildEntryBlockAlloca(argType->LLVMGetType(this), "tmpcidrv4");
+      b->CreateStore(e->getValue(this), prefix_length);
+      prefix_length = b->CreateLoad(b->getInt8Ty(), b->CreateStructGEP(argType->LLVMGetType(this), prefix_length, 1));
+      prefix_length = b->CreateAdd(prefix_length, b->getInt8(96));
+      // Set prefix length in the result
+      llvm::Value * gepIndexes[2];
+      gepIndexes[0] = b->getInt64(0);    
+      gepIndexes[1] = b->getInt64(16);
+      llvm::Value * prefix_length_ptr  = b->CreateGEP(retType->LLVMGetType(this), ret, llvm::makeArrayRef(&gepIndexes[0], 2), "prefix_length");
+      b->CreateStore(prefix_length, prefix_length_ptr);
+      return IQLToLLVMValue::eLocal;
     }
   case FieldType::CIDRV6:
     b->CreateStore(e->getValue(this), ret);
