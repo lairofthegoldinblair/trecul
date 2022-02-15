@@ -9231,7 +9231,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordPrintModule)
   }
 }
 
-bool testRecordPrintModuleNullable(bool decimalNullable, bool int32Nullable)
+void testRecordPrintModuleNullable(bool decimalNullable, bool int32Nullable)
 {
   DynamicRecordContext ctxt;
   InterpreterContext runtimeCtxt;
