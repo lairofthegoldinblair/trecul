@@ -67,6 +67,31 @@ class RecordType;
 class RecordTypeFree;
 class RecordTypePrint;
 
+template <typename _TreculType>
+struct TreculNativeType
+{
+};
+
+template <typename _TreculType>
+struct TreculNativeGetter
+{
+  typedef typename TreculNativeType<_TreculType>::type type;
+  typedef typename TreculNativeType<_TreculType>::type * ptr_type;
+  static type set(uint8_t * buf, type val)
+  {
+    * ((type *) buf) = val;
+  }
+  static type get(const uint8_t * buf)
+  {
+    return * ((type *) buf);;
+  }
+  static type * getPtr(uint8_t * buf)
+  {
+    return ((type *) buf);
+  }
+};
+
+
 // Runtime representations of primitive fields.
 // We require a C interface for these so LLVM can
 // call functions with these parameters.
@@ -296,6 +321,10 @@ std::basic_ostream<Elem, Traits>& operator<<(
 
 class FieldAddress
 {
+public:
+  static const uint32_t NON_NULLABLE=0xffffffff;
+  // TODO: I'd like to avoid letting RecordType break the abstraction but I'm being lazy
+  friend class RecordType;
 private:
   uint32_t mOffset;
   uint32_t mPosition;
@@ -317,7 +346,7 @@ public:
   }
   void setNull(RecordBuffer buffer) const
   {
-    if (mPosition == 0xffffffff)
+    if (mPosition == NON_NULLABLE)
       throw std::runtime_error("Can't set NULL on a non-nullable field");
 
     // put 0 into bit
@@ -327,7 +356,7 @@ public:
   }
   void clearNull(RecordBuffer buffer) const
   {
-    if (mPosition != 0xffffffff) {
+    if (mPosition != NON_NULLABLE) {
       // put 1 into bit
       uint32_t dwordPos = mPosition >> 5;
       uint32_t mask = 1 << (mPosition - (dwordPos << 5));
@@ -336,7 +365,7 @@ public:
   }
   bool isNull(RecordBuffer buffer) const
   {
-    if (mPosition != 0xffffffff) {
+    if (mPosition != NON_NULLABLE) {
       // NULL means there is a zero bit
       uint32_t dwordPos = mPosition >> 5;
       uint32_t mask = 1 << (mPosition - (dwordPos << 5));
@@ -354,7 +383,13 @@ public:
   void setArrayNull(RecordBuffer buffer, const class VariableArrayType * ty, int32_t idx) const;
   void clearArrayNull(RecordBuffer buffer, const class VariableArrayType * ty, int32_t idx) const;
   bool isArrayNull(RecordBuffer buffer, const class VariableArrayType * ty, int32_t idx) const;
-  
+
+  template<typename _TreculType>
+  void set(typename TreculNativeGetter<_TreculType>::type val, RecordBuffer buffer) const
+  {
+    clearNull(buffer);
+    TreculNativeGetter<_TreculType>::set(buffer.Ptr + mOffset, val);
+  }
   void setInt8(int8_t val, RecordBuffer buffer) const
   {
     clearNull(buffer);
@@ -425,6 +460,16 @@ public:
     auto arr = val.prefix.to_bytes();
     memcpy(buffer.Ptr + mOffset, &arr[0], 16);
     *(buffer.Ptr + mOffset + 16) = val.prefix_length;
+  }
+  template<typename _TreculType>
+  typename TreculNativeGetter<_TreculType>::type get(RecordBuffer buffer) const
+  {
+    return TreculNativeGetter<_TreculType>::get(buffer.Ptr + mOffset);
+  }
+  template<typename _TreculType>
+  typename TreculNativeGetter<_TreculType>::ptr_type getPtr(RecordBuffer buffer) const
+  {
+    return TreculNativeGetter<_TreculType>::getPtr(buffer.Ptr + mOffset);
   }
   int8_t getInt8(RecordBuffer buffer) const
   {
@@ -728,6 +773,19 @@ public:
     return ((decimal128 *) (buffer.Ptr + mOffset)) + idx;
   }
 
+  RecordBuffer getStructPtr(RecordBuffer buffer) const
+  {
+    return RecordBuffer(buffer.Ptr + mOffset);
+  }
+  RecordBuffer getArrayStructPtr(RecordBuffer buffer, int idx, std::size_t sz) const
+  {
+    return RecordBuffer(buffer.Ptr + mOffset + idx*sz);
+  }
+  RecordBuffer getVarArrayStructPtr(RecordBuffer buffer, int idx, std::size_t sz) const
+  {
+    return RecordBuffer(reinterpret_cast<uint8_t*>(const_cast<char *>(((Vararray *)(buffer.Ptr + mOffset))->c_str())) + idx*sz);
+  }
+
   bool operator<(const FieldAddress & rhs) const
   {
     return mOffset < rhs.mOffset;
@@ -759,7 +817,7 @@ public:
    */
   FieldAddress getBitwordAddress() const
   {
-    return FieldAddress((mPosition >> 5)*sizeof(uint32_t), 0xffffffff);
+    return FieldAddress((mPosition >> 5)*sizeof(uint32_t), NON_NULLABLE);
   }
 
   // Code generate instructions to get an untyped pointer to member given a base pointer.
@@ -844,6 +902,7 @@ public:
 		       FUNCTION, /* Function types are NOT allowed as fields at this point. */
 		       FIXED_ARRAY, /* Fixed Length Array. */
 		       VARIABLE_ARRAY, /* Variable Length Array. */
+		       STRUCT, /* Struct. */
 		       INTERVAL, /* Interval types */
 		       NIL /* Type of literal NULL */
   };
@@ -1594,6 +1653,44 @@ public:
   llvm::Type * LLVMGetType(CodeGenerationContext * ctxt) const;
 };
 
+class RecordMember
+{
+private:
+  const FieldType * mType;
+  std::string mName;
+public:
+  RecordMember(const std::string& name, const FieldType * ty)
+    :
+    mType(ty),
+    mName(name)
+  {
+    BOOST_ASSERT(ty != NULL);
+  }
+
+  RecordMember(std::string && name, const FieldType * ty)
+    :
+    mType(ty),
+    mName(std::move(name))
+  {
+    BOOST_ASSERT(ty != NULL);
+  }
+
+  const std::string& GetName() const {
+    return mName;
+  }
+
+  const std::string& getName() const {
+    return mName;
+  }
+
+  const FieldType * GetType() const {
+    return mType; 
+  }
+  const FieldType * getType() const {
+    return mType; 
+  }
+};
+
 class IntervalType : public FieldType
 {
 public:
@@ -1658,6 +1755,187 @@ public:
   std::string toString() const;
 };
 
+template<>
+struct TreculNativeType<CharType>
+{
+  typedef char type;
+};
+
+template<>
+struct TreculNativeType<VarcharType>
+{
+  typedef Varchar type;
+};
+
+template<>
+struct TreculNativeType<Int8Type>
+{
+  typedef int8_t type;
+};
+
+template<>
+struct TreculNativeType<Int16Type>
+{
+  typedef int16_t type;
+};
+
+template<>
+struct TreculNativeType<Int32Type>
+{
+  typedef int32_t type;
+};
+
+template<>
+struct TreculNativeType<Int64Type>
+{
+  typedef int64_t type;
+};
+
+template<>
+struct TreculNativeType<FloatType>
+{
+  typedef float type;
+};
+
+template<>
+struct TreculNativeType<DoubleType>
+{
+  typedef double type;
+};
+
+template<>
+struct TreculNativeType<DatetimeType>
+{
+  typedef boost::posix_time::ptime type;
+};
+
+template<>
+struct TreculNativeType<DateType>
+{
+  typedef boost::gregorian::date type;
+};
+
+template<>
+struct TreculNativeType<DecimalType>
+{
+  typedef decimal128 type;
+};
+
+template<>
+struct TreculNativeType<IPv4Type>
+{
+  typedef boost::asio::ip::address_v4 type;
+};
+
+template<>
+struct TreculNativeType<CIDRv4Type>
+{
+  typedef CidrV4 type;
+};
+
+template<>
+struct TreculNativeType<IPv6Type>
+{
+  typedef boost::asio::ip::address_v6 type;
+};
+
+template<>
+struct TreculNativeType<CIDRv6Type>
+{
+  typedef CidrV6 type;
+};
+
+template <>
+struct TreculNativeGetter<IPv4Type>
+{
+  typedef typename TreculNativeType<IPv4Type>::type type;
+  typedef typename TreculNativeType<IPv4Type>::type * ptr_type;
+  static type set(uint8_t * buf, type val)
+  {
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
+    *(bytes_type *) (buf) = val.to_bytes();
+  }
+  static type get(const uint8_t * buf)
+  {
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
+    return boost::asio::ip::make_address_v4(*(bytes_type *) (buf));
+  }
+  static type * getPtr(uint8_t * buf)
+  {
+    return ((type *) buf);;
+  }
+};
+
+template <>
+struct TreculNativeGetter<CIDRv4Type>
+{
+  typedef typename TreculNativeType<CIDRv4Type>::type type;
+  typedef typename TreculNativeType<CIDRv4Type>::type * ptr_type;
+  static type set(uint8_t * buf, type val)
+  {
+    CidrV4Runtime * bufVal = (CidrV4Runtime *) (buf) ;
+    bufVal->prefix = val.prefix.to_bytes();
+    bufVal->prefix_length = val.prefix_length;
+  }
+  static type get(const uint8_t * buf)
+  {
+    typedef boost::asio::ip::address_v4::bytes_type bytes_type;
+    CidrV4 ret;
+    ret.prefix = boost::asio::ip::make_address_v4(*(bytes_type *) (buf));
+    ret.prefix_length = *(buf + sizeof(bytes_type));
+    return ret;
+  }
+  static type * getPtr(uint8_t * buf)
+  {
+    return ((type *) buf);;
+  }
+};
+
+template <>
+struct TreculNativeGetter<IPv6Type>
+{
+  typedef typename TreculNativeType<IPv6Type>::type type;
+  typedef typename TreculNativeType<IPv6Type>::type * ptr_type;
+  static type set(uint8_t * buf, type val)
+  {
+    auto arr = val.to_bytes();
+    memcpy(buf, &arr[0], 16);
+  }
+  static type get(const uint8_t * buf)
+  {
+    typedef boost::asio::ip::address_v6::bytes_type bytes_type;
+    return boost::asio::ip::make_address_v6(((bytes_type *) (buf))[0]);
+  }
+  static type * getPtr(uint8_t * buf)
+  {
+    return ((type *) buf);;
+  }
+};
+
+template <>
+struct TreculNativeGetter<CIDRv6Type>
+{
+  typedef typename TreculNativeType<CIDRv6Type>::type type;
+  typedef typename TreculNativeType<CIDRv6Type>::type * ptr_type;
+  static type set(uint8_t * buf, type val)
+  {
+    auto arr = val.prefix.to_bytes();
+    memcpy(buf, &arr[0], 16);
+    *(buf + 16) = val.prefix_length;
+  }
+  static type get(const uint8_t * buf)
+  {
+    boost::asio::ip::address_v6::bytes_type arr;
+    memcpy(&arr[0], buf, 16);
+    CidrV6 ret = { boost::asio::ip::make_address_v6(arr), *(buf + 16) };
+    return ret;
+  }
+  static type * getPtr(uint8_t * buf)
+  {
+    return ((type *) buf);;
+  }
+};
+
 class TaggedFieldAddress
 {
 private:
@@ -1695,46 +1973,6 @@ public:
   }
   void print(RecordBuffer buf, char arrayDelimiter, char escapeChar, std::ostream& ostr) const;
 };
-
-// class RecordTypePrint
-// {
-// private:
-//   std::vector<TaggedFieldAddress> mFields;
-//   char mFieldDelimiter;
-//   char mRecordDelimiter;
-//   char mArrayDelimiter;
-//   char mEscapeChar;
-
-//   // Serialization
-//   friend class boost::serialization::access;
-//   template <class Archive>
-//   void serialize(Archive & ar, const unsigned int version)
-//   {
-//     ar & BOOST_SERIALIZATION_NVP(mFields);
-//     ar & BOOST_SERIALIZATION_NVP(mFieldDelimiter);
-//     ar & BOOST_SERIALIZATION_NVP(mRecordDelimiter);
-//     ar & BOOST_SERIALIZATION_NVP(mArrayDelimiter);
-//     ar & BOOST_SERIALIZATION_NVP(mEscapeChar);
-//   }
-// public:
-//   RecordTypePrint();
-//   RecordTypePrint(const std::vector<TaggedFieldAddress>& fields);
-//   RecordTypePrint(const std::vector<TaggedFieldAddress>& fields,
-// 		  char fieldDelimter, char recordDelimiter, 
-//                   char arrayDelimiter, char escapeChar);
-//   RecordTypePrint(const TaggedFieldAddress& field)
-//     :
-//     mFields(1, field),
-//     mFieldDelimiter('\t'),
-//     mRecordDelimiter('\n'),
-//     mArrayDelimiter(','),
-//     mEscapeChar('\\')
-//   {
-//   }
-//   ~RecordTypePrint();
-//   void imbue(std::ostream& ostr) const;
-//   void print(RecordBuffer buf, std::ostream& ostr, bool emitNewLine=true) const;
-// };
 
 struct RecordBufferIterator
 {
@@ -1805,26 +2043,6 @@ public:
   bool Do(uint8_t * & input, uint8_t * inputEnd, RecordBufferIterator & outputPos, RecordBuffer buf) const;
 };
 
-// class RecordTypeFree
-// {
-// private:
-//   std::vector<FieldAddress> mOffsets;
-//   std::size_t mSize;
-//   // Serialization
-//   friend class boost::serialization::access;
-//   template <class Archive>
-//   void serialize(Archive & ar, const unsigned int version)
-//   {
-//     ar & BOOST_SERIALIZATION_NVP(mOffsets);
-//     ar & BOOST_SERIALIZATION_NVP(mSize);
-//   }
-// public:
-//   RecordTypeFree();
-//   RecordTypeFree(std::size_t sz, const std::vector<FieldAddress>& offsets);
-//   ~RecordTypeFree();
-//   void free(RecordBuffer & buf) const;
-// };
-
 class RecordTypeMalloc
 {
 private:
@@ -1840,29 +2058,6 @@ public:
   RecordTypeMalloc(std::size_t sz=0);
   ~RecordTypeMalloc();
   RecordBuffer malloc() const;
-};
-
-class RecordMember
-{
-private:
-  const FieldType * mType;
-  std::string mName;
-public:
-  RecordMember(const std::string& name, const FieldType * ty)
-    :
-    mType(ty),
-    mName(name)
-  {
-    BOOST_ASSERT(ty != NULL);
-  }
-
-  const std::string& GetName() const {
-    return mName;
-  }
-
-  const FieldType * GetType() const {
-    return mType; 
-  }
 };
 
 /**
@@ -1995,15 +2190,16 @@ public:
   static void coalesce(std::vector<MemsetOp>& input, std::vector<MemsetOp>& output);
 };
 
-class RecordType
+class RecordType : public FieldType
 {
   friend class RecordTypeMove;
   friend class RecordTypeCopy;
 
 private:
-  DynamicRecordContext & mContext;
   std::vector<RecordMember> mMembers;
   std::map<std::string, std::size_t> mMemberNames;
+  std::size_t mAlignment = 0;
+  std::size_t mAllocSize = 0;
 
   boost::shared_ptr<RecordTypeMalloc> mMalloc;
   boost::shared_ptr<RecordTypeFree> mFree;
@@ -2015,8 +2211,33 @@ private:
   std::map<uint32_t, uint32_t> mByteOffsetToPosition;
   // Are any of our members nullable?
   // This determines whether we have a NULL bitmask or not.
-  bool mHasNullFields;
+  bool mHasNullFields=false;
   typedef std::map<std::string, std::size_t>::const_iterator const_member_name_iterator;
+
+  void init(bool isSubrecord);
+  
+  RecordType(DynamicRecordContext& ctxt, 
+             std::vector<RecordMember> && elements,
+             bool nullable,
+             bool isSubrecord)
+    :
+    FieldType(ctxt, FieldType::STRUCT, elements.size(), nullable),
+    mMembers(std::move(elements))
+  {
+    init(isSubrecord);
+  }
+  RecordType(DynamicRecordContext& ctxt, 
+             const std::vector<RecordMember> & elements,
+             bool nullable,
+             bool isSubrecord)
+    :
+    FieldType(ctxt, FieldType::STRUCT, elements.size(), nullable),
+    mMembers(elements)
+  {
+    init(isSubrecord);
+  }
+  static void AppendTo(const std::vector<RecordMember> & elements,
+                       bool nullable,struct md5_state_s * md5);
 public:
   /**
    * Create a record type with members as described.
@@ -2044,6 +2265,15 @@ public:
     }
     return get(ctxt, members);
   }
+
+  static RecordType * Get(DynamicRecordContext& ctxt, 
+                          std::vector<RecordMember> && elements,
+                          bool nullable,
+                          bool isSubrecord);
+  static RecordType * Get(DynamicRecordContext& ctxt, 
+                          const std::vector<RecordMember> & elements,
+                          bool nullable,
+                          bool isSubrecord);
 
   RecordType(DynamicRecordContext & ctxt, const std::vector<RecordMember>& members);
   ~RecordType();
@@ -2086,7 +2316,7 @@ public:
   }
 
   /**
-   * Get the offset of the member with this name.
+   * Get the member with this name.
    */
   const RecordMember& getMember(const std::string& memberName) const 
   {
@@ -2094,6 +2324,17 @@ public:
     if (it == mMemberNames.end())
       throw std::runtime_error((boost::format("Member with name %1% does not exist") % memberName).str());
     return mMembers[it->second];
+  }
+
+  /**
+   * Get the index of the member with this name.
+   */
+  std::size_t getMemberIndex(const std::string& memberName) const 
+  {
+    const_member_name_iterator it = mMemberNames.find(memberName);
+    if (it == mMemberNames.end())
+      throw std::runtime_error((boost::format("Member with name %1% does not exist") % memberName).str());
+    return it->second;
   }
 
   /**
@@ -2125,6 +2366,11 @@ public:
 		       FieldAddress& addr) const;
   llvm::Value * LLVMMemberGetNull(const std::string& member, CodeGenerationContext * ctxt, llvm::Value * basePointer) const;
   void LLVMMemberSetNull(const std::string& member, CodeGenerationContext * ctxt, llvm::Value * basePointer, bool isNull) const;
+  llvm::Value * LLVMMemberGetPointer(std::size_t memberIdx, 
+				     CodeGenerationContext * ctxt, 
+				     llvm::Value * basePointer) const;
+  llvm::Value * LLVMMemberGetNull(std::size_t memberIdx, CodeGenerationContext * ctxt, llvm::Value * basePointer) const;
+  void LLVMMemberSetNull(std::size_t memberIdx, CodeGenerationContext * ctxt, llvm::Value * basePointer, bool isNull) const;
 
   // TODO: I'd rather not have this
   const RecordMember & GetMember(int32_t index) const;
@@ -2136,11 +2382,52 @@ public:
     return !this->operator==(rhs);
   }
 
-  DynamicRecordContext & getContext() const
+  std::size_t GetAlignment() const 
   {
-    return mContext;
+    return mAlignment;
   }
-  
+  std::size_t GetAllocSize() const
+  {
+    return mAllocSize;
+  }
+  std::size_t GetDataSize() const
+  {
+    return mAllocSize - GetDataOffset();
+  }
+  std::size_t GetDataOffset() const
+  {
+    return mMemberOffsets[0].mOffset;
+  }
+  std::size_t GetNullSize() const
+  {
+    // Round to nearest multiple of 32 bits then allocate turn to bytes
+    return mHasNullFields ? ((mMembers.size()+31)/32)*sizeof(uint32_t) : 0;
+  }
+  std::size_t GetNullOffset() const
+  {
+    return 0;
+  }
+  const FieldType * getElementType(std::size_t i) const
+  {
+    return mMembers[i].getType();
+  }
+  std::size_t getNumElements() const
+  {
+    return mMembers.size();
+  }
+  /**
+   * Append my state to an md5 hash
+   */
+  void AppendTo(struct md5_state_s * md5) const;
+  /**
+   * Text representation of type.
+   */
+  std::string toString() const;
+
+  const FieldType * clone(bool nullable) const;
+
+  llvm::Type * LLVMGetType(CodeGenerationContext * ctxt) const;
+
   /**
    * Physical format descriptor of the default text layout associated
    * with this record type.
@@ -2173,6 +2460,7 @@ public:
   void setCIDRv4(const std::string& field, CidrV4 val, RecordBuffer buffer) const;
   void setIPv6(const std::string& field, const boost::asio::ip::address_v6 & val, RecordBuffer buffer) const;
   void setCIDRv6(const std::string& field, CidrV6 val, RecordBuffer buffer) const;
+
   // These have copy semantics
   void setVarchar(const std::string& field, const char* val, RecordBuffer buf) const;
   void setArrayVarchar(const std::string& field, int32_t idx, const char * val, RecordBuffer buf) const;
@@ -2197,7 +2485,35 @@ public:
   CidrV4 getCIDRv4(const std::string& field, RecordBuffer buffer) const;
   boost::asio::ip::address_v6 getIPv6(const std::string& field, RecordBuffer buffer) const;
   CidrV6 getCIDRv6(const std::string& field, RecordBuffer buffer) const;
+  bool isNull(const std::string& field, RecordBuffer buf) const;
   bool isArrayNull(const std::string& field, int32_t idx, RecordBuffer buf) const;
+  RecordBuffer getStructPtr(const std::string& field, RecordBuffer buffer) const;
+  RecordBuffer getArrayStructPtr(const std::string& field, RecordBuffer buffer, int idx) const;
+
+  template<typename _TreculType>
+  typename TreculNativeGetter<_TreculType>::type get(std::size_t field, RecordBuffer buffer) const
+  {
+    return mMemberOffsets[field].get<_TreculType>(buffer);
+  }
+  template<typename _TreculType>
+  typename TreculNativeGetter<_TreculType>::type get(const std::string & field, RecordBuffer buffer) const
+  {
+    const_member_name_iterator it = mMemberNames.find(field);
+    return mMemberOffsets[it->second].get<_TreculType>(buffer);
+  }
+  template<typename _TreculType>
+  typename TreculNativeGetter<_TreculType>::ptr_type getPtr(std::size_t field, RecordBuffer buffer) const
+  {
+    return mMemberOffsets[field].getPtr<_TreculType>(buffer);
+  }
+  template<typename _TreculType>
+  typename TreculNativeGetter<_TreculType>::ptr_type getPtr(const std::string & field, RecordBuffer buffer) const
+  {
+    const_member_name_iterator it = mMemberNames.find(field);
+    return mMemberOffsets[it->second].getPtr<_TreculType>(buffer);
+  }
+  RecordBuffer getStructPtr(std::size_t field, RecordBuffer buffer) const;
+  RecordBuffer getArrayStructPtr(std::size_t field, RecordBuffer buffer, int idx) const;
 };
 
 class IQLRecordTypeBuilder

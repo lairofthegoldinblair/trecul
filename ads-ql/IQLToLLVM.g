@@ -68,7 +68,7 @@ statement[IQLCodeGenerationContextRef ctxt]
 
 variableDeclaration [IQLCodeGenerationContextRef ctxt] 
 	:
-	^(TK_DECLARE nm = localVarOrId ty = builtInType[$ctxt] {             
+	^(TK_DECLARE nm = localVarOrId ty = builtInType {             
             IQLToLLVMBuildDeclareLocal($ctxt, (const char *) nm->chars, ty);
         })
 	;
@@ -154,7 +154,7 @@ fieldConstructor[IQLCodeGenerationContextRef ctxt, int32_t * fieldPos]
     ^(a=QUOTED_ID (b=QUOTED_ID { nm = (const char *) $b.text->chars; })?) { LLVMBuildQuotedId($ctxt, (const char *) $a.text->chars, nm, fieldPos); }
     ;
 
-builtInType [IQLCodeGenerationContextRef ctxt] returns [void * llvmType]
+builtInType returns [void * llvmType]
 	: ^(c=TK_INTEGER arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=TK_DOUBLE arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=TK_CHAR DECIMAL_INTEGER_LITERAL typeNullability?) { $llvmType = $c->u; }
@@ -171,6 +171,7 @@ builtInType [IQLCodeGenerationContextRef ctxt] returns [void * llvmType]
       | ^(c=TK_IPV6 arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
       | ^(c=TK_CIDRV4 arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
       | ^(c=TK_CIDRV6 arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
+      | ^(c=TK_DECLTYPE expressionNoGenerate arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	  | ^(c=ID arrayTypeSpec? typeNullability?) { $llvmType = $c->u; }
 	;
 
@@ -225,7 +226,7 @@ expression[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMValueRef llvmVal,
     | ^(c='~' e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildBitwiseNot($ctxt, e1.llvmVal, $e1.start->u, $c->u); })
     | ^('#' { values = IQLToLLVMValueVectorCreate(); } (e1 = expression[$ctxt] { IQLToLLVMValueVectorPushBack(values, e1.llvmVal, $e1.start->u); })* { $llvmVal = IQLToLLVMBuildHash($ctxt, values); IQLToLLVMValueVectorFree(values); })
     | ^(c='$' { values = IQLToLLVMValueVectorCreate(); } (e1 = expression[$ctxt] { IQLToLLVMValueVectorPushBack(values, e1.llvmVal, $e1.start->u); })* { $llvmVal = IQLToLLVMBuildSortPrefix($ctxt, values, $c->u); IQLToLLVMValueVectorFree(values); })
-    | ^(c = TK_CAST builtInType[$ctxt] e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildCast($ctxt, e1.llvmVal, $e1.start->u, $c->u); })
+    | ^(c = TK_CAST builtInType e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildCast($ctxt, e1.llvmVal, $e1.start->u, $c->u); })
     | ^(c = '(' fun = ID 
         { 
             values = IQLToLLVMValueVectorCreate(); 
@@ -249,7 +250,8 @@ expression[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMValueRef llvmVal,
     | IPV6_LITERAL { $llvmVal = IQLToLLVMBuildIPv6Literal($ctxt, (char *) $IPV6_LITERAL.text->chars); }
 	| TK_TRUE { $llvmVal = IQLToLLVMBuildTrue($ctxt); }
 	| TK_FALSE { $llvmVal = IQLToLLVMBuildFalse($ctxt); }
-	| ^(id=ID (fun=ID {isBinary=1;})?) { $llvmVal = IQLToLLVMBuildVariableRef($ctxt, (const char *) $id.text->chars, isBinary ? (const char *) $fun.text->chars : 0, $id->u); }
+	| ID { $llvmVal = IQLToLLVMBuildVariableRef($ctxt, (const char *) $ID.text->chars, $ID->u, NULL, NULL); }
+	| ^(c='.' e1 = expression[$ctxt] fun=ID) { $llvmVal = IQLToLLVMBuildRowRef($ctxt, e1.llvmVal, $e1.start->u, (const char *) $fun.text->chars, $c->u); }
 	| ^(c='[' e1 = expression[$ctxt] e2 = expression[$ctxt]) { $llvmVal = IQLToLLVMBuildArrayRef($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); }
     | TK_NULL { $llvmVal = IQLToLLVMBuildNull($ctxt); }
     | ^(c=TK_SUM { IQLToLLVMBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildAggregateFunction($ctxt, (char *) $TK_SUM.text->chars, e1.llvmVal, $c->u); } )
@@ -257,6 +259,7 @@ expression[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMValueRef llvmVal,
     | ^(c=TK_MIN { IQLToLLVMBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildAggregateFunction($ctxt, (char *) $TK_MIN.text->chars, e1.llvmVal, $c->u); } )
     | ^(TK_INTERVAL intervalType = ID e1 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildInterval($ctxt, (const char *)$intervalType.text->chars, e1.llvmVal); } )
     | ^(c=TK_ARRAY { values = IQLToLLVMValueVectorCreate(); } (e1 = expression[$ctxt] { IQLToLLVMValueVectorPushBack(values, e1.llvmVal, $e1.start->u); })* { $llvmVal = IQLToLLVMBuildArray($ctxt, values, $c->u); IQLToLLVMValueVectorFree(values); })
+    | ^(c=TK_ROW { values = IQLToLLVMValueVectorCreate(); } (e1 = expression[$ctxt] { IQLToLLVMValueVectorPushBack(values, e1.llvmVal, $e1.start->u); })* { $llvmVal = IQLToLLVMBuildRow($ctxt, values, $c->u); IQLToLLVMValueVectorFree(values); })
     ;    
 
 whenExpression[IQLCodeGenerationContextRef ctxt, void * attr]
@@ -267,4 +270,78 @@ whenExpression[IQLCodeGenerationContextRef ctxt, void * attr]
 elseExpression[IQLCodeGenerationContextRef ctxt, void * attr]
     :
     ^(TK_ELSE e3 = expression[$ctxt] { IQLToLLVMCaseBlockThen($ctxt, e3.llvmVal, $e3.start->u, attr); })
+    ;    
+
+/** 
+ * To support DECLTYPE(expr) I need to be able match an arbitrary expression subtree without doing any code generation.
+ * The only way I have figured out of doing this is to copy the entire expression rule and remove the code generation actions.
+ * I already have copies of the tree grammar in different tree walkers so this solution isn't TOO much worse than the status
+ * quo.  Nonetheless, I'd really like a better way to handle this.
+ */
+expressionNoGenerate
+	: 
+    ^(TK_OR expressionNoGenerate expressionNoGenerate)
+    | ^(TK_AND expressionNoGenerate expressionNoGenerate)
+    | ^(TK_NOT expressionNoGenerate)
+    | ^(TK_IS expressionNoGenerate TK_NOT?)
+    | ^(TK_CASE (whenExpressionNoGenerate)+ elseExpressionNoGenerate)
+    | ^('?' expressionNoGenerate expressionNoGenerate expressionNoGenerate )
+    | ^('^' expressionNoGenerate expressionNoGenerate)
+    | ^('|' expressionNoGenerate expressionNoGenerate)
+    | ^('&' expressionNoGenerate expressionNoGenerate)
+    | ^('=' expressionNoGenerate expressionNoGenerate)
+    | ^('>' expressionNoGenerate expressionNoGenerate)
+    | ^('<' expressionNoGenerate expressionNoGenerate)
+    | ^('>=' expressionNoGenerate expressionNoGenerate)
+    | ^('<=' expressionNoGenerate expressionNoGenerate)
+    | ^('<>' expressionNoGenerate expressionNoGenerate)
+    | ^('!=' expressionNoGenerate expressionNoGenerate)
+    | ^(TK_LIKE expressionNoGenerate expressionNoGenerate)
+    | ^(TK_RLIKE expressionNoGenerate expressionNoGenerate)
+    | ^('-' expressionNoGenerate (expressionNoGenerate)? )
+    | ^('+' expressionNoGenerate (expressionNoGenerate)? )
+    | ^('*' expressionNoGenerate expressionNoGenerate)
+    | ^('/' expressionNoGenerate expressionNoGenerate)
+    | ^('%' expressionNoGenerate expressionNoGenerate)
+    | ^('||' expressionNoGenerate expressionNoGenerate)
+    | ^('~' expressionNoGenerate)
+    | ^('#' (expressionNoGenerate)*)
+    | ^('$' (expressionNoGenerate)*) 
+    | ^(TK_CAST outTy = builtInType expressionNoGenerate)
+    | ^(c = '(' fun = ID 
+            (expressionNoGenerate)*
+    ) 
+    | ^(LITERAL_CAST ID STRING_LITERAL)
+    | ^(DATETIME_LITERAL STRING_LITERAL)
+    | DECIMAL_INTEGER_LITERAL
+	| HEX_INTEGER_LITERAL
+    | DECIMAL_BIGINT_LITERAL
+    | FLOATING_POINT_LITERAL
+    | DECIMAL_LITERAL
+	| STRING_LITERAL
+	| WSTRING_LITERAL
+    | IPV4_LITERAL
+    | IPV6_LITERAL
+	| TK_TRUE
+	| TK_FALSE
+	| ID
+	| ^('.' id = ID id2 = ID)
+	| ^('[' id=ID expressionNoGenerate)
+    | TK_NULL
+    | ^(TK_SUM expressionNoGenerate)
+    | ^(TK_MAX expressionNoGenerate)
+    | ^(TK_MIN expressionNoGenerate)
+    | ^(TK_INTERVAL ID expressionNoGenerate)
+    | ^(TK_ARRAY (expressionNoGenerate)*)
+    | ^(TK_ROW (expressionNoGenerate)*)
+    ;    
+
+whenExpressionNoGenerate
+    :
+    ^(TK_WHEN expressionNoGenerate expressionNoGenerate)
+    ;    
+
+elseExpressionNoGenerate
+    :
+    ^(TK_ELSE expressionNoGenerate)
     ;    

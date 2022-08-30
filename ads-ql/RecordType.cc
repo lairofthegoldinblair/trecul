@@ -141,7 +141,7 @@ llvm::Value * FieldAddress::isNull(const std::string& member,
 				   llvm::Value * basePointer) const
 {
   llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
-  if (mPosition != 0xffffffff) {
+  if (mPosition != NON_NULLABLE) {
     // NULL means there is a zero bit
     uint32_t dwordPos = mPosition >> 5;
     llvm::ConstantInt * mask = b->getInt32(1U << (mPosition - (dwordPos << 5)));
@@ -165,10 +165,10 @@ void FieldAddress::setNull(const std::string& member,
 {
   // Illegal to setNull(true) on non nullable field,
   // noop to setNull(false) on non nullable field.
-  if (mPosition == 0xffffffff && isNull)
+  if (mPosition == NON_NULLABLE && isNull)
     throw std::runtime_error("Error trying to set NULL value in non NULLABLE field");
   
-  if (mPosition != 0xffffffff) {
+  if (mPosition != NON_NULLABLE) {
     llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
     // NULL means there is a zero bit
     uint32_t dwordPos = mPosition >> 5;
@@ -176,7 +176,7 @@ void FieldAddress::setNull(const std::string& member,
     llvm::Value * dwordPtr = b->CreateGEP(b->getInt8Ty(),
                                           basePointer,
 					  b->getInt64(dwordPos*sizeof(uint32_t)),
-					  ("isNull" + member).c_str());
+					  ("setNull" + member).c_str());
     dwordPtr = b->CreateBitCast(dwordPtr, 
 				llvm::PointerType::get(b->getInt32Ty(),0));
     llvm::Value * val = isNull ?
@@ -1374,13 +1374,6 @@ VariableArrayType * VariableArrayType::Get(DynamicRecordContext& ctxt,
 
 llvm::Type * VariableArrayType::LLVMGetType(CodeGenerationContext * ctxt) const
 {
-  // llvm::Type * vararrayMembers[3];
-  // vararrayMembers[0] = llvm::Type::getInt32Ty(*ctxt->LLVMContext);
-  // vararrayMembers[1] = llvm::Type::getInt32Ty(*ctxt->LLVMContext);
-  // vararrayMembers[2] = llvm::PointerType::get(getElementType()->LLVMGetType(ctxt), 0);
-  // return llvm::StructType::get(*ctxt->LLVMContext,
-  //                              llvm::makeArrayRef(&vararrayMembers[0], 3),
-  //                              0);
   return ctxt->LLVMVarcharType;
 }
 
@@ -1976,63 +1969,6 @@ void TaggedFieldAddress::print(RecordBuffer buf,
   }  
 }
 
-// RecordTypePrint::RecordTypePrint(const std::vector<TaggedFieldAddress>& fields)
-//   :
-//   mFields(fields),
-//   mFieldDelimiter('\t'),
-//   mRecordDelimiter('\n'),
-//   mArrayDelimiter(','),
-//   mEscapeChar('\\')
-// {
-// }
-
-// RecordTypePrint::RecordTypePrint(const std::vector<TaggedFieldAddress>& fields,
-// 				 char fieldDelimiter, char recordDelimiter,
-// 				 char arrayDelimiter, char escapeChar)
-//   :
-//   mFields(fields),
-//   mFieldDelimiter(fieldDelimiter),
-//   mRecordDelimiter(recordDelimiter),
-//   mArrayDelimiter(arrayDelimiter),
-//   mEscapeChar(escapeChar)
-// {
-// }
-
-// RecordTypePrint::RecordTypePrint()
-//   :
-//   mFieldDelimiter('\t'),
-//   mRecordDelimiter('\n'),
-//   mEscapeChar('\\')
-// {
-// }
-
-// RecordTypePrint::~RecordTypePrint()
-// {
-// }
-
-// void RecordTypePrint::imbue(std::ostream& ostr) const
-// {
-//   // stream takes ownership of the facet.
-//   boost::posix_time::time_facet * facet =
-//     new boost::posix_time::time_facet("%Y-%m-%d %H:%M:%S");
-//   boost::gregorian::date_facet * dateFacet =
-//     new boost::gregorian::date_facet("%Y-%m-%d");
-//   ostr.imbue(std::locale(std::locale(ostr.getloc(), facet), dateFacet));
-//   ostr << std::fixed << std::setprecision(9);
-// }
-
-// void RecordTypePrint::print(RecordBuffer buf, std::ostream& ostr, bool emitNewLine) const
-// {
-//   for(std::vector<TaggedFieldAddress>::const_iterator it = mFields.begin();
-//       it != mFields.end();
-//       ++it) {
-//     if (mFields.begin() != it) ostr << mFieldDelimiter;
-//     it->print(buf, mArrayDelimiter, mEscapeChar, ostr);    
-//   }
-//   if (emitNewLine)
-//     ostr << mRecordDelimiter;
-// }
-
 RecordTypeSerialize::RecordTypeSerialize()
   :
   mSize(0)
@@ -2169,38 +2105,6 @@ bool RecordTypeDeserialize::Do(uint8_t * & input, uint8_t * inputEnd, RecordBuff
   return true;
 }
 
-// RecordTypeFree::RecordTypeFree()
-//   :
-//   mSize(0)
-// {
-// }
-
-// RecordTypeFree::RecordTypeFree(std::size_t sz, const std::vector<FieldAddress>& offsets)
-//   :
-//   mOffsets(offsets),
-//   mSize(sz)
-// {
-// }
-
-// RecordTypeFree::~RecordTypeFree()
-// {
-// }
-
-// void RecordTypeFree::free(RecordBuffer & buf) const
-// {
-//   if (buf.Ptr == NULL) return;
-
-//   for(std::vector<FieldAddress>::const_iterator it = mOffsets.begin();
-//       it != mOffsets.end();
-//       ++it) {
-//     // Free
-//     if (it->getVarcharPtr(buf)->Large.Large) {
-//       ::free(const_cast<char *>(it->getVarcharPtr(buf)->Large.Ptr));
-//     }
-//   }
-//   RecordBuffer::free(buf);
-// }
-
 RecordTypeMalloc::RecordTypeMalloc(std::size_t sz)
   :
   mSize(sz)
@@ -2219,21 +2123,32 @@ RecordBuffer RecordTypeMalloc::malloc() const
 const RecordType * RecordType::get(DynamicRecordContext & ctxt,
 				   const std::vector<RecordMember>& members)
 {
-  const RecordType * tmp = new RecordType(ctxt, members);
-  ctxt.add(tmp);
-  return tmp;
+  return Get(ctxt, members, false, false);
 }
 
 RecordType::RecordType(DynamicRecordContext & ctxt, const std::vector<RecordMember>& members)
   :
-  mContext(ctxt),
+  FieldType(ctxt, FieldType::STRUCT, members.size(), false),
   mMembers(members),
   mHasNullFields(false)
 {
+  init(false);
+}
+
+RecordType::~RecordType()
+{
+}
+
+void RecordType::init(bool isSubrecord)
+{
+  bool isAnonymous = true;
   for(const_member_iterator it = begin_members();
       it != end_members();
       ++it) {
-    if (mMemberNames.end() != mMemberNames.find(it->GetName())) {
+    if (!it->GetName().empty()) {
+      isAnonymous = false;
+    }
+    if (!isAnonymous && mMemberNames.end() != mMemberNames.find(it->GetName())) {
       std::string msg = (boost::format("Duplicate field name %1%"
 				       " in record") % it->GetName()).str();
       throw std::runtime_error(msg);
@@ -2243,44 +2158,58 @@ RecordType::RecordType(DynamicRecordContext & ctxt, const std::vector<RecordMemb
       mHasNullFields = true;
     }
   }
+  if (!isAnonymous && mMemberNames.end() != mMemberNames.find("")) {
+    throw std::runtime_error("non-anonymous record types cannot have empty field names");
+  }
   // For simplicity, we allocate a NULL bit for every field
   // provided any are nullable.  We allocate our null bit field in
   // 32 bit chunks to speed up certain operations.  No space issues
   // with this for many records due to alignment.
-  std::size_t sz= mHasNullFields ? ((mMembers.size()+31)/32)*sizeof(uint32_t) : 0;
+  mAllocSize = GetNullSize();
   std::vector<FieldAddress> offsets;
   std::vector<TaggedFieldAddress> taggedOffsets;
+  mAlignment = 0;
   for(const_member_iterator it = begin_members();
       it != end_members();
       ++it) {
+    auto memberAlign = it->GetType()->GetAlignment();
+    if (mAlignment < memberAlign) {
+      mAlignment = memberAlign;
+    }
     // uint32_t pos = mHasNullFields ? (uint32_t) (it - begin_members()) : 0xffffffff;
     uint32_t pos = it->GetType()->isNullable() 
       ? (uint32_t) (it - begin_members()) : 0xffffffff;
     // Round up to alignment
-    sz = it->GetType()->GetAlignment()*((sz + it->GetType()->GetAlignment() - 1)/it->GetType()->GetAlignment());
-    if (sz > std::numeric_limits<uint32_t>::max()) {
+    mAllocSize = memberAlign*((mAllocSize + memberAlign - 1)/memberAlign);
+    if (mAllocSize > std::numeric_limits<uint32_t>::max()) {
       throw std::runtime_error ("Record length exceeds maximum size");
     }
-    uint32_t sz32 = (uint32_t) sz;
-    mByteOffsetToPosition[sz] = pos;
+    uint32_t sz32 = (uint32_t) mAllocSize;
+    mByteOffsetToPosition[mAllocSize] = pos;
     mMemberOffsets.push_back(FieldAddress(sz32, pos));
     taggedOffsets.push_back(TaggedFieldAddress(mMemberOffsets.back(), it->GetType()->GetEnum()));
     if (FieldType::VARCHAR == it->GetType()->GetEnum()) {
       offsets.push_back(FieldAddress(sz32, pos));
     }
     
-    sz += it->GetType()->GetAllocSize();
+    mAllocSize += it->GetType()->GetAllocSize();
   }
 
-  mMalloc = boost::shared_ptr<RecordTypeMalloc>(new RecordTypeMalloc(sz));
-  mFree = boost::shared_ptr<RecordTypeFree>(new RecordTypeFree(this));
-  mSerialize = boost::shared_ptr<RecordTypeSerialize>(new RecordTypeSerialize(sz, offsets));
-  mDeserialize = boost::shared_ptr<RecordTypeDeserialize>(new RecordTypeDeserialize(sz, offsets));
-  mPrint = boost::shared_ptr<RecordTypePrint>(new RecordTypePrint(this));
-}
+  // Round up alloc size to RecordType alignment
+  if (mAllocSize > 0) {
+    mAllocSize = GetAlignment()*((mAllocSize + GetAlignment() - 1)/GetAlignment());
+  }
+  if (mAllocSize > std::numeric_limits<uint32_t>::max()) {
+    throw std::runtime_error ("Record length exceeds maximum size");
+  }
 
-RecordType::~RecordType()
-{
+  if (!isSubrecord) {
+    mMalloc = boost::shared_ptr<RecordTypeMalloc>(new RecordTypeMalloc(mAllocSize));
+    mFree = boost::shared_ptr<RecordTypeFree>(new RecordTypeFree(this));
+    mSerialize = boost::shared_ptr<RecordTypeSerialize>(new RecordTypeSerialize(mAllocSize, offsets));
+    mDeserialize = boost::shared_ptr<RecordTypeDeserialize>(new RecordTypeDeserialize(mAllocSize, offsets));
+    mPrint = boost::shared_ptr<RecordTypePrint>(new RecordTypePrint(this));
+  }
 }
 
 const RecordTypeMalloc * RecordType::GetMalloc() const
@@ -2428,9 +2357,121 @@ void RecordType::LLVMMemberSetNull(const std::string& member, CodeGenerationCont
 					    isNull);
 }
 
+llvm::Value * RecordType::LLVMMemberGetPointer(std::size_t memberIdx, 
+					       CodeGenerationContext * ctxt, 
+					       llvm::Value * basePointer) const
+{
+  llvm::IRBuilder<> * builder = ctxt->LLVMBuilder;
+  llvm::Value * memberVal = ctxt->LLVMBuilder->CreateBitCast(mMemberOffsets[memberIdx].getPointer(mMembers[memberIdx].GetName(), 
+                                                                                                  ctxt, 
+                                                                                                  builder->CreateLoad(builder->getInt8PtrTy(), basePointer, "baseref")),
+                                                             llvm::PointerType::get(mMembers[memberIdx].GetType()->LLVMGetType(ctxt), 0),
+                                                             mMembers[memberIdx].GetName().c_str());
+  return memberVal;
+}
+
+llvm::Value * RecordType::LLVMMemberGetNull(std::size_t memberIdx, CodeGenerationContext * ctxt, llvm::Value * basePointer) const
+{
+  llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
+  return mMemberOffsets[memberIdx].isNull(mMembers[memberIdx].GetName(), 
+                                          ctxt, 
+                                          b->CreateLoad(b->getInt8PtrTy(), basePointer, "baseref"));
+}
+
+void RecordType::LLVMMemberSetNull(std::size_t memberIdx, CodeGenerationContext * ctxt, llvm::Value * basePointer, bool isNull) const
+{
+  llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
+  return mMemberOffsets[memberIdx].setNull(mMembers[memberIdx].GetName(),
+                                           ctxt, 
+                                           b->CreateLoad(b->getInt8PtrTy(), basePointer, "baseref"),
+                                           isNull);
+}
+
 const RecordMember& RecordType::GetMember(int32_t idx) const
 {
   return mMembers[idx];
+}
+
+void RecordType::AppendTo(struct md5_state_s * md5) const
+{
+  AppendTo(mMembers, isNullable(), md5);
+}
+
+void RecordType::AppendTo(const std::vector<RecordMember> & elements,
+                          bool nullable, struct md5_state_s * md5)
+{
+  FieldType::FieldTypeEnum f=FieldType::STRUCT;
+  md5_append(md5, (const md5_byte_t *) &f, sizeof(f));
+  for(const auto & elt : elements) {
+    md5_append(md5, (const md5_byte_t *) elt.getName().c_str(), elt.getName().size());
+    elt.getType()->AppendTo(md5);
+  }
+  md5_append(md5, (const md5_byte_t *) &nullable, sizeof(nullable));
+}
+
+std::string RecordType::toString() const
+{
+  std::stringstream sstr("{");
+  for(const auto & elt : mMembers) {
+    sstr << " " << elt.getName() << " " << elt.getType()->toString();
+  }
+  sstr << " }";
+  return sstr.str();
+}
+
+const FieldType * RecordType::clone(bool nullable) const
+{
+  if (nullable == isNullable()) return this;
+  return RecordType::Get(getContext(), mMembers, nullable, !mFree);
+}
+
+RecordType * RecordType::Get(DynamicRecordContext& ctxt, 
+                             std::vector<RecordMember> && elements,
+                             bool nullable,
+                             bool isSubrecord)
+{
+  FieldType * ft = NULL;
+  md5_state_t md5;
+  md5_init(&md5);
+  AppendTo(elements, nullable, &md5);
+  md5_byte_t digest[16];
+  md5_finish(&md5, digest);
+  Digest d(digest);
+  if ((ft=ctxt.lookup(d)) == NULL) {
+    ft = new RecordType(ctxt, std::move(elements), nullable, isSubrecord);
+    ctxt.add(d, ft);
+  }
+  return (RecordType *)ft;
+}
+
+RecordType * RecordType::Get(DynamicRecordContext& ctxt, 
+                             const std::vector<RecordMember> & elements,
+                             bool nullable,
+                             bool isSubrecord)
+{
+  FieldType * ft = NULL;
+  md5_state_t md5;
+  md5_init(&md5);
+  AppendTo(elements, nullable, &md5);
+  md5_byte_t digest[16];
+  md5_finish(&md5, digest);
+  Digest d(digest);
+  if ((ft=ctxt.lookup(d)) == NULL) {
+    ft = new RecordType(ctxt, elements, nullable, isSubrecord);
+    ctxt.add(d, ft);
+  }
+  return (RecordType *)ft;
+}
+
+llvm::Type * RecordType::LLVMGetType(CodeGenerationContext * ctxt) const
+{
+  std::vector<llvm::Type *> members;
+  for(const auto & elt : mMembers) {
+    members.push_back(elt.getType()->LLVMGetType(ctxt));
+  }
+  return llvm::StructType::get(*ctxt->LLVMContext,
+                               llvm::makeArrayRef(&members[0], members.size()),
+                               0);
 }
 
 void RecordType::setInt8(const std::string& field, int8_t val, RecordBuffer buf) const
@@ -2741,6 +2782,12 @@ CidrV6 RecordType::getCIDRv6(const std::string& field, RecordBuffer buf) const
   return mMemberOffsets[it->second].getCIDRv6(buf);
 }
 
+bool RecordType::isNull(const std::string& field, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return mMemberOffsets[it->second].isNull(buf);
+}
+
 bool RecordType::isArrayNull(const std::string& field, int32_t idx, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
@@ -2750,5 +2797,35 @@ bool RecordType::isArrayNull(const std::string& field, int32_t idx, RecordBuffer
   } else {
     const VariableArrayType * ft = dynamic_cast<const VariableArrayType *>(mMembers[it->second].GetType());
     return mMemberOffsets[it->second].isArrayNull(buf, ft, idx);
+  }
+}
+
+RecordBuffer RecordType::getStructPtr(const std::string& field, RecordBuffer buf) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return getStructPtr(it->second, buf);
+}
+
+RecordBuffer RecordType::getArrayStructPtr(const std::string& field, RecordBuffer buf, int idx) const
+{
+  const_member_name_iterator it = mMemberNames.find(field);
+  return getArrayStructPtr(it->second, buf, idx);
+}
+
+RecordBuffer RecordType::getStructPtr(std::size_t field, RecordBuffer buf) const
+{
+  return mMemberOffsets[field].getStructPtr(buf);
+}
+
+RecordBuffer RecordType::getArrayStructPtr(std::size_t field, RecordBuffer buf, int idx) const
+{
+  const FixedArrayType * ft = dynamic_cast<const FixedArrayType *>(mMembers[field].GetType());
+  if(FieldType::FIXED_ARRAY == mMembers[field].GetType()->GetEnum()) {
+    const RecordType * rt = dynamic_cast<const RecordType *>(ft->getElementType());
+    return mMemberOffsets[field].getArrayStructPtr(buf, idx, rt->GetAllocSize());
+  } else {
+    const VariableArrayType * ft = dynamic_cast<const VariableArrayType *>(mMembers[field].GetType());
+    const RecordType * rt = dynamic_cast<const RecordType *>(ft->getElementType());
+    return mMemberOffsets[field].getVarArrayStructPtr(buf, idx, rt->GetAllocSize());
   }
 }

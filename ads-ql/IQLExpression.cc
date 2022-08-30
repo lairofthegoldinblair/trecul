@@ -391,6 +391,21 @@ ArrayExpr * ArrayExpr::clone() const
   return new ArrayExpr(*this);
 }
 
+StructExpr::StructExpr(DynamicRecordContext & ctxt,
+                       const std::vector<IQLExpression *>& args,
+                       const SourceLocation& loc)
+  :
+  IQLExpression(ctxt, IQLExpression::STRUCT, 
+		args.begin(), args.end(), 
+		loc)
+{
+}
+
+StructExpr * StructExpr::clone() const
+{
+  return new StructExpr(*this);
+}
+
 IQLEquiJoinDetector::IQLEquiJoinDetector(DynamicRecordContext& ctxt,
 					 const RecordType * left,
 					 const RecordType * right,
@@ -1182,6 +1197,16 @@ IQLFieldTypeRef IQLBuildArrayType(IQLTreeFactoryRef ctxtRef, const FieldType * e
     return wrap(FixedArrayType::Get(ctxt, fieldSz, eltTy, nullable!=0));
   }
 }
+
+IQLExpressionRef IQLBuildRow(IQLTreeFactoryRef ctxtRef,
+                             IQLExpressionListRef argsRef,
+                             int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  std::vector<IQLExpression*> & args(*unwrap(argsRef));
+  return wrap(StructExpr::create(ctxt, args, SourceLocation(line, column)));
+}
+
 IQLFieldTypeRef IQLBuildInt8Type(IQLTreeFactoryRef ctxtRef, int nullable)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));

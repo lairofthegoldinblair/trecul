@@ -230,6 +230,9 @@ extern "C" {
   IQLExpressionRef IQLBuildArray(IQLTreeFactoryRef ctxtRef,
 				 IQLExpressionListRef args,
 				 int line, int column);
+  IQLExpressionRef IQLBuildRow(IQLTreeFactoryRef ctxtRef,
+                               IQLExpressionListRef args,
+                               int line, int column);
 
 
 #ifdef __cplusplus

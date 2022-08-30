@@ -403,11 +403,12 @@ void IQLToLLVMBuildReturnValue(IQLCodeGenerationContextRef ctxtRef, IQLToLLVMVal
 
 IQLToLLVMValueRef IQLToLLVMBuildVariableRef(IQLCodeGenerationContextRef ctxtRef, 
 					    const char * var,
+                                            void * varAttrs,
 					    const char * var2,
-					    void * varAttrs) 
+					    void * var2Attrs) 
 {
   CodeGenerationContext * ctxt = unwrap(ctxtRef);
-  return wrap(ctxt->buildVariableRef(var, var2, (const FieldType *) varAttrs));
+  return wrap(ctxt->buildVariableRef(var, (const FieldType *) varAttrs, var2, (const FieldType *) var2Attrs));
 }
 
 IQLToLLVMValueRef IQLToLLVMBuildArrayRef(IQLCodeGenerationContextRef ctxtRef, 
@@ -424,6 +425,18 @@ IQLToLLVMValueRef IQLToLLVMBuildArrayRef(IQLCodeGenerationContextRef ctxtRef,
   return wrap(ctxt->buildArrayRef(unwrap(arr), arrType, unwrap(idx), idxType, retType));
 }
 
+IQLToLLVMValueRef IQLToLLVMBuildRowRef(IQLCodeGenerationContextRef ctxtRef, 
+                                       IQLToLLVMValueRef row,
+                                       void * rowAttrs,
+                                       const char * member,
+                                       void * retAttrs)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  const FieldType * rowType = (const FieldType *) rowAttrs;
+  const FieldType * retType = (const FieldType *) retAttrs;
+  return wrap(static_cast<const IQLToLLVMValue *>(ctxt->buildRowRef(unwrap(row), rowType, member, retType)));
+}
+
 IQLToLLVMValueRef IQLToLLVMBuildArray(IQLCodeGenerationContextRef ctxtRef, 
 				      IQLToLLVMValueVectorRef lhs, void * arrayAttrs)
 {
@@ -433,11 +446,20 @@ IQLToLLVMValueRef IQLToLLVMBuildArray(IQLCodeGenerationContextRef ctxtRef,
   return wrap(ctxt->buildArray(vals, ty));
 }
 
+IQLToLLVMValueRef IQLToLLVMBuildRow(IQLCodeGenerationContextRef ctxtRef, 
+				      IQLToLLVMValueVectorRef lhs, void * rowAttrs)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  std::vector<IQLToLLVMTypedValue> &vals(*unwrap(lhs));
+  FieldType * ty = (FieldType *) rowAttrs;
+  return wrap(ctxt->buildRow(vals, ty));
+}
+
 IQLToLLVMLValueRef IQLToLLVMBuildLValue(IQLCodeGenerationContextRef ctxtRef,
 					const char * var)
 {
   CodeGenerationContext * ctxt = unwrap(ctxtRef);
-  return wrap(ctxt->lookup(var, NULL));
+  return wrap(ctxt->lookup(var));
 }
 
 IQLToLLVMLValueRef IQLToLLVMBuildArrayLValue(IQLCodeGenerationContextRef ctxtRef, 
@@ -452,6 +474,18 @@ IQLToLLVMLValueRef IQLToLLVMBuildArrayLValue(IQLCodeGenerationContextRef ctxtRef
   const FieldType * idxType = (const FieldType *) idxAttrs;
   const FieldType * retType = (const FieldType *) retAttrs;
   return wrap(ctxt->buildArrayLValue(unwrap(arr), arrType, unwrap(idx), idxType, retType));
+}
+
+IQLToLLVMLValueRef IQLToLLVMBuildRowLValue(IQLCodeGenerationContextRef ctxtRef, 
+                                           IQLToLLVMValueRef row,
+                                           void * rowAttrs,
+                                           const char * member,
+                                           void * retAttrs)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  const FieldType * rowType = (const FieldType *) rowAttrs;
+  const FieldType * retType = (const FieldType *) retAttrs;
+  return wrap(ctxt->buildRowLValue(unwrap(row), rowType, member, retType));
 }
 
 void IQLToLLVMCaseBlockBegin(IQLCodeGenerationContextRef ctxtRef, void * caseAttrs)
@@ -781,18 +815,24 @@ void IQLTypeCheckSetValue2(IQLTypeCheckContextRef ctxt,
   unwrap(ctxt)->buildSetValue(unwrap(lhs), unwrap(rhs));
 }
 
-IQLFieldTypeRef IQLTypeCheckArrayRef(IQLTypeCheckContextRef ctxt, 
-				     IQLFieldTypeRef arr,
-				     IQLFieldTypeRef idx)
+IQLFieldTypeRef IQLTypeCheckBuildArrayRef(IQLTypeCheckContextRef ctxt, 
+                                          IQLFieldTypeRef arr,
+                                          IQLFieldTypeRef idx)
 {
   return wrap(unwrap(ctxt)->buildArrayRef(unwrap(arr), unwrap(idx)));
 }
 
-IQLFieldTypeRef IQLTypeCheckBuildVariableRef(IQLTypeCheckContextRef ctxt, 
-					     const char * nm,
-					     const char * nm2)
+IQLFieldTypeRef IQLTypeCheckBuildStructRef(IQLTypeCheckContextRef ctxt, 
+                                           IQLFieldTypeRef row,
+                                           const char * nm)
 {
-  return wrap(unwrap(ctxt)->buildVariableRef(nm, nm2));
+  return wrap(unwrap(ctxt)->buildStructRef(unwrap(row), nm));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildVariableRef(IQLTypeCheckContextRef ctxt, 
+					     const char * nm)
+{
+  return wrap(unwrap(ctxt)->buildVariableRef(nm));
 }
 
 void IQLTypeCheckBeginSwitch(IQLTypeCheckContextRef ctxt, 
@@ -1067,6 +1107,18 @@ IQLFieldTypeRef IQLTypeCheckBuildCIDRv6ArrayType(IQLTypeCheckContextRef ctxtRef,
   return wrap(ctxt->buildArrayType(sz, ctxt->buildCIDRv6Type(), nullable != 0));
 }
 
+IQLFieldTypeRef IQLTypeCheckBuildDecltypeType(IQLTypeCheckContextRef ctxtRef, IQLFieldTypeRef expr, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildDecltypeType(unwrap(expr), nullable != 0));
+}
+
+IQLFieldTypeRef IQLTypeCheckBuildDecltypeArrayType(IQLTypeCheckContextRef ctxtRef, IQLFieldTypeRef expr, const char * sz, int nullable)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildArrayType(sz, ctxt->buildDecltypeType(unwrap(expr)), nullable != 0));
+}
+
 IQLFieldTypeRef IQLTypeCheckBuildIPv4Literal(IQLTypeCheckContextRef ctxtRef, const char * addr, int nullable)
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
@@ -1249,10 +1301,17 @@ IQLFieldTypeRef IQLTypeCheckArray(IQLTypeCheckContextRef ctxtRef, IQLFieldTypeVe
   return wrap(ctxt->buildArray(ty));
 }
 
+IQLFieldTypeRef IQLTypeCheckRow(IQLTypeCheckContextRef ctxtRef, IQLFieldTypeVectorRef lhs)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  const std::vector<const FieldType*> & ty(*unwrap(lhs));
+  return wrap(ctxt->buildStruct(ty));
+}
+
 IQLFieldTypeRef IQLTypeCheckSymbolTableGetType(IQLTypeCheckContextRef ctxtRef, const char * name)
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
-  return wrap(ctxt->lookupType(name, NULL));
+  return wrap(ctxt->lookupType(name));
 }
 
 void IQLGraphNodeStart(IQLGraphContextRef ctxt, const char * type, const char * name)

@@ -4253,7 +4253,7 @@ RecordTypeAggregate::RecordTypeAggregate(DynamicRecordContext& recCtxt,
      it != groupKeys.end();
      ++it) {
    mContext->buildSetField(&mContext->AggFn, 
-			   mContext->buildVariableRef(it->c_str(), NULL, mSource->getMember(*it).GetType()));
+			   mContext->buildVariableRef(it->c_str(), mSource->getMember(*it).GetType()));
 
  }
  // We know that aggregate initialization isn't

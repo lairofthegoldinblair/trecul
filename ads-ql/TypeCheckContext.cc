@@ -350,6 +350,7 @@ void TypeCheckContext::init(const std::vector<AliasedRecordType>& sources,
 	mSymbolTable.add(it->getAlias().c_str(), mit->GetName().c_str(), mit->GetType());
       }
     }
+    mSymbolTable.add(it->getAlias().c_str(), nullptr, it->getType());
   }
   mTypeCheckSymbolTable = &mSymbolTable;
   loadBuiltinFunctions();
@@ -475,8 +476,29 @@ const FieldType * TypeCheckContext::castTo(const FieldType * lhs,
       return to_type;
     else 
       return NULL;    
-  } else {
-    return NULL;
+  } else if (from_type->GetEnum() == FieldType::STRUCT) {
+    if (to_type->GetEnum() != FieldType::STRUCT)
+      return NULL;
+
+    // Either types are equal of allow casting of anonymous record to a named record
+    auto from_rec_type = dynamic_cast<const RecordType *>(from_type);
+    auto to_rec_type = dynamic_cast<const RecordType *>(to_type);
+    if (from_rec_type == to_rec_type) {
+      return to_type;
+    }
+
+    if (from_rec_type->getNumElements() != to_rec_type->getNumElements()) {
+      return NULL;
+    }
+
+    for (auto from_it = from_rec_type->begin_members(), to_it = to_rec_type->begin_members();
+         from_it != from_rec_type->end_members();
+         ++from_it, ++to_it) {
+      if (!from_it->GetName().empty() || from_it->GetType() != to_it->GetType()) {
+        return NULL;
+      }
+    }
+    return to_type;
   }
   return NULL;
 }
@@ -670,10 +692,9 @@ void TypeCheckContext::beginSwitch(const FieldType * e)
     throw std::runtime_error("Switch expression must be integer");
 }
 
-const FieldType * TypeCheckContext::buildVariableRef(const char * nm,
-						     const char * nm2)
+const FieldType * TypeCheckContext::buildVariableRef(const char * nm)
 {
-  TreculSymbolTableEntry * e = mTypeCheckSymbolTable->lookup(nm, nm2);
+  TreculSymbolTableEntry * e = mTypeCheckSymbolTable->lookup(nm);
   return e->getType();
 }
 
@@ -719,6 +740,38 @@ const FieldType * TypeCheckContext::buildArrayRef(const FieldType * arrayTy,
   }
 }
 
+const FieldType * TypeCheckContext::buildStruct(const std::vector<const FieldType *>& e)
+{
+  if (e.size() == 0) 
+    throw std::runtime_error("row expression requires at least one element");
+  
+  // Build an anonymous struct
+  return buildStructType(e, false);
+}
+
+const FieldType * TypeCheckContext::buildStructRef(const FieldType * rowTy,
+                                                   const char * nm)
+{
+  if (rowTy->GetEnum() != FieldType::STRUCT) {
+    throw std::runtime_error("Member reference of non-struct type");
+  }
+  
+  auto recTy = static_cast<const RecordType *>(rowTy);
+  if (!recTy->hasMember(nm)) {
+    std::stringstream fields;
+    bool first=true;
+    for(RecordType::const_member_iterator it = recTy->begin_members();
+        it != recTy->end_members();
+        ++it) {
+      if (!first) fields << ",";
+      fields << it->GetName();
+      first = false;
+    }
+    throw std::runtime_error((boost::format("Undefined reference %1% in struct: available members %2%") % nm % fields.str()).str());
+  }
+  return recTy->getMember(nm).GetType();
+}
+
 const FieldType * TypeCheckContext::buildCall(const char * f, std::vector<const FieldType *> & args)
 {
   // Check for intrinsics
@@ -732,7 +785,7 @@ const FieldType * TypeCheckContext::buildCall(const char * f, std::vector<const 
     return buildHash(args);
   }
   // TODO: Implement operator/function overloading.
-  const FieldType * fType = lookupType(f, NULL);
+  const FieldType * fType = lookupType(f);
   if (fType == NULL || fType->GetEnum() != FieldType::FUNCTION)
     throw std::runtime_error((boost::format("Undefined function in call %1%") %
 			      f).str());
@@ -1107,6 +1160,11 @@ const FieldType * TypeCheckContext::buildCIDRv6Type(bool nullable)
   return CIDRv6Type::Get(mContext, nullable);
 }
 
+const FieldType * TypeCheckContext::buildDecltypeType(const FieldType * ft, bool nullable)
+{
+  return ft->clone(nullable);
+}
+
 const FieldType * TypeCheckContext::buildNilType()
 {
   // TODO: Proper NULL support
@@ -1141,6 +1199,15 @@ const FieldType * TypeCheckContext::buildFixedArrayType(int32_t sz, const FieldT
 const FieldType * TypeCheckContext::buildVariableArrayType(const FieldType * elt, bool nullable)
 {
   return VariableArrayType::Get(mContext, elt, nullable);
+}
+
+const FieldType * TypeCheckContext::buildStructType(const std::vector<const FieldType *> & elts, bool nullable)
+{
+  std::vector<RecordMember> fields;
+  for(auto e : elts) {
+    fields.emplace_back("", e);
+  }
+  return RecordType::Get(mContext, std::move(fields), nullable, true);
 }
 
 const FieldType * TypeCheckContext::internalBuildInterval(const FieldType * ty, int32_t u)
@@ -1289,7 +1356,7 @@ void TypeCheckContext::addFields(const char * recordName)
       mit != it->second->end_members();
       ++mit) {
     // Make sure the member is valid to reference
-    buildVariableRef(recordName, mit->GetName().c_str());
+    buildStructRef(buildVariableRef(recordName), mit->GetName().c_str());
     mRecordMembers->push_back(*mit);
   }
 }
@@ -1394,8 +1461,8 @@ const FieldType * TypeCheckContext::buildAggregateFunction(const FieldType * ty)
   return ty;
 }
 
-const FieldType * TypeCheckContext::lookupType(const char * nm, const char * nm2)
+const FieldType * TypeCheckContext::lookupType(const char * nm)
 {
-  TreculSymbolTableEntry * entry = mTypeCheckSymbolTable->lookup(nm, nm2);
+  TreculSymbolTableEntry * entry = mTypeCheckSymbolTable->lookup(nm);
   return entry->getType();
 }

@@ -210,7 +210,7 @@ public:
 class IQLExpression
 {
 public:
-  enum NodeType { ARRAYREF, ARR, LOR, LAND, LNOT, LISNULL, CASE, BAND, BOR, BXOR, BNOT, EQ, GTN, LTN, GTEQ, LTEQ, NEQ, MINUS, PLUS, TIMES, DIVIDE, MOD, CONCAT, CAST, VARIABLE, CALL, INT32, INT64, DOUBLE, DECIMAL, STRING, BOOLEAN, INTERVAL, NIL, IPV4, IPV6 };
+  enum NodeType { ARRAYREF, ARR, LOR, LAND, LNOT, LISNULL, CASE, BAND, BOR, BXOR, BNOT, EQ, GTN, LTN, GTEQ, LTEQ, NEQ, MINUS, PLUS, TIMES, DIVIDE, MOD, CONCAT, CAST, VARIABLE, CALL, INT32, INT64, DOUBLE, DECIMAL, STRING, STRUCT, BOOLEAN, INTERVAL, NIL, IPV4, IPV6 };
 
 private:
   DynamicRecordContext & mContext;
@@ -1144,6 +1144,33 @@ public:
   }
 
   ArrayExpr * clone() const;
+};
+
+class StructExpr : public IQLExpression
+{
+private:
+  StructExpr(const StructExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+
+public:
+
+  StructExpr(DynamicRecordContext & ctxt, 
+             const std::vector<IQLExpression *>& args,
+             const SourceLocation& loc);
+  
+  static StructExpr * create(DynamicRecordContext & ctxt,
+                             const std::vector<IQLExpression *>& args,
+                             const SourceLocation& loc)
+  {
+    StructExpr * tmp = new StructExpr(ctxt, args, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  StructExpr * clone() const;
 };
 
 /**

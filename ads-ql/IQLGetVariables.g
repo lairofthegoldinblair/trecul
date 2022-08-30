@@ -152,7 +152,8 @@ expression[IQLGetVariablesContextRef ctxt]
     | IPV6_LITERAL
 	| TK_TRUE
 	| TK_FALSE
-	| ^(id = ID ID?) { IQLGetVariablesBuildVariableReference($ctxt, (const char *) $id.text->chars); }
+	| ID { IQLGetVariablesBuildVariableReference($ctxt, (const char *) $ID.text->chars); }
+	| ^('.' id = ID id2 = ID) { IQLGetVariablesBuildVariableReference($ctxt, (const char *) $id2.text->chars); }
 	| ^('[' id=ID expression[$ctxt])  { IQLGetVariablesBuildArrayReference($ctxt, (const char *) $id.text->chars); }
     | TK_NULL
     | ^(TK_SUM { IQLGetVariablesBeginAggregateFunction($ctxt); } expression[$ctxt] { IQLGetVariablesBuildAggregateFunction($ctxt); })
@@ -160,6 +161,7 @@ expression[IQLGetVariablesContextRef ctxt]
     | ^(TK_MIN { IQLGetVariablesBeginAggregateFunction($ctxt); } expression[$ctxt] { IQLGetVariablesBuildAggregateFunction($ctxt); })
     | ^(TK_INTERVAL ID expression[$ctxt])
     | ^(TK_ARRAY (expression[$ctxt])*)
+    | ^(TK_ROW (expression[$ctxt])*)
     ;    
 
 whenExpression[IQLGetVariablesContextRef ctxt]

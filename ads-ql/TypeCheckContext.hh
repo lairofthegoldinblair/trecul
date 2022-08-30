@@ -136,6 +136,10 @@ public:
   ~TreculSymbolTable();
   void clear();  
   TreculSymbolTableEntry * lookup(const char * nm, const char * nm2);
+  TreculSymbolTableEntry * lookup(const char * nm)
+  {
+    return lookup(nm, nullptr);
+  }
   void add(const char * nm, const char * nm2, const FieldType * ft);
   void add(const char * nm, const char * nm2, IQLToLLVMLValue * val);
   void add(const char * nm, const char * nm2, 
@@ -245,10 +249,8 @@ public:
 
   /**
    * Variable rvalue expression.
-   * Variable names have an optional two part form.
-   * If there is only one part then the argument nm2 may be NULL.
    */
-  const FieldType * buildVariableRef(const char * nm, const char * nm2);
+  const FieldType * buildVariableRef(const char * nm);
 
   /**
    * Declare local variable.
@@ -261,6 +263,13 @@ public:
   const FieldType * buildArray(const std::vector<const FieldType *>& e);
   const FieldType * buildArrayRef(const FieldType * arrayTy,
 				  const FieldType * idx);
+
+  /**
+   * Struct reference expression.
+   */
+  const FieldType * buildStruct(const std::vector<const FieldType *>& e);
+  const FieldType * buildStructRef(const FieldType * rowTy,
+                                   const char * nm);
 
   /**
    * Function call 
@@ -338,6 +347,7 @@ public:
   const FieldType * buildIPv6Type(const char * addr, bool nullable = false);
   const FieldType * buildIPv6Type(bool nullable = false);
   const FieldType * buildCIDRv6Type(bool nullable = false);
+  const FieldType * buildDecltypeType(const FieldType * expr, bool nullable = false);
   const FieldType * buildNilType();
   const FieldType * buildType(const char * typeName, bool nullable);
 
@@ -348,6 +358,11 @@ public:
   const FieldType * buildFixedArrayType(int32_t sz, const FieldType * elt, bool nullable = false);
   const FieldType * buildVariableArrayType(const FieldType * elt, bool nullable = false);
   
+  /**
+   * Struct (named and anonymous) types
+   */
+  const FieldType * buildStructType(const std::vector<const FieldType *> & elts, bool nullable = false);
+
   /**
    * Interval types.
    */
@@ -408,7 +423,7 @@ public:
 						   const FieldType * e2);
 
   // Lookup a symbol
-  const FieldType * lookupType(const char * nm, const char * nm2);
+  const FieldType * lookupType(const char * nm);
 };
 
 

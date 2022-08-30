@@ -168,6 +168,7 @@ builtInTypeNoNull
       | TK_CIDRV4^ (arrayTypeSpec)?
       | TK_IPV6^ (arrayTypeSpec)?
       | TK_CIDRV6^ (arrayTypeSpec)?
+      | TK_DECLTYPE^ '('! expression ')'! (arrayTypeSpec)?
 	  | ID^ (arrayTypeSpec)?
         ) 
 	;
@@ -396,15 +397,14 @@ unaryExpressionNotPlusMinus
 	)? postfixExpression
 	;
     
-
 postfixExpression
 	:
 	primaryExpression
 	(
-	'('^ 
-	argList
-	')'!
-	)?
+            ('.'^ ID)
+            |
+            ('['^ expression ']'!)
+    )*
 	| '#'^ '('! expressionList ')'!
 	| '$'^ '('! expressionList ')'!
     | castExpression
@@ -514,16 +514,21 @@ primaryExpression
     | IPV6_LITERAL
 	| TK_TRUE
 	| TK_FALSE
-	| ID^ ('.'! ID)?
-	| ID '['^ expression ']'!
+	| ID ('('^ argList ')'!)?
   | TK_NULL
   | '('! expression ')'!
   | arrayConstructor
+  | rowConstructor
 	);
 
 arrayConstructor
 	:
     TK_ARRAY '[' expressionList ']' -> ^(TK_ARRAY expressionList)
+	;
+
+rowConstructor
+	:
+    TK_ROW '(' expressionList ')' -> ^(TK_ROW expressionList)
 	;
 
 //Lexer
@@ -554,6 +559,7 @@ TK_CREATE : 'CREATE';
 TK_CROSS : 'CROSS';
 TK_DATETIME : 'DATETIME';
 TK_DECLARE : 'DECLARE';
+TK_DECLTYPE : 'DECLTYPE';
 TK_DECIMAL : 'DECIMAL';
 TK_DESC : 'DESC';
 TK_DISTINCT : 'DISTINCT';

@@ -260,21 +260,34 @@ extern "C" {
                                                IQLToLLVMValueRef idx,
                                                void * idxAttrs,
                                                void * retAttrs);
+  IQLToLLVMLValueRef IQLToLLVMBuildRowLValue(IQLCodeGenerationContextRef ctxt, 
+                                             IQLToLLVMValueRef arr,
+                                             void * arrAttrs,
+                                             const char * member,
+                                             void * retAttrs);
 
-  IQLToLLVMValueRef IQLToLLVMBuildVariableRef(IQLCodeGenerationContextRef ctxt, const char * var, const char * var2,
-					      void * varAttrs);
+  IQLToLLVMValueRef IQLToLLVMBuildVariableRef(IQLCodeGenerationContextRef ctxt, const char * var, void * varAttrs, const char * var2,
+					      void * var2Attrs);
   IQLToLLVMValueRef IQLToLLVMBuildArrayRef(IQLCodeGenerationContextRef ctxt, 
                                            IQLToLLVMValueRef arr,
                                            void * arrAttrs,
                                            IQLToLLVMValueRef idx,
                                            void * idxAttrs,
                                            void * retAttrs);
-
+  IQLToLLVMValueRef IQLToLLVMBuildRowRef(IQLCodeGenerationContextRef ctxt, 
+                                         IQLToLLVMValueRef row,
+                                         void * rowAttrs,
+                                         const char * member,
+                                         void * retAttrs);
   /**
    * Array constructor
    */
   IQLToLLVMValueRef IQLToLLVMBuildArray(IQLCodeGenerationContextRef ctxt, IQLToLLVMValueVectorRef lhs, void * arrayAttrs);
 
+  /**
+   * Row constructor
+   */
+  IQLToLLVMValueRef IQLToLLVMBuildRow(IQLCodeGenerationContextRef ctxt, IQLToLLVMValueVectorRef lhs, void * arrayAttrs);
 
   /**
    * Construct a CASE expression.
@@ -424,16 +437,22 @@ extern "C" {
   /**
    * Get the type of an array variable.
    */
-  IQLFieldTypeRef IQLTypeCheckArrayRef(IQLTypeCheckContextRef ctxt, 
-				       IQLFieldTypeRef arr,
-				       IQLFieldTypeRef idx);
+  IQLFieldTypeRef IQLTypeCheckBuildArrayRef(IQLTypeCheckContextRef ctxt, 
+                                            IQLFieldTypeRef arr,
+                                            IQLFieldTypeRef idx);
+
+  /**
+   * Get the type of a struct member reference
+   */
+  IQLFieldTypeRef IQLTypeCheckBuildStructRef(IQLTypeCheckContextRef ctxt, 
+                                             IQLFieldTypeRef row,
+                                             const char * nm);
 
   /**
    * Get the type of an variable (possibly qualified).
    */
   IQLFieldTypeRef IQLTypeCheckBuildVariableRef(IQLTypeCheckContextRef ctxt, 
-					       const char * nm,
-					       const char * nm2);
+					       const char * nm);
 
   /**
    * Get the type of an array variable.
@@ -496,6 +515,8 @@ extern "C" {
   IQLFieldTypeRef IQLTypeCheckBuildIPv6ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildCIDRv6Type(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildCIDRv6ArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildDecltypeType(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef expr, int nullable);
+  IQLFieldTypeRef IQLTypeCheckBuildDecltypeArrayType(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef expr, const char * sz, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildNVarcharType(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildVarcharType(IQLTypeCheckContextRef ctxt, int nullable);
   IQLFieldTypeRef IQLTypeCheckBuildVarcharArrayType(IQLTypeCheckContextRef ctxt, const char * sz, int nullable);
@@ -521,6 +542,7 @@ extern "C" {
 					    const char * intervalType,
 					    IQLFieldTypeRef e);
   IQLFieldTypeRef IQLTypeCheckArray(IQLTypeCheckContextRef ctxt, IQLFieldTypeVectorRef lhs);
+  IQLFieldTypeRef IQLTypeCheckRow(IQLTypeCheckContextRef ctxt, IQLFieldTypeVectorRef lhs);
 
   /**
    * Interface for building graphs/plans.

@@ -159,7 +159,9 @@ variableReference[IQLTypeCheckContextRef ctxt] returns [IQLFieldTypeRef ty]
     :
     c=ID { $ty = IQLTypeCheckSymbolTableGetType($ctxt, (const char *) $ID.text->chars); $c->u = $ty; }
     |
-    ^(c='[' e1 = expression[$ctxt] e2 = expression[$ctxt] { $ty = IQLTypeCheckArrayRef(ctxt, e1.ty, e2.ty); $c->u = $ty; })
+    ^(c='[' e1 = expression[$ctxt] e2 = expression[$ctxt] { $ty = IQLTypeCheckBuildArrayRef(ctxt, e1.ty, e2.ty); $c->u = $ty; })
+    |
+    ^(c='.' e1 = expression[$ctxt] ID { $ty = IQLTypeCheckBuildStructRef(ctxt, e1.ty, (const char *) $ID.text->chars); $c->u = $ty; })
     ;
 
 switchStatement[IQLTypeCheckContextRef ctxt]
@@ -213,6 +215,7 @@ array=NULL;
       | ^(c=TK_CIDRV4 (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildCIDRv4ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildCIDRv4Type($ctxt, nullable); $c->u = $ty; }
       | ^(c=TK_IPV6 (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildIPv6ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildIPv6Type($ctxt, nullable); $c->u = $ty; }
       | ^(c=TK_CIDRV6 (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildCIDRv6ArrayType($ctxt, array, nullable) : IQLTypeCheckBuildCIDRv6Type($ctxt, nullable); $c->u = $ty; }
+      | ^(c=TK_DECLTYPE e=expression[$ctxt] (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildDecltypeArrayType($ctxt, e.ty, array, nullable) : IQLTypeCheckBuildDecltypeType($ctxt, e.ty, nullable); $c->u = $ty; }
 	  | ^(c=ID (array=arrayTypeSpec)? (nullable=typeNullability)?) { $ty = array != NULL ? IQLTypeCheckBuildArrayType($ctxt, (const char *) $ID.text->chars, array, nullable) : IQLTypeCheckBuildType($ctxt, (const char *) $ID.text->chars, nullable); $c->u = $ty; } 
 	;
 
@@ -291,8 +294,9 @@ $ty = NULL;
     | IPV6_LITERAL { $ty = IQLTypeCheckBuildIPv6Literal($ctxt, (const char *) $IPV6_LITERAL.text->chars, 0); $IPV6_LITERAL->u = $ty; }
 	| TK_TRUE { $ty = IQLTypeCheckBuildBooleanType($ctxt, 0); $TK_TRUE->u = $ty; }
 	| TK_FALSE { $ty = IQLTypeCheckBuildBooleanType($ctxt, 0); $TK_FALSE->u = $ty; }
-	| ^(id = ID (id2=ID { isBinary=1; })?) { $name = isBinary ? $id2.text : $id.text; $ty = IQLTypeCheckBuildVariableRef($ctxt, (const char *) $id.text->chars, isBinary ? (const char *) $id2.text->chars : 0); $id->u = $ty; }
-	| ^(c='[' e1 = expression[$ctxt]  e2 = expression[$ctxt]) { $ty = IQLTypeCheckArrayRef($ctxt, e1.ty, e2.ty); $c->u = $ty; }
+	| ID { $name = $ID.text; $ty = IQLTypeCheckBuildVariableRef($ctxt, (const char *) $ID.text->chars); $ID->u = $ty; }
+	| ^(c = '.' e1=expression[$ctxt] id2=ID) { $name = $id2.text; $ty = IQLTypeCheckBuildStructRef($ctxt, (const char *) e1.ty, (const char *) $id2.text->chars); $c->u = $ty; }
+	| ^(c='[' e1 = expression[$ctxt]  e2 = expression[$ctxt]) { $ty = IQLTypeCheckBuildArrayRef($ctxt, e1.ty, e2.ty); $c->u = $ty; }
     | TK_NULL { $ty = IQLTypeCheckBuildNilType($ctxt); $TK_NULL->u = $ty; }
     | ^(TK_SUM { IQLTypeCheckBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildAggregateFunction($ctxt, e1.ty); $TK_SUM->u = $ty; } )
     | ^(TK_MAX { IQLTypeCheckBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildAggregateFunction($ctxt, e1.ty); $TK_MAX->u = $ty; } )
@@ -300,6 +304,8 @@ $ty = NULL;
     | ^(TK_INTERVAL intervalType = ID e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildInterval($ctxt, (const char *) $intervalType.text->chars, e1.ty); $TK_INTERVAL->u = $ty; } )
     | ^(c=TK_ARRAY { types = IQLFieldTypeVectorCreate(); } (e1 = expression[$ctxt] { IQLFieldTypeVectorPushBack(types, e1.ty); })*) 
         { $ty = IQLTypeCheckArray($ctxt, types); IQLFieldTypeVectorFree(types); $c->u = $ty; }
+    | ^(c=TK_ROW { types = IQLFieldTypeVectorCreate(); } (e1 = expression[$ctxt] { IQLFieldTypeVectorPushBack(types, e1.ty); })*) 
+        { $ty = IQLTypeCheckRow($ctxt, types); IQLFieldTypeVectorFree(types); $c->u = $ty; }
     ;    
 
 whenExpression[IQLTypeCheckContextRef ctxt]

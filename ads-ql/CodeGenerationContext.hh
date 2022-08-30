@@ -57,6 +57,7 @@ namespace llvm {
 class CodeGenerationContext;
 class FieldType;
 class SequentialType;
+class StructType;
 class FieldAddress;
 class BitcpyOp;
 class BitsetOp;
@@ -184,8 +185,11 @@ class IQLToLLVMField : public IQLToLLVMLValue
 {
 private:
   std::string mMemberName;
+  std::size_t mMemberIdx;
   llvm::Value * mBasePointer;
   const RecordType * mRecordType;
+
+  const FieldType * getType() const;
 public:
   IQLToLLVMField(CodeGenerationContext * ctxt,
 		 const RecordType * recordType,
@@ -193,6 +197,9 @@ public:
 		 const std::string& recordName);
   IQLToLLVMField(const RecordType * recordType,
 		 const std::string& memberName,
+		 llvm::Value * basePointer);
+  IQLToLLVMField(const RecordType * recordType,
+		 std::size_t memberIdx,
 		 llvm::Value * basePointer);
   ~IQLToLLVMField();
   const IQLToLLVMValue * getValuePointer(CodeGenerationContext * ctxt) const override;
@@ -224,7 +231,7 @@ public:
   ~IQLToLLVMArrayElement();
   const IQLToLLVMValue * getValuePointer(CodeGenerationContext * ctxt) const;
   void setNull(CodeGenerationContext * ctxt, bool isNull) const;
-  bool isNullable() const;
+  bool isNullable() const override;
   llvm::Value * getValue(CodeGenerationContext * ctxt) const override;
   llvm::Value * getNull(CodeGenerationContext * ctxt) const override;
   bool isLiteralNull() const override;
@@ -248,11 +255,40 @@ public:
   const IQLToLLVMValue * getValuePointer(CodeGenerationContext * ctxt) const;
   llvm::Value * getNullBitPointer() const;
   void setNull(CodeGenerationContext * ctxt, bool isNull) const;
-  bool isNullable() const;
+  bool isNullable() const override;
   llvm::Value * getValue(CodeGenerationContext * ctxt) const override;
   llvm::Value * getNull(CodeGenerationContext * ctxt) const override;
   bool isLiteralNull() const override;
   ValueType getValueType() const override;
+};
+
+class IQLToLLVMArgument : public IQLToLLVMLValue
+{
+private:
+  // The actual value
+  llvm::Value * mValue;
+  // IQL Type
+  const FieldType * mType;
+  // This member variable stores the stack variable/base pointer that contains the argument value.
+  // Such a base pointer is created by IQLInterpreter::ConstructFunction.
+  // We store this so that it can be passed this value into RecordType::LLVMGetMember and
+  // RecordType::isMemberPtr.   The reason for storing exactly the location of the allocated stack variable
+  // is to guarantee that RecordType::isMemberPtr will recognize references (it assumes that all accesses use the same
+  // base pointer).
+  llvm::Value * mBasePointer;
+public:
+  IQLToLLVMArgument(llvm::Value * val, const FieldType * ty, llvm::Value * basePointer);
+
+  ~IQLToLLVMArgument();
+
+  const IQLToLLVMValue * getValuePointer(CodeGenerationContext * ctxt) const;
+  void setNull(CodeGenerationContext * ctxt, bool isNull) const;
+  bool isNullable() const override;
+  llvm::Value * getValue(CodeGenerationContext * ctxt) const override;
+  llvm::Value * getNull(CodeGenerationContext * ctxt) const override;
+  bool isLiteralNull() const override;
+  ValueType getValueType() const override;
+  llvm::Value * getBasePointer(CodeGenerationContext * ctxt) const;
 };
 
 class IQLToLLVMStackRecord
@@ -453,6 +489,15 @@ private:
   // dynamically allocate storage for arrayLen elements in a pointer to VARIABLE_ARRAY
   void buildVariableArrayAllocate(llvm::Value * e, const SequentialType * arrayType, llvm::Value * arrayLen, bool trackAllocation);
 
+  // Copy a range of members from an struct to another.
+  void buildStructElementwiseCopy(const IQLToLLVMValue * e, 
+                                  const RecordType * argType,
+                                  std::size_t beginIdx,
+                                  std::size_t endIdx,
+                                  std::size_t retBeginIdx, 
+                                  const IQLToLLVMValue * ret, 
+                                  const RecordType * retType);
+  
   // How does this code generator treat values of types? Does it pass them
   // around as values or does it pass references around.
   static bool isValueType(const FieldType *);
@@ -564,7 +609,7 @@ public:
   /**
    * Lookup an l-value in the symbol table.
    */
-  const IQLToLLVMLValue * lookup(const char * name, const char * name2);
+  const IQLToLLVMLValue * lookup(const char * name);
 
   /**
    * Lookup an r-value in the symbol table.
@@ -697,6 +742,38 @@ public:
                                           const FieldType * rhsType,
                                           const FieldType * retType);
 
+  /**
+   * Build a row expression
+   */
+  const IQLToLLVMValue * buildRow(std::vector<IQLToLLVMTypedValue>& vals,
+                                  FieldType * rowTy);
+
+  const IQLToLLVMLValue * buildRowLValue(const IQLToLLVMValue * row,
+                                         const FieldType * rowType,
+                                         const IQLToLLVMValue * idx,
+                                         const FieldType * idxType,
+                                         const FieldType * retType);
+
+  const IQLToLLVMLValue * buildRowLValue(const IQLToLLVMValue * row,
+                                         const FieldType * rowType,
+                                         const std::string & member,
+                                         const FieldType * retType);
+
+  const IQLToLLVMLValue * buildRowRef(const IQLToLLVMValue * row,
+                                      const FieldType * rowType,
+                                      const IQLToLLVMValue * idx,
+                                      const FieldType * idxType,
+                                      const FieldType * retType);
+  
+  const IQLToLLVMLValue * buildRowRef(const IQLToLLVMValue * row,
+                                      const FieldType * rowType,
+                                      std::size_t idx,
+                                      const FieldType * retType);
+  
+  const IQLToLLVMLValue * buildRowRef(const IQLToLLVMValue * row,
+                                      const FieldType * rowType,
+                                      const std::string & member,
+                                      const FieldType * retType);
   /**
    * Call a function.
    */
@@ -1093,6 +1170,14 @@ public:
   llvm::Value * getArrayNull(llvm::Value * ptr, const FieldType * ty);
   
   /**
+   * Interface to the STRUCT datatype.
+   */
+  llvm::Value * getRowData(const IQLToLLVMValue * e, const FieldType * ty);
+  llvm::Value * getRowData(llvm::Value * ptr, const FieldType * ty);
+  llvm::Value * getRowNull(const IQLToLLVMValue * e, const FieldType * ty);
+  llvm::Value * getRowNull(llvm::Value * ptr, const FieldType * ty);
+  
+  /**
    * Reuse of local variables so that we don't put too much pressure
    * on mem2reg to eliminate them.
    */
@@ -1236,6 +1321,19 @@ public:
                                IQLToLLVMPredicate op);
 
   const IQLToLLVMValue *
+  buildStructElementwiseEquals(const IQLToLLVMValue * lhs, 
+                               const IQLToLLVMValue * rhs,
+                               const RecordType * promoted,
+                               const FieldType * retType);
+  
+  const IQLToLLVMValue *
+  buildStructElementwiseCompare(const IQLToLLVMValue * lhs, 
+                                const IQLToLLVMValue * rhs,
+                                const RecordType * promoted,
+                                const FieldType * retType,
+                                IQLToLLVMPredicate op);
+  
+  const IQLToLLVMValue *
   buildStructElementwiseCompare(const IQLToLLVMValue * lhs, 
                                 const IQLToLLVMValue * rhs,
                                 const FieldType * promoted,
@@ -1352,7 +1450,10 @@ public:
 					       llvm::Value * ret);
   const IQLToLLVMValue * buildRef(const IQLToLLVMValue * allocAVal, const FieldType * retTy);
   const IQLToLLVMValue * buildVariableRef(const char * var,
+                                          const FieldType * varTy,
 					  const char * var2,
+					  const FieldType * retTy);
+  const IQLToLLVMValue * buildVariableRef(const char * var,
 					  const FieldType * varTy);
   
   // Is val a pointer to value of type ft?
