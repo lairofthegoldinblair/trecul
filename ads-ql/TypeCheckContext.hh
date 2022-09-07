@@ -408,7 +408,7 @@ public:
    * Aggregate function building.
    */
   void beginAggregateFunction();
-  const FieldType * buildAggregateFunction(const FieldType * ty);
+  const FieldType * buildAggregateFunction(const FieldType * ty, const char * fn);
 
   /**
    * Automatic type promotion interface.

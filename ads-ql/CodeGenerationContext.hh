@@ -711,9 +711,9 @@ public:
    * Build an array expression
    */
   const IQLToLLVMValue * buildArray(std::vector<IQLToLLVMTypedValue>& vals,
-				    FieldType * arrayTy);
+				    const FieldType * arrayTy);
   const IQLToLLVMValue * buildGlobalConstArray(std::vector<IQLToLLVMTypedValue>& vals,
-					       FieldType * arrayTy);
+					       const FieldType * arrayTy);
   const IQLToLLVMValue * buildGlobalConstString(const std::string & str);
 
   /**
@@ -1189,6 +1189,8 @@ public:
    */
   llvm::Value * buildEntryBlockAlloca(llvm::Type * ty, 
 				      const char * name);
+  llvm::Value * buildEntryBlockAlloca(const FieldType * ty, 
+				      const char * name);
 
   /**
    * Assignment
@@ -1421,6 +1423,7 @@ public:
    */
   const IQLToLLVMValue * buildAggregateFunction(const char * fn,
 						const IQLToLLVMValue * e,
+                                                const FieldType * exprTy,
 						const FieldType * retTy);
   
 
@@ -1468,9 +1471,10 @@ public:
   virtual void update(CodeGenerationContext * ctxt,
 		      const std::string& old,
 		      const IQLToLLVMValue * inc,
-		      const FieldType * ft) =0;
+                      const FieldType * incTy,
+		      const FieldType * retTy) =0;
   virtual const IQLToLLVMValue * initialize(CodeGenerationContext * ctxt,
-					    const FieldType * ft) =0;
+					    const FieldType * retTy) =0;
 };
 
 #endif

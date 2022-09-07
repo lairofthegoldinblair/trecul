@@ -298,9 +298,10 @@ $ty = NULL;
 	| ^(c = '.' e1=expression[$ctxt] id2=ID) { $name = $id2.text; $ty = IQLTypeCheckBuildStructRef($ctxt, (const char *) e1.ty, (const char *) $id2.text->chars); $c->u = $ty; }
 	| ^(c='[' e1 = expression[$ctxt]  e2 = expression[$ctxt]) { $ty = IQLTypeCheckBuildArrayRef($ctxt, e1.ty, e2.ty); $c->u = $ty; }
     | TK_NULL { $ty = IQLTypeCheckBuildNilType($ctxt); $TK_NULL->u = $ty; }
-    | ^(TK_SUM { IQLTypeCheckBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildAggregateFunction($ctxt, e1.ty); $TK_SUM->u = $ty; } )
-    | ^(TK_MAX { IQLTypeCheckBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildAggregateFunction($ctxt, e1.ty); $TK_MAX->u = $ty; } )
-    | ^(TK_MIN { IQLTypeCheckBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildAggregateFunction($ctxt, e1.ty); $TK_MIN->u = $ty; } )
+    | ^(TK_ARRAY_CONCAT { IQLTypeCheckBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildAggregateFunction($ctxt, e1.ty, "ARRAY_CONCAT"); $TK_ARRAY_CONCAT->u = $ty; } )
+    | ^(TK_SUM { IQLTypeCheckBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildAggregateFunction($ctxt, e1.ty, "SUM"); $TK_SUM->u = $ty; } )
+    | ^(TK_MAX { IQLTypeCheckBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildAggregateFunction($ctxt, e1.ty, "MAX"); $TK_MAX->u = $ty; } )
+    | ^(TK_MIN { IQLTypeCheckBeginAggregateFunction($ctxt); } e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildAggregateFunction($ctxt, e1.ty, "MIN"); $TK_MIN->u = $ty; } )
     | ^(TK_INTERVAL intervalType = ID e1 = expression[$ctxt] { $ty = IQLTypeCheckBuildInterval($ctxt, (const char *) $intervalType.text->chars, e1.ty); $TK_INTERVAL->u = $ty; } )
     | ^(c=TK_ARRAY { types = IQLFieldTypeVectorCreate(); } (e1 = expression[$ctxt] { IQLFieldTypeVectorPushBack(types, e1.ty); })*) 
         { $ty = IQLTypeCheckArray($ctxt, types); IQLFieldTypeVectorFree(types); $c->u = $ty; }

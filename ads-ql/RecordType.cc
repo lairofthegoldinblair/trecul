@@ -2806,10 +2806,10 @@ RecordBuffer RecordType::getStructPtr(const std::string& field, RecordBuffer buf
   return getStructPtr(it->second, buf);
 }
 
-RecordBuffer RecordType::getArrayStructPtr(const std::string& field, RecordBuffer buf, int idx) const
+RecordBuffer RecordType::getArrayStructPtr(const std::string& field, int idx, RecordBuffer buf) const
 {
   const_member_name_iterator it = mMemberNames.find(field);
-  return getArrayStructPtr(it->second, buf, idx);
+  return getArrayStructPtr(it->second, idx, buf);
 }
 
 RecordBuffer RecordType::getStructPtr(std::size_t field, RecordBuffer buf) const
@@ -2817,7 +2817,7 @@ RecordBuffer RecordType::getStructPtr(std::size_t field, RecordBuffer buf) const
   return mMemberOffsets[field].getStructPtr(buf);
 }
 
-RecordBuffer RecordType::getArrayStructPtr(std::size_t field, RecordBuffer buf, int idx) const
+RecordBuffer RecordType::getArrayStructPtr(std::size_t field, int idx, RecordBuffer buf) const
 {
   const FixedArrayType * ft = dynamic_cast<const FixedArrayType *>(mMembers[field].GetType());
   if(FieldType::FIXED_ARRAY == mMembers[field].GetType()->GetEnum()) {

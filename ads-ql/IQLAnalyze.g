@@ -259,6 +259,7 @@ expression[IQLTreeFactoryRef ctxt] returns [IQLExpressionRef e]
 	| ^('.' t=ID fun=ID) { $e = IQLBuildVariable($ctxt, (const char *)$t.text->chars, (const char *)$fun.text->chars, $t->getLine($t), $t->getCharPositionInLine($t)); }
 	| ^(t='[' fun=ID e1=expression[$ctxt] { $e = IQLBuildArrayRef($ctxt, (const char *)$fun.text->chars, e1, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | t=TK_NULL { $e = IQLBuildNil($ctxt, $t->getLine($t), $t->getCharPositionInLine($t)); }
+    | ^(t=TK_ARRAY_CONCAT e1=expression[$ctxt] { $e = IQLBuildUnaryFun($ctxt, "ARRAY_CONCAT", e1, $t->getLine($t), $t->getCharPositionInLine($t)); } )
     | ^(t=TK_SUM e1=expression[$ctxt] { $e = IQLBuildUnaryFun($ctxt, "SUM", e1, $t->getLine($t), $t->getCharPositionInLine($t)); } )
     | ^(t=TK_MAX e1=expression[$ctxt] { $e = IQLBuildUnaryFun($ctxt, "MAX", e1, $t->getLine($t), $t->getCharPositionInLine($t)); } )
     | ^(t=TK_MIN e1=expression[$ctxt] { $e = IQLBuildUnaryFun($ctxt, "MIN", e1, $t->getLine($t), $t->getCharPositionInLine($t)); } )

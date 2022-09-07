@@ -156,6 +156,7 @@ expression[IQLGetVariablesContextRef ctxt]
 	| ^('.' id = ID id2 = ID) { IQLGetVariablesBuildVariableReference($ctxt, (const char *) $id2.text->chars); }
 	| ^('[' id=ID expression[$ctxt])  { IQLGetVariablesBuildArrayReference($ctxt, (const char *) $id.text->chars); }
     | TK_NULL
+    | ^(TK_ARRAY_CONCAT { IQLGetVariablesBeginAggregateFunction($ctxt); } expression[$ctxt] { IQLGetVariablesBuildAggregateFunction($ctxt); })
     | ^(TK_SUM { IQLGetVariablesBeginAggregateFunction($ctxt); } expression[$ctxt] { IQLGetVariablesBuildAggregateFunction($ctxt); })
     | ^(TK_MAX { IQLGetVariablesBeginAggregateFunction($ctxt); } expression[$ctxt] { IQLGetVariablesBuildAggregateFunction($ctxt); })
     | ^(TK_MIN { IQLGetVariablesBeginAggregateFunction($ctxt); } expression[$ctxt] { IQLGetVariablesBuildAggregateFunction($ctxt); })

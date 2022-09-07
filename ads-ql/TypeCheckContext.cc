@@ -1443,7 +1443,7 @@ void TypeCheckContext::beginAggregateFunction()
   std::swap(mTypeCheckSymbolTable, mAggregateTypeCheckSymbolTable);
 }
 
-const FieldType * TypeCheckContext::buildAggregateFunction(const FieldType * ty)
+const FieldType * TypeCheckContext::buildAggregateFunction(const FieldType * ty, const char * fn)
 {
   // Switch back to the top level context for the aggregate (e.g. group by
   // fields only in the symbol table).
@@ -1452,12 +1452,16 @@ const FieldType * TypeCheckContext::buildAggregateFunction(const FieldType * ty)
   // TODO: Add proper checks and conversions for ty.
   // TODO: Not all aggregate functions have nullable output
   // SUM, MIN and MAX do however (COUNT will not when it is added).
-  ty = ty->clone(true);
+  if (boost::algorithm::iequals(fn, "array_concat")) {
+    ty = buildVariableArrayType(ty, true);
+  } else {
+    ty = ty->clone(true);
+  }
   // Add a member to the aggregate record
   std::string aggregateMember((boost::format("__AggFn%1%__") % 
 			       mAggregateMembers->size()).str());
   mAggregateMembers->push_back(RecordMember(aggregateMember,
-					   ty));
+                                            ty));
   return ty;
 }
 

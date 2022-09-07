@@ -2488,7 +2488,7 @@ public:
   bool isNull(const std::string& field, RecordBuffer buf) const;
   bool isArrayNull(const std::string& field, int32_t idx, RecordBuffer buf) const;
   RecordBuffer getStructPtr(const std::string& field, RecordBuffer buffer) const;
-  RecordBuffer getArrayStructPtr(const std::string& field, RecordBuffer buffer, int idx) const;
+  RecordBuffer getArrayStructPtr(const std::string& field, int idx, RecordBuffer buffer) const;
 
   template<typename _TreculType>
   typename TreculNativeGetter<_TreculType>::type get(std::size_t field, RecordBuffer buffer) const
@@ -2513,7 +2513,7 @@ public:
     return mMemberOffsets[it->second].getPtr<_TreculType>(buffer);
   }
   RecordBuffer getStructPtr(std::size_t field, RecordBuffer buffer) const;
-  RecordBuffer getArrayStructPtr(std::size_t field, RecordBuffer buffer, int idx) const;
+  RecordBuffer getArrayStructPtr(std::size_t field, int idx, RecordBuffer buffer) const;
 };
 
 class IQLRecordTypeBuilder

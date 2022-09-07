@@ -1006,9 +1006,8 @@ llvm::Value * CodeGenerationContext::addExternalFunction(const char * treculName
 
 void CodeGenerationContext::buildDeclareLocal(const char * nm, const FieldType * ft)
 {
-  llvm::Type * ty = ft->LLVMGetType(this);
   // TODO: Check for duplicate declaration
-  llvm::Value * allocAVal = buildEntryBlockAlloca(ty,nm);
+  llvm::Value * allocAVal = buildEntryBlockAlloca(ft,nm);
   // NULL handling
   llvm::Value * nullVal = NULL;
   if (ft->isNullable()) {
@@ -1117,7 +1116,7 @@ void CodeGenerationContext::conditionalBranch(const IQLToLLVMValue * condVal,
 
 const IQLToLLVMValue * 
 CodeGenerationContext::buildArray(std::vector<IQLToLLVMTypedValue>& vals,
-				  FieldType * arrayTy)
+				  const FieldType * arrayTy)
 {
   // Detect if this is an array of constants
   // TODO: We need analysis or attributes that tell us whether the
@@ -1142,11 +1141,14 @@ CodeGenerationContext::buildArray(std::vector<IQLToLLVMTypedValue>& vals,
   // it cleans up our mess.
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
-  const FieldType * eltTy = dynamic_cast<const FixedArrayType*>(arrayTy)->getElementType();
-  llvm::Type * retTy = arrayTy->LLVMGetType(this);
-  llvm::Value * result = buildEntryBlockAlloca(retTy, "nullableBinOp");
+  const FieldType * eltTy = dynamic_cast<const SequentialType*>(arrayTy)->getElementType();
+  llvm::Value * result = buildEntryBlockAlloca(arrayTy, "nullableBinOp");
   const IQLToLLVMValue * arrayVal = IQLToLLVMRValue::get(this, result, IQLToLLVMValue::eLocal);
-  int32_t sz = arrayTy->GetSize();
+  int32_t sz = vals.size();
+  const VariableArrayType * varArrayTy = dynamic_cast<const VariableArrayType *>(arrayTy);
+  if (nullptr != varArrayTy) {
+    buildVariableArrayAllocate(result, varArrayTy, b->getInt32(sz), true);
+  }
   for (int32_t i=0; i<sz; ++i) {
     // TODO: type promotions???
     const IQLToLLVMLValue * arrElt = buildArrayLValue(arrayVal, arrayTy,
@@ -1162,7 +1164,7 @@ CodeGenerationContext::buildArray(std::vector<IQLToLLVMTypedValue>& vals,
 
 const IQLToLLVMValue * 
 CodeGenerationContext::buildGlobalConstArray(std::vector<IQLToLLVMTypedValue>& vals,
-					     FieldType * arrayTy)
+					     const FieldType * arrayTy)
 {
   llvm::Module * m = LLVMModule;
   llvm::LLVMContext * c = LLVMContext;
@@ -2595,7 +2597,7 @@ void CodeGenerationContext::buildArrayCopyableCopy(const IQLToLLVMValue * e,
 
 llvm::Value * CodeGenerationContext::buildVariableArrayAllocate(const SequentialType * arrayType, llvm::Value * arrayLen, bool trackAllocation)
 {
-  llvm::Value * arr = buildEntryBlockAlloca(LLVMVarcharType, "");
+  llvm::Value * arr = buildEntryBlockAlloca(arrayType, "");
   buildVariableArrayAllocate(arr, arrayType, arrayLen, trackAllocation);
   return arr;
 }
@@ -4206,13 +4208,26 @@ void CodeGenerationContext::returnCachedLocal(llvm::Value * v)
   c[ty].push_back(v);
 }
 
-llvm::Value * CodeGenerationContext::buildEntryBlockAlloca(llvm::Type * ty, const char * name) {
+llvm::Value * CodeGenerationContext::buildEntryBlockAlloca(llvm::Type * ty, const char * name)
+{
   // Create a new builder positioned at the beginning of the entry block of the function
   llvm::Function* TheFunction = llvm::dyn_cast<llvm::Function>(LLVMFunction);
   llvm::IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
                          TheFunction->getEntryBlock().begin());
   return TmpB.CreateAlloca(ty, 0, name);
 }
+
+llvm::Value * CodeGenerationContext::buildEntryBlockAlloca(const FieldType * ty, const char * name)
+{
+  auto tmp = buildEntryBlockAlloca(ty->LLVMGetType(this), name);
+  if (FieldType::VARIABLE_ARRAY == ty->GetEnum()) {
+    llvm::IRBuilder<> * b = LLVMBuilder;
+    llvm::Type * varcharType = ty->LLVMGetType(this);
+    llvm::Type * int64PtrTy = llvm::PointerType::get(b->getInt64Ty(), 0);
+    b->CreateStore(b->getInt64(0), b->CreateBitCast(b->CreateStructGEP(varcharType, tmp, 2), int64PtrTy));
+  }
+  return tmp;
+}  
 
 void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
 					   const IQLToLLVMLValue * iqllvalue,
@@ -6251,6 +6266,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildLiteralCast(const char * val,
 
 const IQLToLLVMValue * CodeGenerationContext::buildAggregateFunction(const char * fn,
 								     const IQLToLLVMValue * e,
+                                                                     const FieldType * exprTy,
 								     const FieldType * retTy)
 {
   // Name of variable of this function
@@ -6261,7 +6277,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildAggregateFunction(const char 
   // TODO: Get the aggregate function instance
   // from the symbol table.
   boost::shared_ptr<AggregateFunction> agg = AggregateFunction::get(fn);
-  agg->update(this, aggFn, e, retTy);
+  agg->update(this, aggFn, e, exprTy, retTy);
   // Move temporarily to the initialization context and provide init
   // for the aggregate variable
   restoreAggregateContext(&Initialize);
@@ -6413,13 +6429,13 @@ protected:
   virtual void updateNull(CodeGenerationContext * ctxt,
 			  const std::string& aggFn,
 			  const IQLToLLVMValue * inc,
-			  const FieldType * inputTy,
+			  const FieldType * incTy,
 			  const IQLToLLVMLValue * fieldLVal,
 			  const FieldType * ft)=0;
   virtual void updateNotNull(CodeGenerationContext * ctxt,
 			     const std::string& aggFn,
 			     const IQLToLLVMValue * inc,
-			     const FieldType * inputTy,
+			     const FieldType * incTy,
 			     const IQLToLLVMLValue * fieldLVal,
 			     const FieldType * ft,
 			     llvm::BasicBlock * mergeBlock)=0;
@@ -6429,15 +6445,17 @@ public:
   void update(CodeGenerationContext * ctxt,
 	      const std::string& old,
 	      const IQLToLLVMValue * inc,
-	      const FieldType * ft) ;
+              const FieldType * incTy,
+	      const FieldType * retTy) ;
   const IQLToLLVMValue * initialize(CodeGenerationContext * ctxt,
-				    const FieldType * ft);  
+				    const FieldType * retTy);  
 };
 
 void NullInitializedAggregate::update(CodeGenerationContext * ctxt,
                                       const std::string& aggFn,
                                       const IQLToLLVMValue * inc,
-                                      const FieldType * ft)
+                                      const FieldType * incTy,
+                                      const FieldType * retTy)
 {
   // Code generate:
   //    IF inc IS NOT NULL THEN (only if input is nullable)
@@ -6459,9 +6477,7 @@ void NullInitializedAggregate::update(CodeGenerationContext * ctxt,
   const RecordType * outputRecord = recordTypes.find("input1")->second.second;
   BOOST_ASSERT(outputRecord != NULL);
   IQLToLLVMField fieldLVal(ctxt, outputRecord, aggFn, "__BasePointer1__");
-  // Type of input
-  const FieldType * inputTy = NULL;
-  // If a nullable value check for nullability
+  // If a nullable increment, check for nullability
   llvm::Value * nv = inc->getNull(ctxt);
   if (nv) {
     // We must skip nullable inputs
@@ -6471,32 +6487,32 @@ void NullInitializedAggregate::update(CodeGenerationContext * ctxt,
     b->CreateCondBr(b->CreateNot(nv), updateBlock, mergeBlock);
     // Emit update and branch to merge.
     b->SetInsertPoint(updateBlock);    
-    inputTy = ft;
+    BOOST_ASSERT(incTy->isNullable());
   } else {
-    inputTy = ft->clone(false);
+    BOOST_ASSERT(!incTy->isNullable());
   }
   
   llvm::BasicBlock * notNullBlock = 
     llvm::BasicBlock::Create(*c, "aggNotNull", TheFunction);
   llvm::BasicBlock * nullBlock = 
     llvm::BasicBlock::Create(*c, "aggNull", TheFunction);
-  const IQLToLLVMValue * old = ctxt->buildVariableRef(aggFn.c_str(), ft);
+  const IQLToLLVMValue * old = ctxt->buildVariableRef(aggFn.c_str(), retTy);
   BOOST_ASSERT(old->getNull(ctxt));
   b->CreateCondBr(b->CreateNot(old->getNull(ctxt)), notNullBlock, nullBlock);
   // Increment value not null case
   b->SetInsertPoint(notNullBlock);    
-  updateNotNull(ctxt, aggFn, inc, inputTy, &fieldLVal, ft, mergeBlock);
+  updateNotNull(ctxt, aggFn, inc, incTy, &fieldLVal, retTy, mergeBlock);
   b->CreateBr(mergeBlock);
   // set value null case
   b->SetInsertPoint(nullBlock);    
-  updateNull(ctxt, aggFn, inc, inputTy, &fieldLVal, ft);
+  updateNull(ctxt, aggFn, inc, incTy, &fieldLVal, retTy);
   b->CreateBr(mergeBlock);
 
   b->SetInsertPoint(mergeBlock);
 }
 
 const IQLToLLVMValue * NullInitializedAggregate::initialize(CodeGenerationContext * ctxt,
-                                                            const FieldType * ft)
+                                                            const FieldType * )
 {
   return ctxt->buildNull();
 }
@@ -6509,13 +6525,13 @@ protected:
   void updateNull(CodeGenerationContext * ctxt,
 		  const std::string& aggFn,
 		  const IQLToLLVMValue * inc,
-		  const FieldType * inputTy,
+		  const FieldType * incTy,
 		  const IQLToLLVMLValue * fieldLVal,
 		  const FieldType * ft);
   void updateNotNull(CodeGenerationContext * ctxt,
 		     const std::string& aggFn,
 		     const IQLToLLVMValue * inc,
-		     const FieldType * inputTy,
+		     const FieldType * incTy,
 		     const IQLToLLVMLValue * fieldLVal,
 		     const FieldType * ft,
 		     llvm::BasicBlock * mergeBlock);
@@ -6526,7 +6542,7 @@ public:
 void SumAggregate::updateNull(CodeGenerationContext * ctxt,
 			      const std::string& aggFn,
 			      const IQLToLLVMValue * inc,
-			      const FieldType * inputTy,
+			      const FieldType * incTy,
 			      const IQLToLLVMLValue * fieldLVal,
 			      const FieldType * ft)
 {
@@ -6536,13 +6552,13 @@ void SumAggregate::updateNull(CodeGenerationContext * ctxt,
 void SumAggregate::updateNotNull(CodeGenerationContext * ctxt,
 				 const std::string& aggFn,
 				 const IQLToLLVMValue * inc,
-				 const FieldType * inputTy,
+				 const FieldType * incTy,
 				 const IQLToLLVMLValue * fieldLVal,
 				 const FieldType * ft,
 				 llvm::BasicBlock * mergeBlock)
 {
   const IQLToLLVMValue * sum = ctxt->buildAdd(inc,
-					      inputTy,
+					      incTy,
 					      ctxt->buildVariableRef(aggFn.c_str(), ft),
 					      ft,
 					      ft);
@@ -6560,13 +6576,13 @@ protected:
   void updateNull(CodeGenerationContext * ctxt,
 		  const std::string& aggFn,
 		  const IQLToLLVMValue * inc,
-		  const FieldType * inputTy,
+		  const FieldType * incTy,
 		  const IQLToLLVMLValue * fieldLVal,
 		  const FieldType * ft);
   void updateNotNull(CodeGenerationContext * ctxt,
 		     const std::string& aggFn,
 		     const IQLToLLVMValue * inc,
-		     const FieldType * inputTy,
+		     const FieldType * incTy,
 		     const IQLToLLVMLValue * fieldLVal,
 		     const FieldType * ft,
 		     llvm::BasicBlock * mergeBlock);
@@ -6583,7 +6599,7 @@ MaxMinAggregate::MaxMinAggregate(bool isMax)
 void MaxMinAggregate::updateNull(CodeGenerationContext * ctxt,
                                  const std::string& aggFn,
                                  const IQLToLLVMValue * inc,
-                                 const FieldType * inputTy,
+                                 const FieldType * incTy,
                                  const IQLToLLVMLValue * fieldLVal,
                                  const FieldType * ft)
 {
@@ -6593,7 +6609,7 @@ void MaxMinAggregate::updateNull(CodeGenerationContext * ctxt,
 void MaxMinAggregate::updateNotNull(CodeGenerationContext * ctxt,
 				    const std::string& aggFn,
 				    const IQLToLLVMValue * inc,
-				    const FieldType * inputTy,
+				    const FieldType * incTy,
 				    const IQLToLLVMLValue * fieldLVal,
 				    const FieldType * ft,
 				    llvm::BasicBlock * mergeBlock)
@@ -6609,7 +6625,7 @@ void MaxMinAggregate::updateNotNull(CodeGenerationContext * ctxt,
 
   const IQLToLLVMValue * old = ctxt->buildVariableRef(aggFn.c_str(), ft);
   const IQLToLLVMValue * condVal = ctxt->buildCompare(old, ft, 
-						      inc, inputTy,
+						      inc, incTy,
 						      // Currently returning int32_t for bool
 						      Int32Type::Get(ft->getContext(), true),
 						      mIsMax ? IQLToLLVMOpLT : IQLToLLVMOpGT);
@@ -6624,6 +6640,52 @@ void MaxMinAggregate::updateNotNull(CodeGenerationContext * ctxt,
   ctxt->buildSetValue(inc, aggFn.c_str(), ft);
 }
 
+class ArrayConcatAggregate : public NullInitializedAggregate
+{
+protected:
+  // Pattern for aggregates that initialize to NULL
+  // and skip input NULL values.
+  void updateNull(CodeGenerationContext * ctxt,
+		  const std::string& aggFn,
+		  const IQLToLLVMValue * inc,
+		  const FieldType * incTy,
+		  const IQLToLLVMLValue * fieldLVal,
+		  const FieldType * ft);
+  void updateNotNull(CodeGenerationContext * ctxt,
+		     const std::string& aggFn,
+		     const IQLToLLVMValue * inc,
+		     const FieldType * incTy,
+		     const IQLToLLVMLValue * fieldLVal,
+		     const FieldType * ft,
+		     llvm::BasicBlock * mergeBlock);
+public:
+  ~ArrayConcatAggregate() {}
+};
+
+void ArrayConcatAggregate::updateNull(CodeGenerationContext * ctxt,
+                                      const std::string& aggFn,
+                                      const IQLToLLVMValue * inc,
+                                      const FieldType * incTy,
+                                      const IQLToLLVMLValue * fieldLVal,
+                                      const FieldType * ft)
+{
+  // Create a one element array and set that as value
+  std::vector<IQLToLLVMTypedValue> vals = { IQLToLLVMTypedValue(inc, incTy) };
+  ctxt->buildSetNullableValue(fieldLVal, ctxt->buildArray(vals, ft), ft, false);  
+}
+
+void ArrayConcatAggregate::updateNotNull(CodeGenerationContext * ctxt,
+                                         const std::string& aggFn,
+                                         const IQLToLLVMValue * inc,
+                                         const FieldType * incTy,
+                                         const IQLToLLVMLValue * fieldLVal,
+                                         const FieldType * ft,
+                                         llvm::BasicBlock * mergeBlock)
+{
+  const IQLToLLVMValue * arr = ctxt->buildArrayConcat(ctxt->buildVariableRef(aggFn.c_str(), ft), ft, inc, incTy, ft);
+  ctxt->buildSetNullableValue(fieldLVal, arr, ft, false);
+}
+
 boost::shared_ptr<AggregateFunction> AggregateFunction::get(const char * fn)
 {
   AggregateFunction * agg = NULL;
@@ -6633,6 +6695,8 @@ boost::shared_ptr<AggregateFunction> AggregateFunction::get(const char * fn)
     agg = new MaxMinAggregate(false);
   } else if (boost::algorithm::iequals(fn, "sum")) {
     agg = new SumAggregate();
+  } else if (boost::algorithm::iequals(fn, "array_concat")) {
+    agg = new ArrayConcatAggregate();
   } else {
     throw std::runtime_error ((boost::format("Unknown aggregate function: %1%")%
 			       fn).str());

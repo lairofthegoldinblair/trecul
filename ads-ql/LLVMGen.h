@@ -332,7 +332,8 @@ extern "C" {
   IQLToLLVMValueRef IQLToLLVMBuildAggregateFunction(IQLCodeGenerationContextRef ctxt, 
 						    const char * fn,
 						    IQLToLLVMValueRef e,
-						    void * attrs);
+						    void * attrs,
+                                                    void * retAttrs);
   /**
    * Constructor for interval types.
    */
@@ -531,7 +532,7 @@ extern "C" {
   IQLFieldTypeRef IQLTypeCheckSymbolTableGetType(IQLTypeCheckContextRef ctxt, const char * name);
   IQLFieldTypeRef IQLTypeCheckIfThenElse(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef condVal, IQLFieldTypeRef thenVal, IQLFieldTypeRef elseVal);
   void IQLTypeCheckBeginAggregateFunction(IQLTypeCheckContextRef ctxt);
-  IQLFieldTypeRef IQLTypeCheckBuildAggregateFunction(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef ty);
+  IQLFieldTypeRef IQLTypeCheckBuildAggregateFunction(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef ty, const char * fn);
   IQLFieldTypeRef IQLTypeCheckCast(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef target);
   IQLFieldTypeRef IQLTypeCheckIsNull(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, int isNotNull);
 

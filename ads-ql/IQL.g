@@ -421,6 +421,8 @@ aggregateFunction
     TK_MAX^ '('! expression ')'!
     |
     TK_MIN^ '('! expression ')'!
+    |
+    TK_ARRAY_CONCAT^ '('! expression ')'!
     ;
 
 protected
@@ -538,6 +540,7 @@ TK_ALTER : 'ALTER';
 TK_AND : 'AND';
 TK_ANY : 'ANY';
 TK_ARRAY : 'ARRAY';
+TK_ARRAY_CONCAT : 'ARRAY_CONCAT';
 TK_AS : 'AS';
 TK_ASC : 'ASC';
 TK_AVG : 'AVG';

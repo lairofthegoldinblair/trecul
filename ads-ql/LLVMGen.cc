@@ -592,10 +592,11 @@ void IQLToLLVMBeginAggregateFunction(IQLCodeGenerationContextRef ctxtRef)
 IQLToLLVMValueRef IQLToLLVMBuildAggregateFunction(IQLCodeGenerationContextRef ctxtRef, 
 						  const char * fn,
 						  IQLToLLVMValueRef e,
-						  void * attrs)
+						  void * attrs,
+                                                  void * retAttrs)
 {
   CodeGenerationContext * ctxt = unwrap(ctxtRef);
-  return wrap(ctxt->buildAggregateFunction(fn, unwrap(e), (const FieldType *) attrs));
+  return wrap(ctxt->buildAggregateFunction(fn, unwrap(e), (const FieldType *) attrs, (const FieldType *) retAttrs));
 }
 
 IQLToLLVMValueRef IQLToLLVMBuildInterval(IQLCodeGenerationContextRef ctxtRef,
@@ -1238,10 +1239,11 @@ void IQLTypeCheckBeginAggregateFunction(IQLTypeCheckContextRef ctxtRef)
 }
 
 IQLFieldTypeRef IQLTypeCheckBuildAggregateFunction(IQLTypeCheckContextRef ctxtRef, 
-						   IQLFieldTypeRef ty)
+						   IQLFieldTypeRef ty,
+                                                   const char * fn)
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
-  return wrap(ctxt->buildAggregateFunction(unwrap(ty)));
+  return wrap(ctxt->buildAggregateFunction(unwrap(ty), fn));
 }
 
 IQLFieldTypeRef IQLTypeCheckBuildIntervalDay(IQLTypeCheckContextRef ctxtRef, 

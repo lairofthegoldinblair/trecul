@@ -1391,7 +1391,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayRowConstructor)
     RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     for(std::size_t i=0; i<2; ++i) {
-      RecordBuffer inner = t1.getTarget()->getArrayStructPtr("f", outputBuf, i);
+      RecordBuffer inner = t1.getTarget()->getArrayStructPtr("f", i, outputBuf);
       BOOST_CHECK(boost::algorithm::equals("123456",
                                            rowTy->getPtr<CharType>(0, inner)));
       BOOST_CHECK(boost::algorithm::equals("abcdefghijklmnop",
@@ -1423,7 +1423,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayRowConstructor)
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     for(std::size_t i=0; i<2; ++i) {
       BOOST_CHECK_EQUAL(2, t1.getTarget()->getVarcharPtr("f", outputBuf)->size());
-      RecordBuffer inner = t1.getTarget()->getArrayStructPtr("f", outputBuf, i);
+      RecordBuffer inner = t1.getTarget()->getArrayStructPtr("f", i, outputBuf);
       BOOST_CHECK(boost::algorithm::equals("123456",
                                            rowTy->getPtr<CharType>(0, inner)));
       BOOST_CHECK(boost::algorithm::equals("abcdefghijklmnop",
@@ -5137,6 +5137,180 @@ BOOST_AUTO_TEST_CASE(testIQLRecordAggregateWithInvalidGlob)
   } catch(std::exception& ex) {
     std::cout << "Received expected exception: " << ex.what() << std::endl;
   }
+}
+
+void ValidateArrayConcatAggregate(RecordTypeAggregate& a1,
+                                  boost::shared_ptr<RecordType> recordType,
+                                  const std::string& aggCol,
+                                  bool identityTransfer=true,
+                                  uint32_t numAggregates=2u,
+                                  bool isInitNull = true)
+{
+  BOOST_CHECK(NULL != a1.getTarget());
+  BOOST_CHECK_EQUAL(a1.getTarget()->size(), 2u);
+  BOOST_CHECK(a1.getTarget()->hasMember("a"));
+  BOOST_CHECK(a1.getTarget()->hasMember("d"));
+  BOOST_CHECK(NULL != a1.getAggregate());
+  BOOST_CHECK_EQUAL(a1.getAggregate()->size(), numAggregates);
+  BOOST_CHECK(a1.getAggregate()->hasMember("a"));
+  BOOST_CHECK(a1.getAggregate()->hasMember(aggCol));
+  BOOST_CHECK_EQUAL(isInitNull,
+		    a1.getAggregate()->getMember(aggCol).GetType()->isNullable());
+  BOOST_CHECK_EQUAL(identityTransfer, a1.isFinalTransferIdentity());
+
+  RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
+  recordType->setInt32("a", 23, inputBuf);
+  recordType->setInt32("b", 230, inputBuf);
+  recordType->setInt32("c", 2300, inputBuf);
+  InterpreterContext runtimeCtxt;
+  IQLAggregateModule * m = a1.create();
+  RecordBuffer aggregateBuf;
+  m->executeInit(inputBuf, aggregateBuf, &runtimeCtxt);
+  BOOST_CHECK(aggregateBuf != RecordBuffer());
+  BOOST_CHECK_EQUAL(a1.getAggregate()->getInt32("a", aggregateBuf),
+		    23);
+  BOOST_CHECK_EQUAL(a1.getAggregate()->getMemberOffset(aggCol).isNull(aggregateBuf),
+		    isInitNull);
+  if (!isInitNull) {
+    BOOST_CHECK_EQUAL(a1.getAggregate()->getInt32(aggCol, aggregateBuf),
+		      0);
+  }
+  m->executeUpdate(inputBuf, aggregateBuf, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(a1.getAggregate()->getInt32("a", aggregateBuf),
+		    23);
+  BOOST_CHECK_EQUAL(a1.getAggregate()->getArrayInt32(aggCol, 0, aggregateBuf),
+		    230);
+  recordType->setInt32("b", -23, inputBuf);
+  recordType->setInt32("c", 25, inputBuf);
+  m->executeUpdate(inputBuf, aggregateBuf, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(a1.getAggregate()->getInt32("a", aggregateBuf),
+		    23);
+  BOOST_CHECK_EQUAL(a1.getAggregate()->getArrayInt32(aggCol, 0, aggregateBuf),
+		    230);
+  BOOST_CHECK_EQUAL(a1.getAggregate()->getArrayInt32(aggCol, 1, aggregateBuf),
+		    -23);
+  RecordBuffer transferBuf;
+  m->executeTransfer(aggregateBuf, transferBuf, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(a1.getTarget()->getInt32("a", transferBuf),
+		    23);
+  BOOST_CHECK_EQUAL(a1.getTarget()->getArrayInt32("d", 0, transferBuf),
+		    230);
+  BOOST_CHECK_EQUAL(a1.getTarget()->getArrayInt32("d", 1, transferBuf),
+		    -23);
+  delete m;
+}
+
+BOOST_AUTO_TEST_CASE(testIQLArrayConcat)
+{
+  DynamicRecordContext ctxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
+  
+  std::vector<std::string> groupKeys;
+  groupKeys.push_back("a");
+  RecordTypeAggregate a1(ctxt, "agg1", 
+			 recordType.get(), 
+			 "a, ARRAY_CONCAT(b) AS d",
+			 groupKeys);
+
+  ValidateArrayConcatAggregate(a1,
+                               recordType,
+                               "__AggFn1__");
+}
+
+void ValidateArrayConcatNestedRecordAggregate(RecordTypeAggregate& a1,
+                                              boost::shared_ptr<RecordType> recordType,
+                                              const std::string& aggCol,
+                                              bool identityTransfer=true,
+                                              uint32_t numAggregates=2u,
+                                              bool isInitNull = true)
+{
+  BOOST_CHECK(NULL != a1.getTarget());
+  BOOST_CHECK_EQUAL(a1.getTarget()->size(), 2u);
+  BOOST_CHECK(a1.getTarget()->hasMember("a"));
+  BOOST_CHECK(a1.getTarget()->hasMember("d"));
+  BOOST_CHECK(NULL != a1.getAggregate());
+  BOOST_CHECK_EQUAL(a1.getAggregate()->size(), numAggregates);
+  BOOST_CHECK(a1.getAggregate()->hasMember("a"));
+  BOOST_CHECK(a1.getAggregate()->hasMember(aggCol));
+  BOOST_CHECK_EQUAL(isInitNull,
+		    a1.getAggregate()->getMember(aggCol).GetType()->isNullable());
+  BOOST_CHECK_EQUAL(identityTransfer, a1.isFinalTransferIdentity());
+
+  RecordBuffer inputBuf = recordType->GetMalloc()->malloc();
+  recordType->setInt32("a", 23, inputBuf);
+  recordType->setInt32("b", 230, inputBuf);
+  recordType->setInt32("c", 2300, inputBuf);
+  InterpreterContext runtimeCtxt;
+  IQLAggregateModule * m = a1.create();
+  RecordBuffer aggregateBuf;
+  m->executeInit(inputBuf, aggregateBuf, &runtimeCtxt);
+  BOOST_CHECK(aggregateBuf != RecordBuffer());
+  BOOST_CHECK_EQUAL(a1.getAggregate()->getInt32("a", aggregateBuf), 23);
+  BOOST_CHECK_EQUAL(a1.getAggregate()->getMemberOffset(aggCol).isNull(aggregateBuf),
+		    isInitNull);
+  if (!isInitNull) {
+    BOOST_CHECK_EQUAL(a1.getAggregate()->getInt32(aggCol, aggregateBuf),
+		      0);
+  }
+  m->executeUpdate(inputBuf, aggregateBuf, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(a1.getAggregate()->getInt32("a", aggregateBuf), 23);
+  const VariableArrayType * arrType = dynamic_cast<const VariableArrayType *>(a1.getAggregate()->getMember(aggCol).GetType());
+  BOOST_REQUIRE(nullptr != arrType);
+  const RecordType * nestedType = dynamic_cast<const RecordType *>(arrType->getElementType());
+  BOOST_REQUIRE(nullptr != nestedType);
+  BOOST_CHECK_EQUAL(2U, nestedType->getNumElements());
+  RecordBuffer nestedBuf = a1.getAggregate()->getArrayStructPtr(aggCol, 0, aggregateBuf);
+  BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(0, nestedBuf), 230);
+  BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(1, nestedBuf), 2300);
+  recordType->setInt32("b", -23, inputBuf);
+  recordType->setInt32("c", 25, inputBuf);
+  m->executeUpdate(inputBuf, aggregateBuf, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(a1.getAggregate()->getInt32("a", aggregateBuf), 23);
+  nestedBuf = a1.getAggregate()->getArrayStructPtr(aggCol, 0, aggregateBuf);
+  BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(0, nestedBuf), 230);
+  BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(1, nestedBuf), 2300);
+  nestedBuf = a1.getAggregate()->getArrayStructPtr(aggCol, 1, aggregateBuf);
+  BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(0, nestedBuf), -23);
+  BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(1, nestedBuf), 25);
+  RecordBuffer transferBuf;
+  m->executeTransfer(aggregateBuf, transferBuf, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(a1.getTarget()->getInt32("a", transferBuf), 23);
+  arrType = dynamic_cast<const VariableArrayType *>(a1.getTarget()->getMember("d").GetType());
+  BOOST_REQUIRE(nullptr != arrType);
+  nestedType = dynamic_cast<const RecordType *>(arrType->getElementType());
+  BOOST_REQUIRE(nullptr != nestedType);
+  nestedBuf = a1.getTarget()->getArrayStructPtr("d", 0, transferBuf);
+  BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(0, nestedBuf), 230);
+  BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(1, nestedBuf), 2300);
+  nestedBuf = a1.getTarget()->getArrayStructPtr("d", 1, transferBuf);
+  BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(0, nestedBuf), -23);
+  BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(1, nestedBuf), 25);
+  delete m;
+}
+
+BOOST_AUTO_TEST_CASE(testIQLArrayConcatNestedRecord)
+{
+  DynamicRecordContext ctxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
+  boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
+  
+  std::vector<std::string> groupKeys;
+  groupKeys.push_back("a");
+  RecordTypeAggregate a1(ctxt, "agg1", 
+			 recordType.get(), 
+			 "a, ARRAY_CONCAT(ROW(b,c)) AS d",
+			 groupKeys);
+
+  ValidateArrayConcatNestedRecordAggregate(a1,
+                                           recordType,
+                                           "__AggFn1__");
 }
 
 RecordBuffer createSimpleLogInputRecord(boost::shared_ptr<RecordType> recordType)
