@@ -85,6 +85,8 @@ variableReference[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMLValueRef 
     ID { $lhs = IQLToLLVMBuildLValue(ctxt, (char *)$ID.text->chars); }
     |
     ^(c='[' e1 = expression[$ctxt] e2 = expression[$ctxt] { $lhs = IQLToLLVMBuildArrayLValue(ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
+	|
+    ^(c='.' e1 = expression[$ctxt] fun=ID) { $lhs = IQLToLLVMBuildRowRef(ctxt, e1.llvmVal, $e1.start->u, (const char *) $fun.text->chars, $c->u); }
     ;
 
 switchStatement[IQLCodeGenerationContextRef ctxt]

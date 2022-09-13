@@ -174,7 +174,9 @@ variableReference[IQLTreeFactoryRef ctxt]
     :
     ID
     |
-    ^('[' ID expression[$ctxt])
+    ^('[' expression[$ctxt] expression[$ctxt])
+    |
+    ^('.' expression[$ctxt] expression[$ctxt])
     ;
 
 switchStatement[IQLTreeFactoryRef ctxt]

@@ -2904,7 +2904,7 @@ BOOST_AUTO_TEST_CASE(testIQLStructCompare)
   BOOST_CHECK_EQUAL(val, 1);
 }
 
-void testIQLStructFieldAccess(const char * prefix, std::size_t depth, bool isInt64Nullable, bool isInt64Null)
+void testIQLStructFieldAccess(const char * prefix, const char * updatePrefix, std::size_t depth, bool isInt64Nullable, bool isInt64Null)
 {
   DynamicRecordContext ctxt;
   InterpreterContext runtimeCtxt;
@@ -2933,13 +2933,16 @@ void testIQLStructFieldAccess(const char * prefix, std::size_t depth, bool isInt
   RecordBuffer inputBuf = types[0]->GetMalloc()->malloc();
   RecordBuffer nestedRecordBuf = inputBuf;
   std::stringstream prefixStream;
+  std::stringstream updatePrefixStream;
   prefixStream << prefix;
+  updatePrefixStream << updatePrefix;
   for(std::size_t d=0; d<depth; ++d) {
     types[d]->setInt32("c", 1, nestedRecordBuf);
     types[d]->setInt64("d", 2, nestedRecordBuf);
     types[d]->setDouble("y", 3, nestedRecordBuf);
     nestedRecordBuf = types[d]->getStructPtr("rec", nestedRecordBuf);
     prefixStream << "rec.";
+    updatePrefixStream << "rec.";
   }
   types[depth]->setInt32("c", 77777, nestedRecordBuf);
   if (!isInt64Null) {
@@ -2949,74 +2952,92 @@ void testIQLStructFieldAccess(const char * prefix, std::size_t depth, bool isInt
   }
   types[depth]->setDouble("y", 133.23, nestedRecordBuf);
 
-  std::string transferSpec = (boost::format("%1%c AS a, %1%d AS b, %1%y AS c") % prefixStream.str()).str();
-  RecordTypeTransfer t1(ctxt, "structlt", types[0], transferSpec);
-  BOOST_CHECK_EQUAL(3U, t1.getTarget()->size());
-  BOOST_CHECK_EQUAL(FieldType::INT32, 
-		    t1.getTarget()->getMember("a").GetType()->GetEnum());
-  BOOST_CHECK(!t1.getTarget()->getMember("a").GetType()->isNullable());
-  BOOST_CHECK_EQUAL(FieldType::INT64, 
-		    t1.getTarget()->getMember("b").GetType()->GetEnum());
-  BOOST_CHECK_EQUAL(isInt64Nullable, 
-		    t1.getTarget()->getMember("b").GetType()->isNullable());
-  BOOST_CHECK_EQUAL(FieldType::DOUBLE, 
-		    t1.getTarget()->getMember("c").GetType()->GetEnum());
-  BOOST_CHECK(!t1.getTarget()->getMember("c").GetType()->isNullable());
-  RecordBuffer outputBuf;
-  t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);  
-  BOOST_CHECK_EQUAL(77777,
-		    t1.getTarget()->get<Int32Type>("a", outputBuf));
-  if (!isInt64Null) {
-    BOOST_CHECK_EQUAL(7777799999,
-                      t1.getTarget()->get<Int64Type>("b", outputBuf));
-  } else {
-    BOOST_CHECK(t1.getTarget()->isNull("b", outputBuf));
+  {
+    std::string transferSpec = (boost::format("%1%c AS a, %1%d AS b, %1%y AS c") % prefixStream.str()).str();
+    RecordTypeTransfer t1(ctxt, "structlt", types[0], transferSpec);
+    BOOST_CHECK_EQUAL(3U, t1.getTarget()->size());
+    BOOST_CHECK_EQUAL(FieldType::INT32, 
+                      t1.getTarget()->getMember("a").GetType()->GetEnum());
+    BOOST_CHECK(!t1.getTarget()->getMember("a").GetType()->isNullable());
+    BOOST_CHECK_EQUAL(FieldType::INT64, 
+                      t1.getTarget()->getMember("b").GetType()->GetEnum());
+    BOOST_CHECK_EQUAL(isInt64Nullable, 
+                      t1.getTarget()->getMember("b").GetType()->isNullable());
+    BOOST_CHECK_EQUAL(FieldType::DOUBLE, 
+                      t1.getTarget()->getMember("c").GetType()->GetEnum());
+    BOOST_CHECK(!t1.getTarget()->getMember("c").GetType()->isNullable());
+    RecordBuffer outputBuf;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);  
+    BOOST_CHECK_EQUAL(77777,
+                      t1.getTarget()->get<Int32Type>("a", outputBuf));
+    if (!isInt64Null) {
+      BOOST_CHECK_EQUAL(7777799999,
+                        t1.getTarget()->get<Int64Type>("b", outputBuf));
+    } else {
+      BOOST_CHECK(t1.getTarget()->isNull("b", outputBuf));
+    }
+    BOOST_CHECK_EQUAL(133.23,
+                      t1.getTarget()->get<DoubleType>("c", outputBuf));
   }
-  BOOST_CHECK_EQUAL(133.23,
-		    t1.getTarget()->get<DoubleType>("c", outputBuf));
 
+  {
+    std::string updateSpec = (boost::format("SET %1%c = 77778\n"
+                                            "SET %1%d = 7777799998\n"
+                                            "SET %1%y = 134.23") % updatePrefixStream.str()).str();
+    std::vector<RecordMember> emptyMembers;
+    RecordType emptyTy(ctxt, emptyMembers);
+    std::vector<const RecordType *> updateTypes;
+    updateTypes.push_back(types[0]);
+    updateTypes.push_back(&emptyTy);
+
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       updateTypes, 
+			       updateSpec);
+    up.execute(inputBuf, NULL, &runtimeCtxt);
+  }
   types[0]->GetFree()->free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLStructFieldAccessNoPrefix)
 {
   for(std::size_t i=1; i<=5; ++i) {
-    testIQLStructFieldAccess("",i,false,false);
+    testIQLStructFieldAccess("","",i,false,false);
   }
 }
 
 BOOST_AUTO_TEST_CASE(testIQLStructFieldAccessNoPrefixNullable)
 {
   for(std::size_t i=1; i<=5; ++i) {
-    testIQLStructFieldAccess("",i,true,false);
+    testIQLStructFieldAccess("","",i,true,false);
   }
 }
 
 BOOST_AUTO_TEST_CASE(testIQLStructFieldAccessNoPrefixNull)
 {
   for(std::size_t i=1; i<=5; ++i) {
-    testIQLStructFieldAccess("",i,true,true);
+    testIQLStructFieldAccess("","",i,true,true);
   }
 }
 
 BOOST_AUTO_TEST_CASE(testIQLStructFieldAccessWithPrefix)
 {
   for(std::size_t i=1; i<=5; ++i) {
-    testIQLStructFieldAccess("input.",i,false,false);
+    testIQLStructFieldAccess("input.","input0.",i,false,false);
   }
 }
 
 BOOST_AUTO_TEST_CASE(testIQLStructFieldAccessWithPrefixNullable)
 {
   for(std::size_t i=1; i<=5; ++i) {
-    testIQLStructFieldAccess("input.",i,true,false);
+    testIQLStructFieldAccess("input.","input0.",i,true,false);
   }
 }
 
 BOOST_AUTO_TEST_CASE(testIQLStructFieldAccessWithPrefixNull)
 {
   for(std::size_t i=1; i<=5; ++i) {
-    testIQLStructFieldAccess("input.",i,true,true);
+    testIQLStructFieldAccess("input.","input0.",i,true,true);
   }
 }
 

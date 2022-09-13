@@ -213,11 +213,12 @@ setStatement
 
 variableRef
     :
-        (
     ID
-    |
-    ID '['^ expression ']'!
-        )
+    (
+      ('['^ expression ']'!)
+      |
+      ('.'^ ID)
+    )*
     ;
 
 switchStatement
