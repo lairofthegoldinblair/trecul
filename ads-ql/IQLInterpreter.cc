@@ -657,7 +657,7 @@ extern "C" void InternalPrintCIDRv6(const char * lhs,
 {
   const uint8_t * octets = (const uint8_t *) lhs;
   char buf[INET6_ADDRSTRLEN+4];
-  if (memcmp(lhs, v4MappedPrefix, sizeof(v4MappedPrefix)) == 0 && octets[16]>96) {
+  if (memcmp(lhs, v4MappedPrefix, sizeof(v4MappedPrefix)) == 0 && octets[16]>=96) {
     snprintf(buf, sizeof(buf), "%u.%u.%u.%u/%u", octets[12], octets[13], octets[14], octets[15], octets[16]-96);
   } else {
     const char * result = ::inet_ntop(AF_INET6, (struct in6_addr *) lhs, buf, sizeof(buf));
