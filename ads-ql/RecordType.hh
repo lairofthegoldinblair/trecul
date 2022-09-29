@@ -77,7 +77,7 @@ struct TreculNativeGetter
 {
   typedef typename TreculNativeType<_TreculType>::type type;
   typedef typename TreculNativeType<_TreculType>::type * ptr_type;
-  static type set(uint8_t * buf, type val)
+  static void set(uint8_t * buf, type val)
   {
     * ((type *) buf) = val;
   }
@@ -1850,7 +1850,7 @@ struct TreculNativeGetter<IPv4Type>
 {
   typedef typename TreculNativeType<IPv4Type>::type type;
   typedef typename TreculNativeType<IPv4Type>::type * ptr_type;
-  static type set(uint8_t * buf, type val)
+  static void set(uint8_t * buf, type val) 
   {
     typedef boost::asio::ip::address_v4::bytes_type bytes_type;
     *(bytes_type *) (buf) = val.to_bytes();
@@ -1871,7 +1871,7 @@ struct TreculNativeGetter<CIDRv4Type>
 {
   typedef typename TreculNativeType<CIDRv4Type>::type type;
   typedef typename TreculNativeType<CIDRv4Type>::type * ptr_type;
-  static type set(uint8_t * buf, type val)
+  static void set(uint8_t * buf, type val)
   {
     CidrV4Runtime * bufVal = (CidrV4Runtime *) (buf) ;
     bufVal->prefix = val.prefix.to_bytes();
@@ -1896,7 +1896,7 @@ struct TreculNativeGetter<IPv6Type>
 {
   typedef typename TreculNativeType<IPv6Type>::type type;
   typedef typename TreculNativeType<IPv6Type>::type * ptr_type;
-  static type set(uint8_t * buf, type val)
+  static void set(uint8_t * buf, type val)
   {
     auto arr = val.to_bytes();
     memcpy(buf, &arr[0], 16);
@@ -1917,7 +1917,7 @@ struct TreculNativeGetter<CIDRv6Type>
 {
   typedef typename TreculNativeType<CIDRv6Type>::type type;
   typedef typename TreculNativeType<CIDRv6Type>::type * ptr_type;
-  static type set(uint8_t * buf, type val)
+  static void set(uint8_t * buf, type val)
   {
     auto arr = val.prefix.to_bytes();
     memcpy(buf, &arr[0], 16);
