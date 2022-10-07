@@ -148,6 +148,31 @@ LessThanEqualsExpr * LessThanEqualsExpr::clone() const
   return new LessThanEqualsExpr(*this);
 }
 
+SubnetContainsExpr * SubnetContainsExpr::clone() const
+{
+  return new SubnetContainsExpr(*this);
+}
+
+SubnetContainsEqualsExpr * SubnetContainsEqualsExpr::clone() const
+{
+  return new SubnetContainsEqualsExpr(*this);
+}
+
+SubnetContainedByExpr * SubnetContainedByExpr::clone() const
+{
+  return new SubnetContainedByExpr(*this);
+}
+
+SubnetContainedByEqualsExpr * SubnetContainedByEqualsExpr::clone() const
+{
+  return new SubnetContainedByEqualsExpr(*this);
+}
+
+SubnetSymmetricContainsEqualsExpr * SubnetSymmetricContainsEqualsExpr::clone() const
+{
+  return new SubnetSymmetricContainsEqualsExpr(*this);
+}
+
 CaseExpr::CaseExpr(DynamicRecordContext & ctxt,
 		   const std::vector<IQLExpression *>& args,
 		   const SourceLocation& loc)
@@ -904,6 +929,56 @@ IQLExpressionRef IQLBuildBinaryFun(IQLTreeFactoryRef ctxtRef,
   args.push_back(unwrap(leftRef));
   args.push_back(unwrap(rightRef));
   return wrap(CallExpr::create(ctxt, fun, args, SourceLocation(line, column)));
+}
+
+IQLExpressionRef IQLBuildSubnetContains(IQLTreeFactoryRef ctxtRef,
+					IQLExpressionRef leftRef,
+					IQLExpressionRef rightRef,
+					int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(SubnetContainsExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+					 SourceLocation(line, column)));  
+}
+
+IQLExpressionRef IQLBuildSubnetContainsEquals(IQLTreeFactoryRef ctxtRef,
+                                              IQLExpressionRef leftRef,
+                                              IQLExpressionRef rightRef,
+                                              int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(SubnetContainsEqualsExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+                                               SourceLocation(line, column)));  
+}
+
+IQLExpressionRef IQLBuildSubnetContainedBy(IQLTreeFactoryRef ctxtRef,
+                                           IQLExpressionRef leftRef,
+                                           IQLExpressionRef rightRef,
+                                           int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(SubnetContainedByExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+                                            SourceLocation(line, column)));  
+}
+
+IQLExpressionRef IQLBuildSubnetContainedByEquals(IQLTreeFactoryRef ctxtRef,
+                                                 IQLExpressionRef leftRef,
+                                                 IQLExpressionRef rightRef,
+                                                 int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(SubnetContainedByEqualsExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+                                                  SourceLocation(line, column)));  
+}
+
+IQLExpressionRef IQLBuildSubnetSymmetricContainsEquals(IQLTreeFactoryRef ctxtRef,
+                                                       IQLExpressionRef leftRef,
+                                                       IQLExpressionRef rightRef,
+                                                       int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(SubnetSymmetricContainsEqualsExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+                                                        SourceLocation(line, column)));  
 }
 
 IQLExpressionRef IQLBuildLike(IQLTreeFactoryRef ctxtRef,

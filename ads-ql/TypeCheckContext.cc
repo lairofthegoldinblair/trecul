@@ -469,9 +469,16 @@ const FieldType * TypeCheckContext::castTo(const FieldType * lhs,
   } else if (from_type->GetEnum() == FieldType::IPV4) {
     if (to_type->GetEnum() == FieldType::IPV6)
       return to_type;
+    else if (to_type->GetEnum() == FieldType::CIDRV6)
+      return to_type;
     else 
       return NULL;    
   } else if (from_type->GetEnum() == FieldType::CIDRV4) {
+    if (to_type->GetEnum() == FieldType::CIDRV6)
+      return to_type;
+    else 
+      return NULL;    
+  } else if (from_type->GetEnum() == FieldType::IPV6) {
     if (to_type->GetEnum() == FieldType::CIDRV6)
       return to_type;
     else 
@@ -648,17 +655,6 @@ void TypeCheckContext::loadBuiltinFunctions()
 			     FunctionType::Get(drc, 
 					       VarcharType::Get(drc),
 					       CharType::Get(drc, 16)));
-  mTypeCheckSymbolTable->add(fnPrefix, "truncate_ip_address", 
-			     FunctionType::Get(drc, 
-					       CharType::Get(drc, 16),
-					       Int32Type::Get(drc),
-					       CharType::Get(drc, 16)));
-  mTypeCheckSymbolTable->add(fnPrefix, "cidr_ip_address_match", 
-			     FunctionType::Get(drc, 
-					       CharType::Get(drc, 16),
-					       Int32Type::Get(drc),
-					       CharType::Get(drc, 16),
-					       Int32Type::Get(drc)));
   mTypeCheckSymbolTable->add(fnPrefix, "is_v4_ip_address", 
 			     FunctionType::Get(drc, 
 					       CharType::Get(drc, 16),
@@ -783,6 +779,10 @@ const FieldType * TypeCheckContext::buildCall(const char * f, std::vector<const 
     return buildIsNull(args);
   } else if (boost::algorithm::iequals(f, "hash")) {
     return buildHash(args);
+  } else if (boost::algorithm::iequals(f, "family")) {
+    return buildFamily(args);
+  } else if (boost::algorithm::iequals(f, "masklen")) {
+    return buildMasklen(args);
   }
   // TODO: Implement operator/function overloading.
   const FieldType * fType = lookupType(f);
@@ -1011,6 +1011,47 @@ const FieldType * TypeCheckContext::buildLike(const FieldType * lhs,
   }
   const bool isNullable = lhs->isNullable() || rhs->isNullable();
   return buildBooleanType(isNullable);
+}
+
+const FieldType * TypeCheckContext::buildNetworkSubnet(const FieldType * lhs, 
+                                                       const FieldType * rhs)
+{
+  // Both sides should be convertible to CIDRV6
+  auto cidrV6Ty = buildCIDRv6Type();
+  if (nullptr == castTo(lhs, cidrV6Ty)) {
+    throw std::runtime_error("Expected IPV4, IPV6, CIDR4 or CIDRV6 expression for left hand side of subnet operator");
+  }
+  if (nullptr == castTo(rhs, cidrV6Ty)) {
+    throw std::runtime_error("Expected IPV4, IPV6, CIDR4 or CIDRV6 expression for right hand side of subnet operator");
+  }
+  const bool isNullable = lhs->isNullable() || rhs->isNullable();
+  return buildBooleanType(isNullable);
+}
+
+const FieldType * TypeCheckContext::buildFamily(std::vector<const FieldType *> & args)
+{
+  if (1U != args.size()) {
+    throw std::runtime_error("'family' takes one argument");
+  }
+  auto cidrV6Ty = buildCIDRv6Type();
+  if (nullptr == castTo(args[0], cidrV6Ty)) {
+    throw std::runtime_error("Expected IPV4, IPV6, CIDR4 or CIDRV6 expression for 'family' argument");
+  }
+
+  return buildInt32Type(args[0]->isNullable());
+}
+
+const FieldType * TypeCheckContext::buildMasklen(std::vector<const FieldType *> & args)
+{
+  if (1U != args.size()) {
+    throw std::runtime_error("'masklen' takes one argument");
+  }
+  auto cidrV6Ty = buildCIDRv6Type();
+  if (nullptr == castTo(args[0], cidrV6Ty)) {
+    throw std::runtime_error("Expected IPV4, IPV6, CIDR4 or CIDRV6 expression for 'masklen' argument");
+  }
+  
+  return buildInt32Type(args[0]->isNullable());
 }
 
 const FieldType * TypeCheckContext::buildCast(const FieldType * lhs, 

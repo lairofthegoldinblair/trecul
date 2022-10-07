@@ -1310,6 +1310,53 @@ public:
 				      const FieldType * resultType,
 				      IQLToLLVMPredicate op);
 
+  /** 
+   * Subnet comparisons
+   */
+  IQLToLLVMValue::ValueType buildSubnetContains(const IQLToLLVMValue * lhs, 
+                                                const FieldType * lhsType, 
+                                                const IQLToLLVMValue * rhs, 
+                                                const FieldType * rhsType,
+                                                llvm::Value * ret,
+                                                const FieldType * retType);
+  const IQLToLLVMValue * buildSubnetContains(const IQLToLLVMValue * lhs, 
+                                             const FieldType * lhsType, 
+                                             const IQLToLLVMValue * rhs, 
+                                             const FieldType * rhsType,
+                                             const FieldType * resultType);
+  const IQLToLLVMValue * buildSubnetContainsEquals(const IQLToLLVMValue * lhs, 
+                                                   const FieldType * lhsType, 
+                                                   const IQLToLLVMValue * rhs, 
+                                                   const FieldType * rhsType,
+                                                   const FieldType * resultType);
+  const IQLToLLVMValue * buildSubnetContainedBy(const IQLToLLVMValue * lhs, 
+                                                const FieldType * lhsType, 
+                                                const IQLToLLVMValue * rhs, 
+                                                const FieldType * rhsType,
+                                                const FieldType * resultType);
+  const IQLToLLVMValue * buildSubnetContainedByEquals(const IQLToLLVMValue * lhs, 
+                                                      const FieldType * lhsType, 
+                                                      const IQLToLLVMValue * rhs, 
+                                                      const FieldType * rhsType,
+                                                      const FieldType * resultType);
+  const IQLToLLVMValue * buildSubnetSymmetricContainsEquals(const IQLToLLVMValue * lhs, 
+                                                            const FieldType * lhsType, 
+                                                            const IQLToLLVMValue * rhs, 
+                                                            const FieldType * rhsType,
+                                                            const FieldType * resultType);
+
+  /**
+   * Network intrinsic functions 
+   */
+  IQLToLLVMValue::ValueType buildFamily(const IQLToLLVMValue * arg, 
+                                        const FieldType * argType, 
+                                        llvm::Value * ret, 
+                                        const FieldType * retType);
+  IQLToLLVMValue::ValueType buildMasklen(const IQLToLLVMValue * arg, 
+                                         const FieldType * argType, 
+                                         llvm::Value * ret, 
+                                         const FieldType * retType);
+  
   const IQLToLLVMValue *
   buildArrayElementwiseEquals(const IQLToLLVMValue * lhs, 
                               const IQLToLLVMValue * rhs,

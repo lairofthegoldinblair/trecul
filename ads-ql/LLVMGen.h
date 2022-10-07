@@ -210,6 +210,39 @@ extern "C" {
 					  void * resultAttributes,
 					  enum IQLToLLVMPredicate op);
   /**
+   * Subnet comparison operators
+   */
+  IQLToLLVMValueRef IQLToLLVMBuildSubnetContains(IQLCodeGenerationContextRef ctxt, 
+                                                 IQLToLLVMValueRef lhs, 
+                                                 void * lhsAttributes, 
+                                                 IQLToLLVMValueRef rhs, 
+                                                 void * rhsAttributes,
+                                                 void * resultAttributes);
+  IQLToLLVMValueRef IQLToLLVMBuildSubnetContainsEquals(IQLCodeGenerationContextRef ctxt, 
+                                                       IQLToLLVMValueRef lhs, 
+                                                       void * lhsAttributes, 
+                                                       IQLToLLVMValueRef rhs, 
+                                                       void * rhsAttributes,
+                                                       void * resultAttributes);
+  IQLToLLVMValueRef IQLToLLVMBuildSubnetContainedBy(IQLCodeGenerationContextRef ctxt, 
+                                                    IQLToLLVMValueRef lhs, 
+                                                    void * lhsAttributes, 
+                                                    IQLToLLVMValueRef rhs, 
+                                                    void * rhsAttributes,
+                                                    void * resultAttributes);
+  IQLToLLVMValueRef IQLToLLVMBuildSubnetContainedByEquals(IQLCodeGenerationContextRef ctxt, 
+                                                          IQLToLLVMValueRef lhs, 
+                                                          void * lhsAttributes, 
+                                                          IQLToLLVMValueRef rhs, 
+                                                          void * rhsAttributes,
+                                                          void * resultAttributes);
+  IQLToLLVMValueRef IQLToLLVMBuildSubnetSymmetricContainsEquals(IQLCodeGenerationContextRef ctxt, 
+                                                                IQLToLLVMValueRef lhs, 
+                                                                void * lhsAttributes, 
+                                                                IQLToLLVMValueRef rhs, 
+                                                                void * rhsAttributes,
+                                                                void * resultAttributes);
+  /**
    * Logical and of two values. 
    */
   void IQLToLLVMBeginAnd(IQLCodeGenerationContextRef ctxt, void * retAttrs);
@@ -487,6 +520,7 @@ extern "C" {
 				   const char * f, 
 				   IQLFieldTypeVectorRef lhs);
   IQLFieldTypeRef IQLTypeCheckEquals(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
+  IQLFieldTypeRef IQLTypeCheckNetworkSubnet(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
   IQLFieldTypeRef IQLTypeCheckAnd(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
   IQLFieldTypeRef IQLTypeCheckRLike(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs);
   IQLFieldTypeRef IQLTypeCheckNot(IQLTypeCheckContextRef ctxt, IQLFieldTypeRef lhs);

@@ -1634,6 +1634,10 @@ CodeGenerationContext::buildCall(const char * f,
     return buildIsNullFunction(args, retType);
   } else if (boost::algorithm::iequals(f, "hash")) {
     return buildHash(args);
+  } else if (boost::algorithm::iequals(f, "family")) {
+    return buildNullableUnaryOp(args[0].getValue(), args[0].getType(), retType, &CodeGenerationContext::buildFamily);  
+  } else if (boost::algorithm::iequals(f, "masklen")) {
+    return buildNullableUnaryOp(args[0].getValue(), args[0].getType(), retType, &CodeGenerationContext::buildMasklen);  
   } else {
     llvm::Type * retTy = retType->LLVMGetType(this);
     llvm::Value * retTmp = buildEntryBlockAlloca(retTy, "callReturnTemp");
@@ -3065,6 +3069,21 @@ CodeGenerationContext::buildCastCIDRv6(const IQLToLLVMValue * e,
   llvm::IRBuilder<> * b = LLVMBuilder;
 
   switch(argType->GetEnum()) {
+  case FieldType::IPV4:
+    {
+      const IPv4Type * ipv4Ty = IPv4Type::Get(argType->getContext(), false);
+      const IPv6Type * ipv6Ty = IPv6Type::Get(argType->getContext(), false);
+      llvm::Type * llvmIpv6Ty = llvm::PointerType::get(ipv6Ty->LLVMGetType(this), 0);
+      // Cast prefix from v4 to v6
+      buildCastIPv6(e, ipv4Ty, b->CreateBitCast(ret, llvmIpv6Ty), ipv6Ty);
+      // Set prefix length in the result
+      llvm::Value * gepIndexes[2];
+      gepIndexes[0] = b->getInt64(0);    
+      gepIndexes[1] = b->getInt64(16);
+      llvm::Value * prefix_length_ptr  = b->CreateGEP(retType->LLVMGetType(this), ret, llvm::makeArrayRef(&gepIndexes[0], 2), "prefix_length");
+      b->CreateStore(b->getInt8(128), prefix_length_ptr);
+      return IQLToLLVMValue::eLocal;
+    }
   case FieldType::IPV6:
     {
       const FieldType * prefixLengthTy = Int8Type::Get(retType->getContext());
@@ -3725,7 +3744,7 @@ CodeGenerationContext::buildVarcharGetPtr(llvm::Value * varcharPtr)
   b->CreateStore(b->CreateLoad(b->CreateStructGEP(varcharPtr, 2)), ret);
   b->CreateBr(contBB);
   b->SetInsertPoint(contBB);
-  return b->CreateLoad(ret);
+  return b->CreateLoad(b->getInt8PtrTy(), ret);
 }
 
 const IQLToLLVMValue * CodeGenerationContext::buildCompareResult(llvm::Value * boolVal)
@@ -5467,6 +5486,189 @@ const IQLToLLVMValue * CodeGenerationContext::buildCompare(const IQLToLLVMValue 
     throw std::runtime_error("Unexpected predicate type");
   }
   return buildNullableBinaryOp(lhs, lhsType, rhs, rhsType, resultType, opFun);
+}
+
+IQLToLLVMValue::ValueType CodeGenerationContext::buildSubnetContains(const IQLToLLVMValue * lhs, 
+                                                                  const FieldType * lhsType, 
+                                                                  const IQLToLLVMValue * rhs, 
+                                                                  const FieldType * rhsType,
+                                                                  llvm::Value * ret,
+                                                                  const FieldType * retType)
+{
+  auto lhsCidrV6Type = CIDRv6Type::Get(lhsType->getContext(), lhsType->isNullable());
+  auto rhsCidrV6Type = CIDRv6Type::Get(lhsType->getContext(), rhsType->isNullable());
+  lhs = buildCast(lhs, lhsType, lhsCidrV6Type);
+  rhs = buildCast(rhs, rhsType, rhsCidrV6Type);
+  lhsType = lhsCidrV6Type;
+  rhsType = rhsCidrV6Type;
+  std::vector<IQLToLLVMTypedValue> args;
+  args.emplace_back(lhs, lhsCidrV6Type);
+  args.emplace_back(rhs, rhsCidrV6Type);
+  return buildCall("InternalIPAddressAddrBlockMatch", args, ret, retType);
+}
+
+const IQLToLLVMValue * CodeGenerationContext::buildSubnetContains(const IQLToLLVMValue * lhs, 
+                                                                  const FieldType * lhsType, 
+                                                                  const IQLToLLVMValue * rhs, 
+                                                                  const FieldType * rhsType,
+                                                                  const FieldType * resultType)
+{
+  return buildNullableBinaryOp(lhs, lhsType, rhs, rhsType, resultType, &CodeGenerationContext::buildSubnetContains);
+}
+
+const IQLToLLVMValue * CodeGenerationContext::buildSubnetContainsEquals(const IQLToLLVMValue * lhs, 
+                                                                        const FieldType * lhsType, 
+                                                                        const IQLToLLVMValue * rhs, 
+                                                                        const FieldType * rhsType,
+                                                                        const FieldType * resultType)
+{
+  auto lhsCidrV6Type = CIDRv6Type::Get(lhsType->getContext(), lhsType->isNullable());
+  auto rhsCidrV6Type = CIDRv6Type::Get(lhsType->getContext(), rhsType->isNullable());
+  lhs = buildCast(lhs, lhsType, lhsCidrV6Type);
+  rhs = buildCast(rhs, rhsType, rhsCidrV6Type);
+  lhsType = lhsCidrV6Type;
+  rhsType = rhsCidrV6Type;
+  buildBeginOr(resultType);
+  buildAddOr(buildCompare(lhs, lhsType, rhs, rhsType, resultType, IQLToLLVMOpEQ), resultType, resultType);
+  return buildOr(buildSubnetContains(lhs, lhsType, rhs, rhsType, resultType), resultType, resultType);
+}
+
+const IQLToLLVMValue * CodeGenerationContext::buildSubnetContainedBy(const IQLToLLVMValue * lhs, 
+                                                                        const FieldType * lhsType, 
+                                                                        const IQLToLLVMValue * rhs, 
+                                                                        const FieldType * rhsType,
+                                                                        const FieldType * resultType)
+{
+  return buildSubnetContains(rhs, rhsType, lhs, lhsType, resultType);
+}
+
+const IQLToLLVMValue * CodeGenerationContext::buildSubnetContainedByEquals(const IQLToLLVMValue * lhs, 
+                                                                        const FieldType * lhsType, 
+                                                                        const IQLToLLVMValue * rhs, 
+                                                                        const FieldType * rhsType,
+                                                                        const FieldType * resultType)
+{
+  return buildSubnetContainsEquals(rhs, rhsType, lhs, lhsType, resultType);
+}
+
+const IQLToLLVMValue * CodeGenerationContext::buildSubnetSymmetricContainsEquals(const IQLToLLVMValue * lhs, 
+                                                                                 const FieldType * lhsType, 
+                                                                                 const IQLToLLVMValue * rhs, 
+                                                                                 const FieldType * rhsType,
+                                                                                 const FieldType * resultType)
+{
+  auto lhsCidrV6Type = CIDRv6Type::Get(lhsType->getContext(), lhsType->isNullable());
+  auto rhsCidrV6Type = CIDRv6Type::Get(lhsType->getContext(), rhsType->isNullable());
+  lhs = buildCast(lhs, lhsType, lhsCidrV6Type);
+  rhs = buildCast(rhs, rhsType, rhsCidrV6Type);
+  lhsType = lhsCidrV6Type;
+  rhsType = rhsCidrV6Type;
+  buildBeginOr(resultType);
+  buildAddOr(buildCompare(lhs, lhsType, rhs, rhsType, resultType, IQLToLLVMOpEQ), resultType, resultType);
+  buildAddOr(buildSubnetContains(lhs, lhsType, rhs, rhsType, resultType), resultType, resultType);
+  return buildOr(buildSubnetContains(rhs, rhsType, lhs, lhsType, resultType), resultType, resultType);
+}
+
+IQLToLLVMValue::ValueType CodeGenerationContext::buildFamily(const IQLToLLVMValue * arg, 
+                                                             const FieldType * argType, 
+                                                             llvm::Value * ret, 
+                                                             const FieldType * retType)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  switch(argType->GetEnum()) {
+  case FieldType::IPV4:
+  case FieldType::CIDRV4:
+    b->CreateStore(b->getInt32(4), ret);
+    break;
+  case FieldType::IPV6:
+    {
+      auto int8Type = Int8Type::Get(argType->getContext(), false);
+      auto int32Type = Int32Type::Get(argType->getContext(), false);
+      auto arrayTy = FixedArrayType::Get(argType->getContext(), 12, int8Type, false);
+      std::vector<IQLToLLVMTypedValue> vals;
+      for(std::size_t i=0; i<10; i++) {
+        vals.emplace_back(IQLToLLVMRValue::get(this, b->getInt8(0), IQLToLLVMValue::eLocal), int8Type);
+      }
+      vals.emplace_back(IQLToLLVMRValue::get(this, b->getInt8(-1), IQLToLLVMValue::eLocal), int8Type);
+      vals.emplace_back(IQLToLLVMRValue::get(this, b->getInt8(-1), IQLToLLVMValue::eLocal), int8Type);
+      auto v4MappedPrefix = buildGlobalConstArray(vals, arrayTy);
+      auto cmp = IQLToLLVMRValue::get(this, buildMemcmp(v4MappedPrefix->getValue(this), FieldAddress(), arg->getValue(this), FieldAddress(), 12), IQLToLLVMValue::eLocal);
+      buildBeginIfThenElse(buildCompare(cmp, int32Type, buildFalse(), int32Type, int32Type, IQLToLLVMOpEQ));
+      auto four = buildDecimalInt32Literal("4");
+      buildElseIfThenElse();
+      auto six = buildDecimalInt32Literal("6");
+      b->CreateStore(buildEndIfThenElse(four, int32Type, six, int32Type, int32Type)->getValue(this), ret);
+      break;
+    } 
+  case FieldType::CIDRV6:
+    {
+      // A CIDRV6 is v4mapped iff prefixLength>=96 and prefix is v4 mapped
+      auto int32Type = Int32Type::Get(argType->getContext(), false);
+      auto localVar = buildEntryBlockAlloca(int32Type->LLVMGetType(this), "");
+      buildMasklen(arg, argType, localVar, int32Type);
+      auto prefixLength = IQLToLLVMRValue::get(this, b->CreateLoad(int32Type->LLVMGetType(this), localVar), IQLToLLVMValue::eLocal);
+      auto condition = buildCompare(prefixLength, int32Type, buildDecimalInt32Literal("96"), int32Type, int32Type, IQLToLLVMOpLT);
+      buildBeginIf();
+      b->CreateStore(buildDecimalInt32Literal("6")->getValue(this), ret);
+      buildBeginElse();
+      auto ipv6Type = IPv6Type::Get(argType->getContext(), argType->isNullable());
+      buildFamily(arg, ipv6Type, ret, retType);
+      buildEndIf(condition);
+      // buildBeginIfThenElse(buildCompare(prefixLength, int32Type, buildDecimalInt32Literal("96"), int32Type, int32Type, IQLToLLVMOpLT));
+      // auto six = buildDecimalInt32Literal("6");
+      // buildElseIfThenElse();      
+      // // A bit of a hack (though an efficient one) : we just pass a CIDRV6 as if it were an IPV6 for a v4MappedPrefix comparison
+      // vals.resize(0);
+      // auto ipv6Type = IPv6Type::Get(argType->getContext(), argType->isNullable());
+      // vals.emplace_back(arg, ipv6Type);
+      // auto ipFamily = buildCall("family", vals, retType);
+      // b->CreateStore(buildEndIfThenElse(six, int32Type, ipFamily, int32Type, int32Type)->getValue(this), ret);
+      break;
+    }
+  }
+  return IQLToLLVMValue::eLocal;
+}
+
+IQLToLLVMValue::ValueType CodeGenerationContext::buildMasklen(const IQLToLLVMValue * arg, 
+                                                              const FieldType * argType, 
+                                                              llvm::Value * ret, 
+                                                              const FieldType * retType)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  switch(argType->GetEnum()) {
+  case FieldType::IPV4:
+    b->CreateStore(b->getInt32(32), ret);
+    break;
+  case FieldType::CIDRV4:
+    {
+      llvm::Type * structType = argType->LLVMGetType(this);
+      // We need pointer type to access struct members giving prefix length, so alloca and copy
+      llvm::Value * cidrValue = arg->getValue(this);
+      llvm::Value * tmp = buildEntryBlockAlloca(structType, "cidrv4convert");
+      b->CreateStore(cidrValue, tmp);
+      cidrValue = tmp;
+      llvm::Value * prefix_length = b->CreateLoad(b->getInt8Ty(), b->CreateStructGEP(structType, cidrValue, 1));
+      prefix_length = b->CreateZExt(prefix_length, b->getInt32Ty());
+      b->CreateStore(prefix_length, ret);
+      break;
+    }
+  case FieldType::IPV6:
+    b->CreateStore(b->getInt32(128), ret);
+    break;
+  case FieldType::CIDRV6:
+    {
+      // Set prefix length in the result
+      llvm::Value * gepIndexes[2];
+      gepIndexes[0] = b->getInt64(0);    
+      gepIndexes[1] = b->getInt64(16);
+      llvm::Value * prefix_length_ptr  = b->CreateGEP(argType->LLVMGetType(this), arg->getValue(this), llvm::makeArrayRef(&gepIndexes[0], 2), "prefix_length");
+      llvm::Value * prefix_length = b->CreateLoad(b->getInt8Ty(), prefix_length_ptr);
+      prefix_length = b->CreateZExt(prefix_length, b->getInt32Ty());
+      b->CreateStore(prefix_length, ret);
+      break;
+    }
+  }
+  return IQLToLLVMValue::eLocal;
 }
 
 llvm::Value * CodeGenerationContext::buildHashInitValue(DynamicRecordContext & ctxt, llvm::Value * sz, llvm::Value * previousHash, llvm::Value * firstFlag)

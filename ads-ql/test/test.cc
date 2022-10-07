@@ -2904,6 +2904,366 @@ BOOST_AUTO_TEST_CASE(testIQLStructCompare)
   BOOST_CHECK_EQUAL(val, 1);
 }
 
+BOOST_AUTO_TEST_CASE(testSubnetContainmentOps)
+{
+  DynamicRecordContext ctxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(ctxt, members);
+  RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			"198.162.22.0/24 << 198.162.0.0/16 AS a"
+			",198.162.22.0/24 <<= 198.162.0.0/16 AS b"
+			",198.162.22.0/24 >> 198.162.0.0/16 AS c"
+			",198.162.22.0/24 >>= 198.162.0.0/16 AS d"
+			",198.162.22.0/24 && 198.162.0.0/16 AS e"
+			",198.162.22.0/24 << 198.162.22.0/24 AS f"
+			",198.162.22.0/24 <<= 198.162.22.0/24 AS g"
+			",198.162.22.0/24 >> 198.162.22.0/24 AS h"
+			",198.162.22.0/24 >>= 198.162.22.0/24 AS i"
+			",198.162.22.0/24 && 198.162.22.0/24 AS j"
+			",198.162.22.0/24 << 198.162.22.22 AS k"
+			",198.162.22.0/24 <<= 198.162.22.22 AS l"
+			",198.162.22.0/24 >> 198.162.22.22 AS m"
+			",198.162.22.0/24 >>= 198.162.22.22 AS n"
+			",198.162.22.0/24 && 198.162.22.22 AS o"
+			",198.162.22.0/24 << 198.162.23.0/24 AS p"
+			",198.162.22.0/24 <<= 198.162.23.0/24 AS q"
+			",198.162.22.0/24 >> 198.162.23.0/24 AS r"
+			",198.162.22.0/24 >>= 198.162.23.0/24 AS s"
+			",198.162.22.0/24 && 198.162.23.0/24 AS t"
+			",::ffff:0:0/96 << 198.162.23.0/24 AS u"
+			",::ffff:0:0/96 <<= 198.162.23.0/24 AS v"
+			",::ffff:0:0/96 >> 198.162.23.0/24 AS w"
+			",::ffff:0:0/96 >> 198.162.23.0/24 AS x"
+			",::ffff:0:0/96 && 198.162.23.0/24 AS y"
+			",a:b:c::/48 << a:b:c:d:: AS A"
+			",a:b:c::/48 <<= a:b:c:d:: AS B"
+			",a:b:c::/48 >> a:b:c:d:: AS C"
+			",a:b:c::/48 >>= a:b:c:d:: AS D"
+			",a:b:c::/48 && a:b:c:d:: AS E"
+			",a:b:c::/48 << a:b:c:d::/64 AS F"
+			",a:b:c::/48 <<= a:b:c:d::/64 AS G"
+			",a:b:c::/48 >> a:b:c:d::/64 AS H"
+			",a:b:c::/48 >>= a:b:c:d::/64 AS I"
+			",a:b:c::/48 && a:b:c:d::/64 AS J"
+			",a:b:c::/48 << a:b:e::/48 AS K"
+			",a:b:c::/48 <<= a:b:e::/48 AS L"
+			",a:b:c::/48 >> a:b:e::/48 AS M"
+			",a:b:c::/48 >>= a:b:e::/48 AS N"
+			",a:b:c::/48 && a:b:e::/48 AS O"
+			);
+  
+  InterpreterContext runtimeCtxt;
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  RecordBuffer outputBuf;
+  t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);  
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("a", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("b", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("c", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("d", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("e", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("f", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("g", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("h", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("i", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("j", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("k", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("l", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("m", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("n", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("o", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("p", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("q", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("r", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("s", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("t", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("u", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("v", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("w", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("x", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("y", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("A", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("B", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("C", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("D", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("E", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("F", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("G", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("H", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("I", outputBuf));
+  BOOST_CHECK_EQUAL(1, t1.getTarget()->get<Int32Type>("J", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("K", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("L", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("M", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("N", outputBuf));
+  BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("O", outputBuf));
+}
+
+BOOST_AUTO_TEST_CASE(testSubnetContainmentOpsNullability)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", CIDRv6Type::Get(ctxt, true)));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", CIDRv6Type::Get(ctxt, true)));
+  RecordType rhsTy(ctxt, rhsMembers);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setCIDRv6("a", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, lhs);
+
+  RecordBuffer rhs = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs);
+  rhsTy.setCIDRv6("e", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, rhs);
+
+  std::vector<AliasedRecordType> types;
+  types.push_back(AliasedRecordType("table", &recTy));
+  types.push_back(AliasedRecordType("probe", &rhsTy));
+  RecordTypeTransfer2 t1(ctxt, "xfer1", types,
+                         "a << e AS a1, a <<= e AS a2, a >> e AS a3, a >>= e AS a4, a && e AS a5");
+  RecordBuffer outputBuf;
+  {
+    t1.execute(lhs, rhs, outputBuf, &runtimeCtxt, false, false);
+    BOOST_CHECK_EQUAL(0, t1.getTarget()->getInt32("a1", outputBuf));
+    BOOST_CHECK_EQUAL(1, t1.getTarget()->getInt32("a2", outputBuf));
+    BOOST_CHECK_EQUAL(0, t1.getTarget()->getInt32("a3", outputBuf));
+    BOOST_CHECK_EQUAL(1, t1.getTarget()->getInt32("a4", outputBuf));
+    BOOST_CHECK_EQUAL(1, t1.getTarget()->getInt32("a5", outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    recTy.setNull("a", lhs);
+    t1.execute(lhs, rhs, outputBuf, &runtimeCtxt, false, false);
+    BOOST_CHECK(t1.getTarget()->isNull("a1", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a2", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a3", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a4", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a5", outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    rhsTy.setNull("e", rhs);
+    t1.execute(lhs, rhs, outputBuf, &runtimeCtxt, false, false);
+    BOOST_CHECK(t1.getTarget()->isNull("a1", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a2", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a3", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a4", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a5", outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  {
+    recTy.setCIDRv6("a", { boost::asio::ip::make_address_v6("aaaa:bbbb:cccc::"), 24 }, lhs);
+    t1.execute(lhs, rhs, outputBuf, &runtimeCtxt, false, false);
+    BOOST_CHECK(t1.getTarget()->isNull("a1", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a2", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a3", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a4", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("a5", outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+}
+
+void testFamilyNullability(bool isNullable)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("n", IPv4Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("o", CIDRv4Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("p", IPv6Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("q", CIDRv6Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("r", IPv6Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("s", CIDRv6Type::Get(ctxt, isNullable)));
+  RecordType recTy(ctxt, members);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setIPv4("n", boost::asio::ip::make_address_v4("100.84.33.22"), inputBuf);
+  recTy.setCIDRv4("o", { boost::asio::ip::make_address_v4("100.84.33.0"), 24 }, inputBuf);
+  recTy.setIPv6("p", boost::asio::ip::make_address_v6("fe80::c066:5cff:fe85:b5eb"), inputBuf);
+  recTy.setCIDRv6("q", { boost::asio::ip::make_address_v6("fe80::c066:5cff:fe85:0"), 112 }, inputBuf);
+  recTy.setIPv6("r", boost::asio::ip::make_address_v6("::ffff:fe85:b5eb"), inputBuf);
+  recTy.setCIDRv6("s", { boost::asio::ip::make_address_v6("::ffff:fe85:0"), 112 }, inputBuf);
+  RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                        "family(n) AS n"
+                        ", family(o) AS o"
+                        ", family(p) AS p"
+                        ", family(q) AS q"
+                        ", family(r) AS r"
+                        ", family(s) AS s"
+                        );
+  for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+      it != t1.getTarget()->end_members();
+      ++it) {
+    BOOST_CHECK_EQUAL(FieldType::INT32, it->GetType()->GetEnum());
+    BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
+  }
+  {
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK_EQUAL(4, t1.getTarget()->get<Int32Type>("n", outputBuf));
+    BOOST_CHECK_EQUAL(4, t1.getTarget()->get<Int32Type>("o", outputBuf));
+    BOOST_CHECK_EQUAL(6, t1.getTarget()->get<Int32Type>("p", outputBuf));
+    BOOST_CHECK_EQUAL(6, t1.getTarget()->get<Int32Type>("q", outputBuf));
+    BOOST_CHECK_EQUAL(4, t1.getTarget()->get<Int32Type>("r", outputBuf));
+    BOOST_CHECK_EQUAL(4, t1.getTarget()->get<Int32Type>("s", outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  if(isNullable) {
+    recTy.setNull("n", inputBuf);
+    recTy.setNull("o", inputBuf);
+    recTy.setNull("p", inputBuf);
+    recTy.setNull("q", inputBuf);
+    recTy.setNull("r", inputBuf);
+    recTy.setNull("s", inputBuf);
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(t1.getTarget()->isNull("n", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("o", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("p", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("q", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("r", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("s", outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testFamilyNonNullable)
+{
+  testFamilyNullability(false);
+}
+
+BOOST_AUTO_TEST_CASE(testFamilyNullable)
+{
+  testFamilyNullability(true);
+}
+
+BOOST_AUTO_TEST_CASE(testFamily)
+{
+  DynamicRecordContext ctxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(ctxt, members);
+  RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			"family(198.162.22.0/24) AS a"
+			",family(198.162.22.0) AS b"
+			",family(::ffff:0:0) AS c"
+			",family(a:b:c:d::) AS d"
+			",family(::fffe:0:0) AS e"
+			",family(1::ffff:0:0) AS f"
+			",family(::ffff:0:0/96) AS g"
+			",family(a:b:c:d::/96) AS h"
+			",family(::ffff:0:0/95) AS i"
+			",family(a:b:c:e::/95) AS j"
+                        );  
+  InterpreterContext runtimeCtxt;
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  RecordBuffer outputBuf;
+  t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);  
+  BOOST_CHECK_EQUAL(4, t1.getTarget()->get<Int32Type>("a", outputBuf));
+  BOOST_CHECK_EQUAL(4, t1.getTarget()->get<Int32Type>("b", outputBuf));
+  BOOST_CHECK_EQUAL(4, t1.getTarget()->get<Int32Type>("c", outputBuf));
+  BOOST_CHECK_EQUAL(6, t1.getTarget()->get<Int32Type>("d", outputBuf));
+  BOOST_CHECK_EQUAL(6, t1.getTarget()->get<Int32Type>("e", outputBuf));
+  BOOST_CHECK_EQUAL(6, t1.getTarget()->get<Int32Type>("f", outputBuf));
+  BOOST_CHECK_EQUAL(4, t1.getTarget()->get<Int32Type>("g", outputBuf));
+  BOOST_CHECK_EQUAL(6, t1.getTarget()->get<Int32Type>("h", outputBuf));
+  BOOST_CHECK_EQUAL(6, t1.getTarget()->get<Int32Type>("i", outputBuf));
+  BOOST_CHECK_EQUAL(6, t1.getTarget()->get<Int32Type>("j", outputBuf));
+  t1.getTarget()->GetFree()->free(outputBuf);
+}
+
+void testMasklenNullability(bool isNullable)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("n", IPv4Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("o", CIDRv4Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("p", IPv6Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("q", CIDRv6Type::Get(ctxt, isNullable)));
+  RecordType recTy(ctxt, members);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setIPv4("n", boost::asio::ip::make_address_v4("100.84.33.22"), inputBuf);
+  recTy.setCIDRv4("o", { boost::asio::ip::make_address_v4("100.84.33.0"), 24 }, inputBuf);
+  recTy.setIPv6("p", boost::asio::ip::make_address_v6("fe80::c066:5cff:fe85:b5eb"), inputBuf);
+  recTy.setCIDRv6("q", { boost::asio::ip::make_address_v6("fe80::c066:5cff:fe85:0"), 112 }, inputBuf);
+  RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+                        "masklen(n) AS n"
+                        ", masklen(o) AS o"
+                        ", masklen(p) AS p"
+                        ", masklen(q) AS q"
+                        );
+  for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
+      it != t1.getTarget()->end_members();
+      ++it) {
+    BOOST_CHECK_EQUAL(FieldType::INT32, it->GetType()->GetEnum());
+    BOOST_CHECK_EQUAL(isNullable, it->GetType()->isNullable());
+  }
+  {
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK_EQUAL(32, t1.getTarget()->get<Int32Type>("n", outputBuf));
+    BOOST_CHECK_EQUAL(24, t1.getTarget()->get<Int32Type>("o", outputBuf));
+    BOOST_CHECK_EQUAL(128, t1.getTarget()->get<Int32Type>("p", outputBuf));
+    BOOST_CHECK_EQUAL(112, t1.getTarget()->get<Int32Type>("q", outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+  if(isNullable) {
+    recTy.setNull("n", inputBuf);
+    recTy.setNull("o", inputBuf);
+    recTy.setNull("p", inputBuf);
+    recTy.setNull("q", inputBuf);
+    RecordBuffer outputBuf;
+    InterpreterContext runtimeCtxt;
+    t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+    BOOST_CHECK(t1.getTarget()->isNull("n", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("o", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("p", outputBuf));
+    BOOST_CHECK(t1.getTarget()->isNull("q", outputBuf));
+    t1.getTarget()->getFree().free(outputBuf);
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testMasklenNonNullable)
+{
+  testMasklenNullability(false);
+}
+
+BOOST_AUTO_TEST_CASE(testMasklenNullable)
+{
+  testMasklenNullability(true);
+}
+
+BOOST_AUTO_TEST_CASE(testMasklen)
+{
+  DynamicRecordContext ctxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(ctxt, members);
+  RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			"masklen(198.162.22.0/24) AS a"
+			",masklen(198.162.22.0) AS b"
+			",masklen(::ffff:0:0/96) AS c"
+			",masklen(a:b:c:d::) AS d"
+			",masklen(a:b:c:d::/128) AS e"
+                        );  
+  InterpreterContext runtimeCtxt;
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  RecordBuffer outputBuf;
+  t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);  
+  BOOST_CHECK_EQUAL(24, t1.getTarget()->get<Int32Type>("a", outputBuf));
+  BOOST_CHECK_EQUAL(32, t1.getTarget()->get<Int32Type>("b", outputBuf));
+  BOOST_CHECK_EQUAL(96, t1.getTarget()->get<Int32Type>("c", outputBuf));
+  BOOST_CHECK_EQUAL(128, t1.getTarget()->get<Int32Type>("d", outputBuf));
+  BOOST_CHECK_EQUAL(128, t1.getTarget()->get<Int32Type>("e", outputBuf));
+  t1.getTarget()->GetFree()->free(outputBuf);
+}
+
 void testIQLStructFieldAccess(const char * prefix, const char * updatePrefix, std::size_t depth, bool isInt64Nullable, bool isInt64Null)
 {
   DynamicRecordContext ctxt;

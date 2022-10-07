@@ -1655,25 +1655,10 @@ extern "C" void InternalParseIPAddress(const Varchar * lhs,
   }
 }
 
-static void fixup_prefix_length(const char * ip, int32_t & prefix_length)
-{
-  if (prefix_length > 128) {
-    prefix_length = 128;
-  }
-  if (prefix_length < 0) {
-    prefix_length = 0;
-  }
-  if (prefix_length <= 32 && memcmp(ip, v4MappedPrefix, sizeof(v4MappedPrefix)) == 0) {
-    // For V4 address make the prefix relative to 32 bits
-    prefix_length += 96;
-  }
-}
-
 extern "C" void InternalTruncateIPAddress(const char * ip, 
 					  int32_t prefix_length,
 					  char * result,
 					  InterpreterContext * ctxt) {
-  fixup_prefix_length(ip, prefix_length);
   memcpy(result, ip, 16);
   // Early bytes can stay as they are  
   int i = prefix_length / 8;
@@ -1687,15 +1672,16 @@ extern "C" void InternalTruncateIPAddress(const char * ip,
   if (i < 16) memset(&result[i], 0, 16-i);
 }
 
-extern "C" int32_t InternalIPAddressAddrBlockMatch(const char * prefix_ip, 
-						   int32_t prefix_length,
-						   const char * ip) {
-  fixup_prefix_length(prefix_ip, prefix_length);
-  char zeroed_ip[16];
-  char zeroed_prefix_ip[16];
-  InternalTruncateIPAddress(prefix_ip, prefix_length, zeroed_prefix_ip, nullptr);
-  InternalTruncateIPAddress(ip, prefix_length, zeroed_ip, nullptr);
-  return 0 == memcmp(zeroed_prefix_ip, zeroed_ip, 16);
+extern "C" int32_t InternalIPAddressAddrBlockMatch(const CidrV6Runtime * lhs,
+						   const CidrV6Runtime * rhs) {
+  char zeroed_rhs[16];
+  char zeroed_lhs[16];
+  if (lhs->prefix_length >= rhs->prefix_length) {
+    return 0;
+  }
+  InternalTruncateIPAddress((const char *) &lhs->prefix[0], lhs->prefix_length, zeroed_lhs, nullptr);
+  InternalTruncateIPAddress((const char *) &rhs->prefix[0], lhs->prefix_length, zeroed_rhs, nullptr);
+  return 0 == memcmp(zeroed_lhs, zeroed_rhs, 16);
 }
 
 extern "C" int32_t InternalIsV4IPAddress(const char * prefix_ip) {
@@ -2853,19 +2839,10 @@ void LLVMBase::InitializeLLVM()
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
-  LoadAndValidateExternalFunction("truncate_ip_address", "InternalTruncateIPAddress", funTy);
-
-  numArguments = 0;
-  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   // argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
-  LoadAndValidateExternalFunction("cidr_ip_address_match", "InternalIPAddressAddrBlockMatch", funTy);
+  ::LoadAndValidateExternalFunction(*this, "InternalIPAddressAddrBlockMatch", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);

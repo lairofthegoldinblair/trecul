@@ -162,6 +162,76 @@ IQLToLLVMValueRef IQLToLLVMBuildCompare(IQLCodeGenerationContextRef ctxtRef,
   return wrap(ctxt->buildCompare(unwrap(lhs), lhsType, unwrap(rhs), rhsType, resultType, op));
 }
 
+IQLToLLVMValueRef IQLToLLVMBuildSubnetContains(IQLCodeGenerationContextRef ctxtRef, 
+                                               IQLToLLVMValueRef lhs, 
+                                               void * lhsAttributes, 
+                                               IQLToLLVMValueRef rhs, 
+                                               void * rhsAttributes,
+                                               void * resultAttributes)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  const FieldType * lhsType = (const FieldType *) lhsAttributes;
+  const FieldType * rhsType = (const FieldType *) rhsAttributes;
+  const FieldType * resultType = (const FieldType *) resultAttributes;
+  return wrap(ctxt->buildSubnetContains(unwrap(lhs), lhsType, unwrap(rhs), rhsType, resultType));
+}
+
+IQLToLLVMValueRef IQLToLLVMBuildSubnetContainsEquals(IQLCodeGenerationContextRef ctxtRef, 
+                                                     IQLToLLVMValueRef lhs, 
+                                                     void * lhsAttributes, 
+                                                     IQLToLLVMValueRef rhs, 
+                                                     void * rhsAttributes,
+                                                     void * resultAttributes)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  const FieldType * lhsType = (const FieldType *) lhsAttributes;
+  const FieldType * rhsType = (const FieldType *) rhsAttributes;
+  const FieldType * resultType = (const FieldType *) resultAttributes;
+  return wrap(ctxt->buildSubnetContainsEquals(unwrap(lhs), lhsType, unwrap(rhs), rhsType, resultType));
+}
+
+IQLToLLVMValueRef IQLToLLVMBuildSubnetContainedBy(IQLCodeGenerationContextRef ctxtRef, 
+                                                  IQLToLLVMValueRef lhs, 
+                                                  void * lhsAttributes, 
+                                                  IQLToLLVMValueRef rhs, 
+                                                  void * rhsAttributes,
+                                                  void * resultAttributes)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  const FieldType * lhsType = (const FieldType *) lhsAttributes;
+  const FieldType * rhsType = (const FieldType *) rhsAttributes;
+  const FieldType * resultType = (const FieldType *) resultAttributes;
+  return wrap(ctxt->buildSubnetContainedBy(unwrap(lhs), lhsType, unwrap(rhs), rhsType, resultType));
+}
+
+IQLToLLVMValueRef IQLToLLVMBuildSubnetContainedByEquals(IQLCodeGenerationContextRef ctxtRef, 
+                                                        IQLToLLVMValueRef lhs, 
+                                                        void * lhsAttributes, 
+                                                        IQLToLLVMValueRef rhs, 
+                                                        void * rhsAttributes,
+                                                        void * resultAttributes)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  const FieldType * lhsType = (const FieldType *) lhsAttributes;
+  const FieldType * rhsType = (const FieldType *) rhsAttributes;
+  const FieldType * resultType = (const FieldType *) resultAttributes;
+  return wrap(ctxt->buildSubnetContainedByEquals(unwrap(lhs), lhsType, unwrap(rhs), rhsType, resultType));
+}
+
+IQLToLLVMValueRef IQLToLLVMBuildSubnetSymmetricContainsEquals(IQLCodeGenerationContextRef ctxtRef, 
+                                                              IQLToLLVMValueRef lhs, 
+                                                              void * lhsAttributes, 
+                                                              IQLToLLVMValueRef rhs, 
+                                                              void * rhsAttributes,
+                                                              void * resultAttributes)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  const FieldType * lhsType = (const FieldType *) lhsAttributes;
+  const FieldType * rhsType = (const FieldType *) rhsAttributes;
+  const FieldType * resultType = (const FieldType *) resultAttributes;
+  return wrap(ctxt->buildSubnetSymmetricContainsEquals(unwrap(lhs), lhsType, unwrap(rhs), rhsType, resultType));
+}
+
 IQLToLLVMValueRef IQLToLLVMBuildEquals(IQLCodeGenerationContextRef ctxtRef, 
 				       IQLToLLVMValueRef lhs, 
 				       void * lhsAttributes, 
@@ -926,6 +996,12 @@ IQLFieldTypeRef IQLTypeCheckEquals(IQLTypeCheckContextRef ctxtRef, IQLFieldTypeR
 {
   TypeCheckContext * ctxt = unwrap(ctxtRef);
   return wrap(ctxt->buildEquals(unwrap(lhs), unwrap(rhs)));
+}
+
+IQLFieldTypeRef IQLTypeCheckNetworkSubnet(IQLTypeCheckContextRef ctxtRef, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs)
+{
+  TypeCheckContext * ctxt = unwrap(ctxtRef);
+  return wrap(ctxt->buildNetworkSubnet(unwrap(lhs), unwrap(rhs)));
 }
 
 IQLFieldTypeRef IQLTypeCheckAnd(IQLTypeCheckContextRef ctxtRef, IQLFieldTypeRef lhs, IQLFieldTypeRef rhs)

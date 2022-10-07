@@ -113,6 +113,26 @@ extern "C" {
 					  IQLExpressionRef left,
 					  IQLExpressionRef right,
 					  int line, int column);
+  IQLExpressionRef IQLBuildSubnetContains(IQLTreeFactoryRef ctxtRef,
+					  IQLExpressionRef left,
+					  IQLExpressionRef right,
+					  int line, int column);
+  IQLExpressionRef IQLBuildSubnetContainsEquals(IQLTreeFactoryRef ctxtRef,
+                                                IQLExpressionRef left,
+                                                IQLExpressionRef right,
+                                                int line, int column);
+  IQLExpressionRef IQLBuildSubnetContainedBy(IQLTreeFactoryRef ctxtRef,
+                                             IQLExpressionRef left,
+                                             IQLExpressionRef right,
+                                             int line, int column);
+  IQLExpressionRef IQLBuildSubnetContainedByEquals(IQLTreeFactoryRef ctxtRef,
+                                                   IQLExpressionRef left,
+                                                   IQLExpressionRef right,
+                                                   int line, int column);
+  IQLExpressionRef IQLBuildSubnetSymmetricContainsEquals(IQLTreeFactoryRef ctxtRef,
+                                                         IQLExpressionRef left,
+                                                         IQLExpressionRef right,
+                                                         int line, int column);
   IQLExpressionRef IQLBuildLike(IQLTreeFactoryRef ctxtRef,
 				IQLExpressionRef left,
 				IQLExpressionRef right,

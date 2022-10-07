@@ -86,7 +86,7 @@ variableReference[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMLValueRef 
     |
     ^(c='[' e1 = expression[$ctxt] e2 = expression[$ctxt] { $lhs = IQLToLLVMBuildArrayLValue(ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
 	|
-    ^(c='.' e1 = expression[$ctxt] fun=ID) { $lhs = IQLToLLVMBuildRowRef(ctxt, e1.llvmVal, $e1.start->u, (const char *) $fun.text->chars, $c->u); }
+    ^(c='.' e1 = expression[$ctxt] fun=ID) { $lhs = IQLToLLVMBuildRowLValue(ctxt, e1.llvmVal, $e1.start->u, (const char *) $fun.text->chars, $c->u); }
     ;
 
 switchStatement[IQLCodeGenerationContextRef ctxt]
@@ -217,6 +217,11 @@ expression[IQLCodeGenerationContextRef ctxt] returns [IQLToLLVMValueRef llvmVal,
     | ^(c='<=' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildCompare($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u, IQLToLLVMOpLE); })
     | ^(c='<>' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildCompare($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u, IQLToLLVMOpNE); })
     | ^(c='!=' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildCompare($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u, IQLToLLVMOpNE); })
+    | ^(c='>>' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildSubnetContains($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
+    | ^(c='>>=' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildSubnetContainsEquals($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
+    | ^(c='<<' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildSubnetContainedBy($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
+    | ^(c='<<=' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildSubnetContainedByEquals($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
+    | ^(c='&&' e1 = expression[$ctxt] e2 = expression[$ctxt]  { $llvmVal = IQLToLLVMBuildSubnetSymmetricContainsEquals($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u); })
     | ^(TK_LIKE e1 = expression[$ctxt] e2 = expression[$ctxt] { IQLToLLVMNotImplemented(); })
     | ^(TK_RLIKE e1 = expression[$ctxt] e2 = expression[$ctxt] { $llvmVal = IQLToLLVMBuildCompare($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $TK_RLIKE->u, IQLToLLVMOpRLike); })
     | ^(c='-' e1 = expression[$ctxt] (e2 = expression[$ctxt] { isBinary=1; })? { $llvmVal = isBinary ? IQLToLLVMBuildSub($ctxt, e1.llvmVal, $e1.start->u, e2.llvmVal, $e2.start->u, $c->u) : IQLToLLVMBuildNegate($ctxt, e1.llvmVal, $e1.start->u, $c->u); })

@@ -210,7 +210,7 @@ public:
 class IQLExpression
 {
 public:
-  enum NodeType { ARRAYREF, ARR, LOR, LAND, LNOT, LISNULL, CASE, BAND, BOR, BXOR, BNOT, EQ, GTN, LTN, GTEQ, LTEQ, NEQ, MINUS, PLUS, TIMES, DIVIDE, MOD, CONCAT, CAST, VARIABLE, CALL, INT32, INT64, DOUBLE, DECIMAL, STRING, STRUCT, BOOLEAN, INTERVAL, NIL, IPV4, IPV6 };
+  enum NodeType { ARRAYREF, ARR, LOR, LAND, LNOT, LISNULL, CASE, BAND, BOR, BXOR, BNOT, EQ, GTN, LTN, GTEQ, LTEQ, NEQ, MINUS, PLUS, TIMES, DIVIDE, MOD, CONCAT, CAST, VARIABLE, CALL, INT32, INT64, DOUBLE, DECIMAL, STRING, STRUCT, BOOLEAN, INTERVAL, NIL, IPV4, IPV6, SUBNET_CONTAINS, SUBNET_CONTAINSEQ, SUBNET_CONTAINED, SUBNET_CONTAINEDEQ, SUBNET_SYMCONTAINSEQ };
 
 private:
   DynamicRecordContext & mContext;
@@ -715,6 +715,166 @@ public:
   }
 
   LessThanEqualsExpr * clone() const;
+};
+
+class SubnetContainsExpr : public IQLExpression
+{
+private:
+  SubnetContainsExpr(const SubnetContainsExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  SubnetContainsExpr(DynamicRecordContext & ctxt, 
+		     IQLExpression * left,
+		     IQLExpression * right,
+		     const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::SUBNET_CONTAINS, left, right, loc)
+  {
+  }
+
+  static SubnetContainsExpr * create(DynamicRecordContext & ctxt,
+				     IQLExpression * left,
+				     IQLExpression * right,
+				     const SourceLocation& loc)
+  {
+    SubnetContainsExpr * tmp = new SubnetContainsExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  SubnetContainsExpr * clone() const;
+};
+
+class SubnetContainsEqualsExpr : public IQLExpression
+{
+private:
+  SubnetContainsEqualsExpr(const SubnetContainsEqualsExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  SubnetContainsEqualsExpr(DynamicRecordContext & ctxt, 
+                           IQLExpression * left,
+                           IQLExpression * right,
+                           const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::SUBNET_CONTAINSEQ, left, right, loc)
+  {
+  }
+
+  static SubnetContainsEqualsExpr * create(DynamicRecordContext & ctxt,
+                                           IQLExpression * left,
+                                           IQLExpression * right,
+                                           const SourceLocation& loc)
+  {
+    SubnetContainsEqualsExpr * tmp = new SubnetContainsEqualsExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  SubnetContainsEqualsExpr * clone() const;
+};
+
+class SubnetContainedByExpr : public IQLExpression
+{
+private:
+  SubnetContainedByExpr(const SubnetContainedByExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  SubnetContainedByExpr(DynamicRecordContext & ctxt, 
+                        IQLExpression * left,
+                        IQLExpression * right,
+                        const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::SUBNET_CONTAINED, left, right, loc)
+  {
+  }
+
+  static SubnetContainedByExpr * create(DynamicRecordContext & ctxt,
+                                        IQLExpression * left,
+                                        IQLExpression * right,
+                                        const SourceLocation& loc)
+  {
+    SubnetContainedByExpr * tmp = new SubnetContainedByExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  SubnetContainedByExpr * clone() const;
+};
+
+class SubnetContainedByEqualsExpr : public IQLExpression
+{
+private:
+  SubnetContainedByEqualsExpr(const SubnetContainedByEqualsExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  SubnetContainedByEqualsExpr(DynamicRecordContext & ctxt, 
+                              IQLExpression * left,
+                              IQLExpression * right,
+                              const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::SUBNET_CONTAINEDEQ, left, right, loc)
+  {
+  }
+
+  static SubnetContainedByEqualsExpr * create(DynamicRecordContext & ctxt,
+                                              IQLExpression * left,
+                                              IQLExpression * right,
+                                              const SourceLocation& loc)
+  {
+    SubnetContainedByEqualsExpr * tmp = new SubnetContainedByEqualsExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  SubnetContainedByEqualsExpr * clone() const;
+};
+
+class SubnetSymmetricContainsEqualsExpr : public IQLExpression
+{
+private:
+  SubnetSymmetricContainsEqualsExpr(const SubnetSymmetricContainsEqualsExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  SubnetSymmetricContainsEqualsExpr(DynamicRecordContext & ctxt, 
+                                    IQLExpression * left,
+                                    IQLExpression * right,
+                                    const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::SUBNET_SYMCONTAINSEQ, left, right, loc)
+  {
+  }
+
+  static SubnetSymmetricContainsEqualsExpr * create(DynamicRecordContext & ctxt,
+                                                    IQLExpression * left,
+                                                    IQLExpression * right,
+                                                    const SourceLocation& loc)
+  {
+    SubnetSymmetricContainsEqualsExpr * tmp = new SubnetSymmetricContainsEqualsExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  SubnetSymmetricContainsEqualsExpr * clone() const;
 };
 
 class CaseExpr : public IQLExpression

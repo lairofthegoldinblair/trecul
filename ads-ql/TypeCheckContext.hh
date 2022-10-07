@@ -318,6 +318,15 @@ public:
   const FieldType * buildLogicalNot(const FieldType * lhs);
   const FieldType * buildLike(const FieldType * lhs, 
 			      const FieldType * rhs);
+  const FieldType * buildNetworkSubnet(const FieldType * lhs, 
+                                       const FieldType * rhs);
+
+  /**
+   * Network intrinsic functions
+   */
+  const FieldType * buildFamily(std::vector<const FieldType *> & args);
+  const FieldType * buildMasklen(std::vector<const FieldType *> & args);
+  
 
   /**
    * Cast/Conversion
