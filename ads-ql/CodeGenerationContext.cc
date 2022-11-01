@@ -541,6 +541,10 @@ CodeGenerationContext::~CodeGenerationContext()
     delete LLVMContext;
     LLVMContext = NULL;
   }
+  if (AllocaCache) {
+    delete AllocaCache;
+    AllocaCache = NULL;
+  }
   while(IQLCase.size()) {
     delete IQLCase.top();
     IQLCase.pop();
