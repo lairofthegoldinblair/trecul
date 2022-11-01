@@ -209,6 +209,18 @@ public:
   llvm::Value * getNull(CodeGenerationContext * ctxt) const override;
   bool isLiteralNull() const override;
   ValueType getValueType() const override;
+  static IQLToLLVMField * get(CodeGenerationContext * ctxt,
+			      const RecordType * recordType,
+			      const std::string& memberName,
+			      const std::string& recordName);
+  static IQLToLLVMField * get(CodeGenerationContext * ctxt,
+			      const RecordType * recordType,
+			      const std::string& memberName,
+			      llvm::Value * basePointer);
+  static IQLToLLVMField * get(CodeGenerationContext * ctxt,
+			      const RecordType * recordType,
+			      std::size_t memberIdx,
+			      llvm::Value * basePointer);
 };
 
 /**
@@ -236,6 +248,12 @@ public:
   llvm::Value * getNull(CodeGenerationContext * ctxt) const override;
   bool isLiteralNull() const override;
   ValueType getValueType() const override;
+  static IQLToLLVMArrayElement * get(CodeGenerationContext * ctxt,
+				     IQLToLLVMTypedValue val,
+				     llvm::Value * nullBytePtr,
+				     llvm::Value * nullByteMask);
+  static IQLToLLVMArrayElement * get(CodeGenerationContext * ctxt,
+				     IQLToLLVMTypedValue val);
 };
 
 class IQLToLLVMLocal : public IQLToLLVMLValue
@@ -260,6 +278,9 @@ public:
   llvm::Value * getNull(CodeGenerationContext * ctxt) const override;
   bool isLiteralNull() const override;
   ValueType getValueType() const override;
+  static IQLToLLVMLocal * get(CodeGenerationContext * ctxt,
+			      IQLToLLVMTypedValue lval,
+			      llvm::Value * lvalNull);
 };
 
 class IQLToLLVMArgument : public IQLToLLVMLValue
@@ -289,6 +310,9 @@ public:
   bool isLiteralNull() const override;
   ValueType getValueType() const override;
   llvm::Value * getBasePointer(CodeGenerationContext * ctxt) const;
+  static IQLToLLVMArgument * get(CodeGenerationContext * ctxt,
+				 llvm::Value * val,
+				 const FieldType * ty, llvm::Value * basePointer);
 };
 
 class IQLToLLVMStackRecord
@@ -329,7 +353,6 @@ public:
   }
   ~IQLToLLVMCaseState()
   {
-    delete Local;
   }
 
   llvm::BasicBlock * getMergeBlock()

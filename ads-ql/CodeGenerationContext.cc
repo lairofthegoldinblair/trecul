@@ -217,6 +217,36 @@ IQLToLLVMValue::ValueType IQLToLLVMField::getValueType() const
   return IQLToLLVMValue::eGlobal;
 }
 
+IQLToLLVMField * IQLToLLVMField::get(CodeGenerationContext * ctxt,
+				     const RecordType * recordType,
+				     const std::string& memberName,
+				     const std::string& recordName)
+{
+  IQLToLLVMField * tmp = new IQLToLLVMField(ctxt, recordType, memberName, recordName);
+  ctxt->ValueFactory.push_back(tmp);
+  return tmp;
+}
+
+IQLToLLVMField * IQLToLLVMField::get(CodeGenerationContext * ctxt,
+				     const RecordType * recordType,
+				     const std::string& memberName,
+				     llvm::Value * basePointer)
+{
+  IQLToLLVMField * tmp = new IQLToLLVMField(recordType, memberName, basePointer);
+  ctxt->ValueFactory.push_back(tmp);
+  return tmp;
+}
+
+IQLToLLVMField * IQLToLLVMField::get(CodeGenerationContext * ctxt,
+				     const RecordType * recordType,
+				     std::size_t memberIdx,
+				     llvm::Value * basePointer)
+{
+  IQLToLLVMField * tmp = new IQLToLLVMField(recordType, memberIdx, basePointer);
+  ctxt->ValueFactory.push_back(tmp);
+  return tmp;
+}
+
 IQLToLLVMArrayElement::IQLToLLVMArrayElement(IQLToLLVMTypedValue val,
                                              llvm::Value * nullBytePtr,
                                              llvm::Value * nullByteMask)
@@ -289,6 +319,24 @@ IQLToLLVMValue::ValueType IQLToLLVMArrayElement::getValueType() const
   return mValue.getValue()->getValueType();
 }
 
+IQLToLLVMArrayElement * IQLToLLVMArrayElement::get(CodeGenerationContext * ctxt,
+						   IQLToLLVMTypedValue val,
+						   llvm::Value * nullBytePtr,
+						   llvm::Value * nullByteMask)
+{
+  IQLToLLVMArrayElement * tmp = new IQLToLLVMArrayElement(val, nullBytePtr, nullByteMask);
+  ctxt->ValueFactory.push_back(tmp);
+  return tmp;
+}
+
+IQLToLLVMArrayElement * IQLToLLVMArrayElement::get(CodeGenerationContext * ctxt,
+						   IQLToLLVMTypedValue val)
+{
+  IQLToLLVMArrayElement * tmp = new IQLToLLVMArrayElement(val);
+  ctxt->ValueFactory.push_back(tmp);
+  return tmp;
+}
+
 IQLToLLVMLocal::IQLToLLVMLocal(IQLToLLVMTypedValue val,
 			       llvm::Value * nullBit)
   :
@@ -353,6 +401,15 @@ IQLToLLVMValue::ValueType IQLToLLVMLocal::getValueType() const
   return mValue.getValue()->getValueType();
 }
 
+IQLToLLVMLocal * IQLToLLVMLocal::get(CodeGenerationContext * ctxt,
+				     IQLToLLVMTypedValue lval,
+				     llvm::Value * lvalNull)
+{
+  IQLToLLVMLocal * tmp = new IQLToLLVMLocal(lval, lvalNull);
+  ctxt->ValueFactory.push_back(tmp);
+  return tmp;
+}
+
 IQLToLLVMArgument::IQLToLLVMArgument(llvm::Value * val, const FieldType * ty, llvm::Value * basePointer)
   :
   mValue(val),
@@ -407,6 +464,16 @@ IQLToLLVMValue::ValueType IQLToLLVMArgument::getValueType() const
 llvm::Value * IQLToLLVMArgument::getBasePointer(CodeGenerationContext * ctxt) const
 {
   return mBasePointer;
+}
+
+IQLToLLVMArgument * IQLToLLVMArgument::get(CodeGenerationContext * ctxt,
+					   llvm::Value * val,
+					   const FieldType * ty,
+					   llvm::Value * basePointer)
+{
+  IQLToLLVMArgument * tmp = new IQLToLLVMArgument(val, ty, basePointer);
+  ctxt->ValueFactory.push_back(tmp);
+  return tmp;
 }
 
 CodeGenerationFunctionContext::CodeGenerationFunctionContext()
@@ -529,7 +596,7 @@ void CodeGenerationContext::defineVariable(const char * name,
 {
   const IQLToLLVMValue * tmp = IQLToLLVMRValue::get(this, val, 
                                                     NULL, globalOrLocal);
-  IQLToLLVMLocal * local = new IQLToLLVMLocal(IQLToLLVMTypedValue(tmp, ft), nullVal);
+  IQLToLLVMLocal * local = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(tmp, ft), nullVal);
   mSymbolTable->add(name, NULL, local);
 }
 
@@ -538,9 +605,10 @@ void CodeGenerationContext::defineFieldVariable(llvm::Value * basePointer,
 						const char * memberName,
 						const RecordType * recordType)
 {
-  IQLToLLVMField * field = new IQLToLLVMField(recordType,
-					      memberName,
-					      basePointer);
+  IQLToLLVMField * field = IQLToLLVMField::get(this,
+					       recordType,
+					       memberName,
+					       basePointer);
   mSymbolTable->add(prefix, memberName, field);
 }
 
@@ -590,7 +658,7 @@ void CodeGenerationContext::buildFree(const IQLToLLVMValue * val, const FieldTyp
       // Allocate and initialize counter
       llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
       const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-      IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(counter, int32Type), nullptr);
+      IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
       buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
         
       whileBegin();
@@ -822,7 +890,7 @@ void CodeGenerationContext::buildPrint(const IQLToLLVMValue * val, const FieldTy
       // Allocate and initialize counter
       llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
       const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-      IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(counter, int32Type), nullptr);
+      IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
       buildSetNullableValue(counterLValue, buildFalse(), int32Type, int32Type);
       
       const IQLToLLVMValue * endIdx = IQLToLLVMRValue::get(this, getArraySize(val, ft), IQLToLLVMValue::eLocal);
@@ -991,7 +1059,7 @@ void CodeGenerationContext::addInputRecordType(const char * name,
   // Add the record itself as a value in the symbol table, but as a pointer not a pointer to pointer
   llvm::IRBuilder<> * b = LLVMBuilder;
   auto valPointer = b->CreateLoad(b->getInt8PtrTy(), basePointer);
-  mSymbolTable->add(name, nullptr, new IQLToLLVMArgument(valPointer, rec, basePointer));  
+  mSymbolTable->add(name, nullptr, IQLToLLVMArgument::get(this, valPointer, rec, basePointer));  
 }
 
 llvm::Value * CodeGenerationContext::addExternalFunction(const char * treculName,
@@ -1273,7 +1341,7 @@ const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const IQLToLLVMV
                                              nullPtr,
                                              bytePos,
                                              "arrayIsNull");
-    return new IQLToLLVMArrayElement(IQLToLLVMTypedValue(iqlDataPtr, eltType), nullBytePtr, mask);
+    return IQLToLLVMArrayElement::get(this, IQLToLLVMTypedValue(iqlDataPtr, eltType), nullBytePtr, mask);
   } else {
     // This includes the case of an array of non-nullable elements
 
@@ -1310,11 +1378,11 @@ const IQLToLLVMLValue * CodeGenerationContext::buildArrayLValue(const IQLToLLVMV
     // // GEP to get pointer to the correct offset.
     // llvm::Value * gepIndexes[1] = { idxVal };
     // lval = b->CreateInBoundsGEP(lvalType, lval, llvm::ArrayRef<llvm::Value*>(&gepIndexes[0], &gepIndexes[1]));
-    // return new IQLToLLVMLocal(IQLToLLVMRValue::get(this, 
+    // return IQLToLLVMLocal::get(this, IQLToLLVMRValue::get(this, 
     //                                               lval,
     //                                               IQLToLLVMValue::eLocal),
     //                           NULL);
-    return new IQLToLLVMArrayElement(IQLToLLVMTypedValue(iqlDataPtr, eltType));
+    return IQLToLLVMArrayElement::get(this, IQLToLLVMTypedValue(iqlDataPtr, eltType));
   }
 }
 
@@ -1472,13 +1540,13 @@ const IQLToLLVMLValue * CodeGenerationContext::buildRowLValue(const IQLToLLVMVal
   // We want the base pointer in this IQLToLLVMField to be a pointer to a uint8_t *.
   auto arg = dynamic_cast<const IQLToLLVMArgument *>(row);
   if (nullptr != arg) {
-    return new IQLToLLVMField(structType, i, arg->getBasePointer(this));
+    return IQLToLLVMField::get(this, structType, i, arg->getBasePointer(this));
   } else {
     llvm::Type * int8Ptr = llvm::PointerType::get(b->getInt8Ty(), 0);
     llvm::Value * argTmp = buildEntryBlockAlloca(int8Ptr, "rowEltBaseArgTmp");
     lval = b->CreateBitCast(lval, int8Ptr, "rowEltBase");
     b->CreateStore(lval, argTmp);  
-    return new IQLToLLVMField(structType, i, argTmp);
+    return IQLToLLVMField::get(this, structType, i, argTmp);
   }
 }
 
@@ -2478,14 +2546,14 @@ void CodeGenerationContext::buildArrayElementwiseCopy(const IQLToLLVMValue * e,
   // Allocate and initialize counter
   llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
   const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(counter, int32Type), nullptr);
+  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
   buildSetNullableValue(counterLValue, beginIdx, int32Type, int32Type);
         
   // DECLARE retIdx = retBeginIdx
   // Allocate and initialize counter
   llvm::Value * retAllocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"retIdx");
   const IQLToLLVMValue * retCounter = IQLToLLVMRValue::get(this, retAllocAVal, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * retCounterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(retCounter, int32Type), nullptr);
+  IQLToLLVMLocal * retCounterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(retCounter, int32Type), nullptr);
   buildSetNullableValue(retCounterLValue, retBeginIdx, int32Type, int32Type);
         
   whileBegin();
@@ -2654,7 +2722,7 @@ void CodeGenerationContext::buildEraseAllocationTracking(const IQLToLLVMValue * 
       // Allocate and initialize counter
       llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
       const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-      IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(counter, int32Type), nullptr);
+      IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
       buildSetNullableValue(counterLValue, buildFalse(), int32Type, int32Type);
 
       const IQLToLLVMValue * endIdx = IQLToLLVMRValue::get(this, getArraySize(iqlVal, ft), IQLToLLVMValue::eLocal);
@@ -4471,7 +4539,7 @@ void CodeGenerationContext::buildCaseBlockBegin(const FieldType * caseType)
   if (caseType->isNullable()) {
     nullVal = buildEntryBlockAlloca(b->getInt1Ty(), "caseNullBit");
   }     
-  IQLToLLVMLocal * lVal = new IQLToLLVMLocal(IQLToLLVMTypedValue(IQLToLLVMRValue::get(this, result, IQLToLLVMValue::eLocal), caseType), nullVal);
+  IQLToLLVMLocal * lVal = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(IQLToLLVMRValue::get(this, result, IQLToLLVMValue::eLocal), caseType), nullVal);
   IQLCase.push(new IQLToLLVMCaseState(lVal, mergeBB));  
   BOOST_ASSERT(IQLCase.size() != 0);
 }
@@ -4781,20 +4849,20 @@ CodeGenerationContext::buildArrayElementwiseEquals(const IQLToLLVMValue * lhs,
   // DECLARE ret = true
   // Allocate return value and initialize to true
   const IQLToLLVMValue * ret = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(), "ret"), nullptr, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * retLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(ret, int32Type), nullptr);
+  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type), nullptr);
   buildSetNullableValue(retLValue, one, int32Type, int32Type);
   
   // DECLARE idx = 0
   // Allocate and initialize counter
   llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
   const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(counter, int32Type), nullptr);
+  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
   buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
 
   // DECLARE notDone = true
   // notDone flag is a hack since I haven't implemented IF and BREAK.   Initialize to true.
   const IQLToLLVMValue * notDone = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(),"notDone"), IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * notDoneLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(notDone, int32Type), nullptr);
+  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type), nullptr);
   buildSetNullableValue(notDoneLValue, one, int32Type, int32Type);
 
   whileBegin();
@@ -4857,20 +4925,20 @@ CodeGenerationContext::buildArrayElementwiseCompare(const IQLToLLVMValue * lhs,
   // DECLARE ret = false
   // Allocate return value and initialize to false
   const IQLToLLVMValue * ret = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(), "ret"), nullptr, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * retLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(ret, int32Type), nullptr);
+  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type), nullptr);
   buildSetNullableValue(retLValue, zero, int32Type, int32Type);
   
   // DECLARE idx = 0
   // Allocate and initialize counter
   llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
   const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(counter, int32Type), nullptr);
+  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
   buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
 
   // DECLARE notDone = true
   // notDone flag is a hack since I haven't implemented IF and BREAK.   Initialize to true.
   const IQLToLLVMValue * notDone = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(),"notDone"), IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * notDoneLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(notDone, int32Type), nullptr);
+  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type), nullptr);
   buildSetNullableValue(notDoneLValue, one, int32Type, int32Type);
 
   whileBegin();
@@ -4946,7 +5014,7 @@ void CodeGenerationContext::buildArrayElementwiseHash(const IQLToLLVMValue * e,
   // Allocate and initialize counter
   llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
   const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * counterLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(counter, int32Type), nullptr);
+  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
   buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
         
   whileBegin();
@@ -5007,13 +5075,13 @@ CodeGenerationContext::buildStructElementwiseCompare(const IQLToLLVMValue * lhs,
   // DECLARE ret = false
   // Allocate return value and initialize to false
   const IQLToLLVMValue * ret = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(), "ret"), nullptr, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * retLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(ret, int32Type), nullptr);
+  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type), nullptr);
   buildSetNullableValue(retLValue, zero, int32Type, int32Type);
   
   // DECLARE notDone = true
   // notDone flag is a hack since I haven't implemented IF and BREAK.   Initialize to true.
   const IQLToLLVMValue * notDone = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(),"notDone"), IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * notDoneLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(notDone, int32Type), nullptr);
+  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type), nullptr);
   buildSetNullableValue(notDoneLValue, one, int32Type, int32Type);
 
   for(std::size_t i=0; i<promoted->getNumElements(); ++i) {
@@ -5080,13 +5148,13 @@ CodeGenerationContext::buildStructElementwiseCompare(const IQLToLLVMValue * lhs,
   // DECLARE ret = false
   // Allocate return value and initialize to false
   const IQLToLLVMValue * ret = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(), "ret"), nullptr, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * retLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(ret, int32Type), nullptr);
+  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type), nullptr);
   buildSetNullableValue(retLValue, zero, int32Type, int32Type);
   
   // DECLARE notDone = true
   // notDone flag is a hack since I haven't implemented IF and BREAK.   Initialize to true.
   const IQLToLLVMValue * notDone = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(),"notDone"), IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * notDoneLValue = new IQLToLLVMLocal(IQLToLLVMTypedValue(notDone, int32Type), nullptr);
+  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type), nullptr);
   buildSetNullableValue(notDoneLValue, one, int32Type, int32Type);
 
 
