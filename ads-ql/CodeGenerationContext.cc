@@ -444,7 +444,8 @@ CodeGenerationContext::CodeGenerationContext()
 {
   LLVMContext = new llvm::LLVMContext();
   LLVMModule = new llvm::Module("my cool JIT", *LLVMContext);
-  LLVMModule->setDataLayout(llvm::EngineBuilder().selectTarget()->createDataLayout());
+  std::unique_ptr<llvm::TargetMachine> tm(llvm::EngineBuilder().selectTarget());
+  LLVMModule->setDataLayout(tm->createDataLayout());
 }
 
 CodeGenerationContext::~CodeGenerationContext()
