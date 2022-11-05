@@ -1349,6 +1349,7 @@ BOOST_AUTO_TEST_CASE(testIQLRowConstructor)
     BOOST_CHECK_EQUAL(8234.24344, arrTy->get<DoubleType>(4, inner));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.GetFree()->free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLArrayRowConstructor)
@@ -1481,6 +1482,7 @@ BOOST_AUTO_TEST_CASE(testIQLMultipleWhile)
     BOOST_CHECK_EQUAL(0, recTy.getInt32("d", lhs));
     BOOST_CHECK_EQUAL(88825, recTy.getInt32("y", lhs));
   }
+  recTy.GetFree()->free(lhs);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordHash)
@@ -2996,6 +2998,7 @@ BOOST_AUTO_TEST_CASE(testSubnetContainmentOps)
   BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("M", outputBuf));
   BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("N", outputBuf));
   BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("O", outputBuf));
+  recTy.GetFree()->free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testSubnetContainmentOpsNullability)
@@ -3064,6 +3067,8 @@ BOOST_AUTO_TEST_CASE(testSubnetContainmentOpsNullability)
     BOOST_CHECK(t1.getTarget()->isNull("a5", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.GetFree()->free(lhs);
+  recTy.GetFree()->free(rhs);
 }
 
 void testFamilyNullability(bool isNullable)
@@ -3130,6 +3135,7 @@ void testFamilyNullability(bool isNullable)
     BOOST_CHECK(t1.getTarget()->isNull("s", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.GetFree()->free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testFamilyNonNullable)
@@ -3174,6 +3180,7 @@ BOOST_AUTO_TEST_CASE(testFamily)
   BOOST_CHECK_EQUAL(6, t1.getTarget()->get<Int32Type>("i", outputBuf));
   BOOST_CHECK_EQUAL(6, t1.getTarget()->get<Int32Type>("j", outputBuf));
   t1.getTarget()->GetFree()->free(outputBuf);
+  recTy.GetFree()->free(inputBuf);
 }
 
 void testMasklenNullability(bool isNullable)
@@ -3228,6 +3235,7 @@ void testMasklenNullability(bool isNullable)
     BOOST_CHECK(t1.getTarget()->isNull("q", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.GetFree()->free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testMasklenNonNullable)
@@ -3262,6 +3270,7 @@ BOOST_AUTO_TEST_CASE(testMasklen)
   BOOST_CHECK_EQUAL(128, t1.getTarget()->get<Int32Type>("d", outputBuf));
   BOOST_CHECK_EQUAL(128, t1.getTarget()->get<Int32Type>("e", outputBuf));
   t1.getTarget()->GetFree()->free(outputBuf);
+  recTy.GetFree()->free(inputBuf);
 }
 
 void testIQLStructFieldAccess(const char * prefix, const char * updatePrefix, std::size_t depth, bool isInt64Nullable, bool isInt64Null)
@@ -3574,6 +3583,9 @@ void testRecordLogicalOps(bool isNullable)
       BOOST_CHECK_EQUAL(val, 0);    
     }
   }
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs1);
+  rhsTy.GetFree()->free(rhs2);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordLogicalOps)
@@ -3672,6 +3684,7 @@ void testArrayUpdate(bool isNullable)
     up.execute(lhs, NULL, &runtimeCtxt);
     BOOST_CHECK_EQUAL(88311, recTy.getArrayInt32("a", 2, lhs));
   }
+  recTy.GetFree()->free(lhs);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLFixedArrayUpdate)
@@ -3769,6 +3782,7 @@ BOOST_AUTO_TEST_CASE(testIQLWhile)
     BOOST_CHECK(false);
   } catch(std::exception& ) {
   }
+  recTy.GetFree()->free(lhs);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLAscendingSortPrefix)
@@ -4150,6 +4164,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordUpdate)
     } catch(std::exception& ) {
     }
   }
+  recTy.GetFree()->free(lhs);
 }
 
 BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
@@ -4301,6 +4316,8 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerializeNullable)
     bufPtr = &bigBuf[0];
     ret = recTy.getDeserialize().Do(bufPtr, &bigBuf[73], recIt, outputBuf);
     BOOST_CHECK(ret);
+    recTy.GetFree()->free(inputBuf);
+    recTy.GetFree()->free(outputBuf);
   }
   {
     RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
@@ -4335,6 +4352,8 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerializeNullable)
     BOOST_CHECK(!recTy.getMemberOffset("c").isNull(outputBuf));
     BOOST_CHECK(!recTy.getMemberOffset("d").isNull(outputBuf));
     BOOST_CHECK(!recTy.getMemberOffset("e").isNull(outputBuf));
+    recTy.GetFree()->free(inputBuf);
+    recTy.GetFree()->free(outputBuf);
   }
 }
 
@@ -4427,6 +4446,8 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferEntireRecord)
   BOOST_CHECK_EQUAL(23, rowTy->get<Int32Type>(0, inner));
   BOOST_CHECK_EQUAL(230, rowTy->get<Int32Type>(1, inner));
   BOOST_CHECK_EQUAL(2300, rowTy->get<Int32Type>(2, inner));
+  recordType->GetFree()->free(outputBuf);
+  recordType->GetFree()->free(inputBuf);
 }
 
 void testIQLRecordTransferIntegers(bool usePrefix)
@@ -4455,6 +4476,8 @@ void testIQLRecordTransferIntegers(bool usePrefix)
   BOOST_CHECK_EQUAL(2300, t1.getTarget()->getInt32("c", outputBuf));
   BOOST_CHECK_EQUAL(230, t1.getTarget()->getInt32("d", outputBuf));
   BOOST_CHECK_EQUAL(2553, t1.getTarget()->getInt32("e", outputBuf));
+  t1.getTarget()->GetFree()->free(outputBuf);
+  recordType->GetFree()->free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransferIntegersNoPrefix)
@@ -4483,6 +4506,8 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferIntegersNoPrefix)
   BOOST_CHECK_EQUAL(2300, t1.getTarget()->getInt32("c", outputBuf));
   BOOST_CHECK_EQUAL(230, t1.getTarget()->getInt32("d", outputBuf));
   BOOST_CHECK_EQUAL(2553, t1.getTarget()->getInt32("e", outputBuf));
+  t1.getTarget()->GetFree()->free(outputBuf);
+  recordType->GetFree()->free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransferIntegersWithPrefix)
@@ -4516,6 +4541,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordModulus)
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL((23%7), t1.getTarget()->getInt32("e", outputBuf));
     BOOST_CHECK_EQUAL((2300LL%231LL), t1.getTarget()->getInt64("f", outputBuf));
+    t1.getTarget()->GetFree()->free(outputBuf);
   }
 
   {
@@ -4527,6 +4553,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordModulus)
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL((23%-7), t1.getTarget()->getInt32("e", outputBuf));
     BOOST_CHECK_EQUAL((2300LL%-231LL), t1.getTarget()->getInt64("f", outputBuf));
+    t1.getTarget()->GetFree()->free(outputBuf);
   }
 
   {
@@ -4538,6 +4565,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordModulus)
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL((-23%7), t1.getTarget()->getInt32("e", outputBuf));
     BOOST_CHECK_EQUAL((-2300LL%231LL), t1.getTarget()->getInt64("f", outputBuf));
+    t1.getTarget()->GetFree()->free(outputBuf);
   }
 
   {
@@ -4549,7 +4577,9 @@ BOOST_AUTO_TEST_CASE(testIQLRecordModulus)
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
     BOOST_CHECK_EQUAL((-23%-7), t1.getTarget()->getInt32("e", outputBuf));
     BOOST_CHECK_EQUAL((-2300LL%-231LL), t1.getTarget()->getInt64("f", outputBuf));
+    t1.getTarget()->GetFree()->free(outputBuf);
   }
+  recordType->GetFree()->free(inputBuf);
 }
 
 class BinaryOp
@@ -4964,7 +4994,8 @@ void testIntegerUnaryOp(bool isNullable1, const UnaryOp& op)
     BOOST_CHECK(t1.getTarget()->getFieldAddress("e").isNull(outputBuf));
     BOOST_CHECK(t1.getTarget()->getFieldAddress("f").isNull(outputBuf));
   }
-  t1.getTarget()->getFree().free(outputBuf);
+  t1.getTarget()->GetFree()->free(outputBuf);
+  recordType->GetFree()->free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLBitwiseNot)
@@ -5000,7 +5031,8 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferLocalVariable)
   BOOST_CHECK_EQUAL(2300, t1.getTarget()->getInt32("c", outputBuf));
   BOOST_CHECK_EQUAL(230, t1.getTarget()->getInt32("d", outputBuf));
   BOOST_CHECK_EQUAL(2553, t1.getTarget()->getInt32("e", outputBuf));
-  t1.getTarget()->getFree().free(outputBuf);
+  t1.getTarget()->GetFree()->free(outputBuf);
+  recordType->GetFree()->free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLTransferParseErrors)
@@ -5134,6 +5166,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatement)
   BOOST_CHECK_EQUAL(3.0, t1.getTarget()->getDouble("p", outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("q").isNull(outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLCaseStatementVarchar)
@@ -5161,6 +5194,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementVarchar)
   BOOST_CHECK(boost::algorithm::equals("TRUE",
 				       t1.getTarget()->getVarcharPtr("d", outputBuf)->c_str()));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLCaseStatementDecimal)
@@ -5207,6 +5241,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementDecimal)
 	     DECIMAL128_Bytes);
   BOOST_CHECK_EQUAL(0, ret);
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLCaseStatementTypePromotion)
@@ -5246,6 +5281,8 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementTypePromotion)
 	     DECIMAL128_Bytes);
   BOOST_CHECK_EQUAL(0, ret);
   BOOST_CHECK_EQUAL(-99L, t1.getTarget()->getInt64("f", outputBuf));
+  t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLCaseStatementNullCondition)
@@ -5258,8 +5295,8 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementNullCondition)
   boost::shared_ptr<RecordType> recordType(new RecordType(ctxt, members));
   
   // Simple Transfer of everything
-  RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 
-			"CASE WHEN a=23 THEN 99823 ELSE 23 END AS d"
+  RecordTypeTransfer t1(ctxt, "xfer1", recordType.get(), 	
+		"CASE WHEN a=23 THEN 99823 ELSE 23 END AS d"
 			", CASE WHEN b=230 THEN c WHEN a=23 THEN 99823 ELSE 23 END AS e"
 			", CASE WHEN b=230 THEN -99 WHEN a=23 THEN 99823 ELSE 23 END AS f"
 			);
@@ -5285,6 +5322,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementNullCondition)
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getFieldAddress("e").getInt32(outputBuf));
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getFieldAddress("f").getInt32(outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLCaseStatementNullPromotion)
@@ -5322,6 +5360,7 @@ BOOST_AUTO_TEST_CASE(testIQLCaseStatementNullPromotion)
     BOOST_CHECK(t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recordType->getFree().free(inputBuf);
 }
 
 void ValidateRecordAggregate(RecordTypeAggregate& a1,
@@ -5379,6 +5418,9 @@ void ValidateRecordAggregate(RecordTypeAggregate& a1,
   BOOST_CHECK_EQUAL(a1.getTarget()->getInt32("d", transferBuf),
 		    2532);
   delete m;
+  a1.getAggregate()->GetFree()->free(aggregateBuf);
+  a1.getTarget()->GetFree()->free(transferBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordAggregate)
@@ -5578,6 +5620,10 @@ void ValidateArrayConcatAggregate(RecordTypeAggregate& a1,
 		    230);
   BOOST_CHECK_EQUAL(a1.getTarget()->getArrayInt32("d", 1, transferBuf),
 		    -23);
+
+  a1.getAggregate()->GetFree()->free(aggregateBuf);
+  a1.getTarget()->GetFree()->free(transferBuf);
+  recordType->getFree().free(inputBuf);
   delete m;
 }
 
@@ -5670,6 +5716,9 @@ void ValidateArrayConcatNestedRecordAggregate(RecordTypeAggregate& a1,
   nestedBuf = a1.getTarget()->getArrayStructPtr("d", 1, transferBuf);
   BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(0, nestedBuf), -23);
   BOOST_CHECK_EQUAL(nestedType->get<Int32Type>(1, nestedBuf), 25);
+  a1.getAggregate()->GetFree()->free(aggregateBuf);
+  a1.getTarget()->GetFree()->free(transferBuf);
+  recordType->getFree().free(inputBuf);
   delete m;
 }
 
@@ -6290,6 +6339,7 @@ BOOST_AUTO_TEST_CASE(testIQLFunctionCallDatetime)
   BOOST_CHECK_EQUAL(1297975113, t1.getTarget()->getInt32("n", outputBuf));
   BOOST_CHECK_EQUAL(t2, t1.getTarget()->getFieldAddress("o").getDatetime(outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLIntervalTypes)
@@ -6374,6 +6424,7 @@ BOOST_AUTO_TEST_CASE(testIQLIntervalTypes)
   BOOST_CHECK_EQUAL(boost::posix_time::time_from_string("2011-02-22 15:38:33"),
 		    t1.getTarget()->getFieldAddress("r").getDatetime(outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLIntervalTypesNegative)
@@ -6500,6 +6551,7 @@ BOOST_AUTO_TEST_CASE(testIQLIntervalTypesDate)
   BOOST_CHECK_EQUAL(boost::gregorian::from_string("2006-02-17"),
 		    t1.getTarget()->getFieldAddress("p").getDate(outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Integers)
@@ -6543,6 +6595,8 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Integers)
   BOOST_CHECK_EQUAL(520, t1.getTarget()->getInt32("e", outputBuf));
   BOOST_CHECK_EQUAL(5200, t1.getTarget()->getInt32("f", outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
+  recordType2->getFree().free(inputBuf2);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersWithCompoundName)
@@ -6895,6 +6949,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferRegex)
     BOOST_CHECK_EQUAL(8, t1.getTarget()->getInt32("foo", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Regex)
@@ -6944,6 +6999,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Regex)
     BOOST_CHECK_EQUAL(6, t1.getTarget()->getInt32("c4444", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testMemcpyCoalese)
@@ -7117,6 +7173,7 @@ void testCharCast(bool isNullable)
     BOOST_CHECK_EQUAL(0, memcmp(&expected, t1.getTarget()->getMemberOffset("ret").getCharPtr(outputBuf), 16));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLCharCast)
@@ -7188,6 +7245,7 @@ void testDateCast(bool isNullable)
     BOOST_CHECK_EQUAL(expected, t1.getTarget()->getMemberOffset("varcharToDate").getDate(outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLDateCast)
@@ -7329,6 +7387,7 @@ void testInt8Cast(bool isNullable)
     BOOST_CHECK_EQUAL(-71, t1.getTarget()->getInt8("j", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLInt8Cast)
@@ -7406,6 +7465,7 @@ void testInt16Cast(bool isNullable)
     BOOST_CHECK_EQUAL(-71, t1.getTarget()->getInt16("j", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLInt16Cast)
@@ -7482,6 +7542,7 @@ void testInt32Cast(bool isNullable)
     BOOST_CHECK_EQUAL(-71, t1.getTarget()->getInt32("j", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLInt32Cast)
@@ -7554,6 +7615,7 @@ void testInt64Cast(bool isNullable)
     BOOST_CHECK_EQUAL(-771422222222222222LL, t1.getTarget()->getInt64("i", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLInt64Cast)
@@ -7642,6 +7704,7 @@ void testDoubleCast(bool isNullable)
 		      0.00000001);
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLDoubleCast)
@@ -7740,6 +7803,7 @@ void testDecimalCast(bool isNullable)
     BOOST_CHECK(decimalEquals("10530087.83435363229759969564920746", t1.getTarget(), "j", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLDecimalCast)
@@ -7864,6 +7928,7 @@ void testVarcharCast(bool isNullable)
 					 t1.getTarget()->getVarcharPtr("q", outputBuf)->c_str()));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 void testNullableVarcharCast()
@@ -7921,6 +7986,7 @@ void testNullableVarcharCast()
     BOOST_CHECK(t1.getTarget()->getFieldAddress("h").isNull(outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLVarcharCast)
@@ -8008,6 +8074,7 @@ void testFixedArrayInt32Cast(bool isNullable)
     BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", 2, outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32Cast)
@@ -8071,6 +8138,7 @@ void testVariableArrayInt32Cast(bool isNullable)
     BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", 2, outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLVariableArrayInt32Cast)
@@ -8130,6 +8198,7 @@ void testIPv4Cast(bool isNullable)
     
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLIPv4Cast)
@@ -8175,6 +8244,7 @@ void testCIDRv4Cast(bool isNullable)
     
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLCIDRv4Cast)
@@ -8250,6 +8320,7 @@ void testIPv6Cast(bool isNullable)
     
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLIPv6Cast)
@@ -8302,6 +8373,7 @@ void testCIDRv6Cast(bool isNullable)
     
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLCIDRv6Cast)
@@ -8334,6 +8406,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddChar)
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK_EQUAL(0, strcmp("4381905F306900000161B14DDCDB9911123456789",t1.getTarget()->getFieldAddress("b").getCharPtr(outputBuf)));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLUnaryPlusAndMinus)
@@ -8370,6 +8443,7 @@ BOOST_AUTO_TEST_CASE(testIQLUnaryPlusAndMinus)
   BOOST_CHECK_EQUAL(-8, t1.getTarget()->getInt32("f", outputBuf));
   BOOST_CHECK_EQUAL(8, t1.getTarget()->getInt32("g", outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLGetVariables)
@@ -8551,6 +8625,7 @@ BOOST_AUTO_TEST_CASE(testIQLGreaterLeast)
 		    t1.getTarget()->getMember("result18").GetType()->GetEnum());
   BOOST_CHECK_EQUAL(88823445323LL, t1.getTarget()->getInt64("result18", outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLNegate)
@@ -8593,6 +8668,7 @@ BOOST_AUTO_TEST_CASE(testIQLNegate)
 			   t1.getTarget()->getMemberOffset("d").getDecimalPtr(outputBuf),
 			   16));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLNegateNullable)
@@ -8647,6 +8723,7 @@ BOOST_AUTO_TEST_CASE(testIQLNegateNullable)
   BOOST_CHECK(t1.getTarget()->getFieldAddress("c").isNull(outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLAddNullableChar)
@@ -8688,6 +8765,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableChar)
   BOOST_CHECK(t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
   t1.getTarget()->GetFree()->free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLAddNullableInt32)
@@ -8725,6 +8803,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableInt32)
   BOOST_CHECK(t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
   t1.getTarget()->GetFree()->free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLAddNullableDecimal)
@@ -8767,6 +8846,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableDecimal)
   BOOST_CHECK(t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK(t1.getTarget()->getFieldAddress("d").isNull(outputBuf));
   t1.getTarget()->GetFree()->free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLAddNullableDatetime)
@@ -8799,6 +8879,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableDatetime)
   t1.getTarget()->GetFree()->free(outputBuf);
 
   // TODO: Check NULL in the INTERVAL
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLAddNullableVarchar)
@@ -8832,6 +8913,7 @@ BOOST_AUTO_TEST_CASE(testIQLAddNullableVarchar)
   t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
   BOOST_CHECK(t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   t1.getTarget()->GetFree()->free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 void testIsNull(bool isNullable)
@@ -8880,6 +8962,7 @@ void testIsNull(bool isNullable)
     BOOST_CHECK_EQUAL(0, t1.getTarget()->getFieldAddress("d").getInt32(outputBuf));
     t1.getTarget()->GetFree()->free(outputBuf);
   }
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLIsNull)
@@ -8944,6 +9027,7 @@ void testIsNullFunction(bool isNullable1, bool isNullable2,
     BOOST_CHECK(t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
     t1.getTarget()->GetFree()->free(outputBuf);
   }
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLIsNullFunction)
@@ -8994,6 +9078,7 @@ BOOST_AUTO_TEST_CASE(testIQLIsNullFunctionTypePromotion)
   BOOST_CHECK(!t1.getTarget()->getFieldAddress("b").isNull(outputBuf));
   BOOST_CHECK_EQUAL(8234LL, t1.getTarget()->getFieldAddress("b").getInt64(outputBuf));
   t1.getTarget()->GetFree()->free(outputBuf);  
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLIsNullFunctionTypePromotionNegative)
@@ -9066,6 +9151,7 @@ void internalTestTransferOfNullableIntegers(const std::string& xfer)
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getInt32("a", outputBuf));
   BOOST_CHECK_EQUAL(230, t1.getTarget()->getInt32("d", outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransferNullableIntegers)
@@ -9125,6 +9211,7 @@ void testTransferWithAtLeastOneNullable(DynamicRecordContext& ctxt,
   BOOST_CHECK_EQUAL(23, t1.getTarget()->getInt32("a", outputBuf));
   BOOST_CHECK_EQUAL(230, t1.getTarget()->getInt32("b", outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransferAllNullableIntegers)
@@ -9205,6 +9292,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferNullableToNullable)
   BOOST_CHECK_EQUAL(21, t1.getTarget()->getInt32("d", outputBuf));
   BOOST_CHECK_EQUAL(251, t1.getTarget()->getInt32("f", outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullable)
@@ -9300,6 +9388,8 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullable)
   BOOST_CHECK(!t1.getTarget()->getMemberOffset("f").isNull(outputBuf));
   BOOST_CHECK_EQUAL(5200, t1.getTarget()->getInt32("f", outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
+  recordType2->getFree().free(inputBuf2);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullableAndNot)
@@ -9381,6 +9471,8 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullableAndNot)
   BOOST_CHECK(!t1.getTarget()->getMemberOffset("f").isNull(outputBuf));
   BOOST_CHECK_EQUAL(5200, t1.getTarget()->getInt32("f", outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
+  recordType2->getFree().free(inputBuf2);
 }
 
 void internalTestIQLRecordTransfer2IntegersNullableLarge(bool nullability,
@@ -9461,6 +9553,8 @@ void internalTestIQLRecordTransfer2IntegersNullableLarge(bool nullability,
   BOOST_CHECK(!t1.getTarget()->getMemberOffset("f").isNull(outputBuf));
   BOOST_CHECK_EQUAL(5200, t1.getTarget()->getInt32("f", outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
+  recordType2->getFree().free(inputBuf2);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2IntegersNullableLarge)
@@ -10166,6 +10260,7 @@ void testArrayInt32Concat(bool isNullable, bool isEltNullable)
     BOOST_CHECK(!t1.getTarget()->isArrayNull("ret", 4, outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLArrayInt32Concat)
