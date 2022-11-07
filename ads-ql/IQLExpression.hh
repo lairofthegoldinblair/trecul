@@ -76,7 +76,9 @@ public:
 				     IQLExpression * expr,
 				     const char * name)
   {
-    return new IQLNamedExpression(ctxt, expr, name);
+    auto tmp = new IQLNamedExpression(ctxt, expr, name);
+    ctxt.add(tmp);
+    return tmp;
   }
 
   IQLExpression * getExpression()
@@ -108,7 +110,9 @@ public:
   static IQLFieldGlob * create(DynamicRecordContext & ctxt,
 			       const char * recordName)
   {
-    return new IQLFieldGlob(ctxt, recordName);
+    auto tmp = new IQLFieldGlob(ctxt, recordName);
+    ctxt.add(tmp);
+    return tmp;
   }
 };
 
@@ -135,7 +139,9 @@ public:
 				  const char * pattern,
 				  const char * names)
   {
-    return new IQLFieldPattern(ctxt, pattern, names);
+    auto tmp = new IQLFieldPattern(ctxt, pattern, names);
+    ctxt.add(tmp);
+    return tmp;
   }
 };
 
@@ -154,7 +160,9 @@ public:
   static IQLRecordConstructor * create(DynamicRecordContext & ctxt,
 				       const std::vector<IQLFieldConstructor *>& fields)
   {
-    return new IQLRecordConstructor(fields.begin(), fields.end());
+    auto tmp = new IQLRecordConstructor(fields.begin(), fields.end());
+    ctxt.add(tmp);
+    return tmp;
   }
 
   typedef std::vector<IQLFieldConstructor*>::iterator field_iterator;

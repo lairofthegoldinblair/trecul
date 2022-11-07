@@ -523,16 +523,60 @@ CodeGenerationContext::~CodeGenerationContext()
       ++it) {
     delete *it;
   }
-
+  // Delete but do not double delete all allocated builders
+  std::set<llvm::IRBuilder<> *> builders;
   if (LLVMBuilder) {
-    delete LLVMBuilder;
-    LLVMBuilder = NULL;
+    builders.insert(LLVMBuilder);
   }
+  if (Update.Builder != nullptr) {
+    builders.insert(Update.Builder);
+  }
+  if (Initialize.Builder != nullptr) {
+    builders.insert(Initialize.Builder);
+  }
+  if (Transfer.Builder != nullptr) {
+    builders.insert(Transfer.Builder);
+  }
+  for(auto b : builders) {
+    delete b;
+  }
+  
+  // Delete but do not double delete all allocated symbol tables
+  std::set<TreculSymbolTable *> tables;
   if (mSymbolTable) {
-    delete mSymbolTable;
-    mSymbolTable = NULL;
-  }  
-  delete unwrap(IQLRecordArguments);
+    tables.insert(mSymbolTable);
+  }
+  if (Update.mSymbolTable != nullptr) {
+    tables.insert(Update.mSymbolTable);
+  }
+  if (Initialize.mSymbolTable != nullptr) {
+    tables.insert(Initialize.mSymbolTable);
+  }
+  if (Transfer.mSymbolTable != nullptr) {
+    tables.insert(Transfer.mSymbolTable);
+  }
+  for(auto b : tables) {
+    delete b;
+  }
+  
+  // Delete but do not double delete all allocated record args
+  std::set<IQLToLLVMRecordMapRef> args;
+  if (IQLRecordArguments) {
+    args.insert(IQLRecordArguments);
+  }
+  if (Update.RecordArguments != nullptr) {
+    args.insert(Update.RecordArguments);
+  }
+  if (Initialize.RecordArguments != nullptr) {
+    args.insert(Initialize.RecordArguments);
+  }
+  if (Transfer.RecordArguments != nullptr) {
+    args.insert(Transfer.RecordArguments);
+  }
+  for(auto b : args) {
+    delete unwrap(b);
+  }
+
   if (mOwnsModule && LLVMModule) {
     delete LLVMModule;
     LLVMModule = NULL;
@@ -541,10 +585,25 @@ CodeGenerationContext::~CodeGenerationContext()
     delete LLVMContext;
     LLVMContext = NULL;
   }
+
+  // Delete but do not double delete all allocated alloca caches
+  std::set<local_cache *> caches;
   if (AllocaCache) {
-    delete AllocaCache;
-    AllocaCache = NULL;
+    caches.insert(AllocaCache);
   }
+  if (Update.AllocaCache != nullptr) {
+    caches.insert((local_cache *) Update.AllocaCache);
+  }
+  if (Initialize.AllocaCache != nullptr) {
+    caches.insert((local_cache *) Initialize.AllocaCache);
+  }
+  if (Transfer.AllocaCache != nullptr) {
+    caches.insert((local_cache *) Transfer.AllocaCache);
+  }
+  for(auto b : caches) {
+    delete b;
+  }
+
   while(IQLCase.size()) {
     delete IQLCase.top();
     IQLCase.pop();
@@ -647,6 +706,7 @@ void CodeGenerationContext::buildFree(const IQLToLLVMValue * val, const FieldTyp
     // array
     // Types of elements are different so elementwise iteration and conversion is necessary
     const FieldType * eltTy = dynamic_cast<const SequentialType *>(ft)->getElementType();
+    BOOST_ASSERT(nullptr != eltTy);
     if (FieldType::VARCHAR == eltTy->GetEnum() ||
         FieldType::FIXED_ARRAY == eltTy->GetEnum() ||
         FieldType::VARIABLE_ARRAY == eltTy->GetEnum()) {
@@ -882,6 +942,7 @@ void CodeGenerationContext::buildPrint(const IQLToLLVMValue * val, const FieldTy
       b->CreateCall(charFn->getFunctionType(), charFn, llvm::makeArrayRef(&callArgs[0], 2), "");  
 
       const SequentialType * arrType = dynamic_cast<const SequentialType *>(ft);
+      BOOST_ASSERT(nullptr != arrType);
       const FieldType * eltType = arrType->getElementType();
       // // Loop over the array and print
       // // Constants one is used frequently
@@ -1215,6 +1276,7 @@ CodeGenerationContext::buildArray(std::vector<IQLToLLVMTypedValue>& vals,
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
   const FieldType * eltTy = dynamic_cast<const SequentialType*>(arrayTy)->getElementType();
+  BOOST_ASSERT(nullptr != eltTy);
   llvm::Value * result = buildEntryBlockAlloca(arrayTy, "nullableBinOp");
   const IQLToLLVMValue * arrayVal = IQLToLLVMRValue::get(this, result, IQLToLLVMValue::eLocal);
   int32_t sz = vals.size();
@@ -2424,7 +2486,7 @@ llvm::Value * CodeGenerationContext::getFixedArrayData(const IQLToLLVMValue * e,
 llvm::Value * CodeGenerationContext::getFixedArrayData(llvm::Value * ptr, const FieldType * ty)
 {
   BOOST_ASSERT(FieldType::FIXED_ARRAY == ty->GetEnum());
-  const FixedArrayType * arrTy = reinterpret_cast<const FixedArrayType*>(ty);
+  const FixedArrayType * arrTy = dynamic_cast<const FixedArrayType*>(ty);
   llvm::IRBuilder<> * b = LLVMBuilder;
   ptr = b->CreateBitCast(ptr, b->getInt8PtrTy());
   // GEP to get pointer to data and cast back to pointer to element
@@ -2441,7 +2503,8 @@ llvm::Value * CodeGenerationContext::getFixedArrayNull(const IQLToLLVMValue * e,
 llvm::Value * CodeGenerationContext::getFixedArrayNull(llvm::Value * ptr, const FieldType * ty)
 {
   BOOST_ASSERT(FieldType::FIXED_ARRAY == ty->GetEnum());
-  const FixedArrayType * arrTy = reinterpret_cast<const FixedArrayType*>(ty);
+  const FixedArrayType * arrTy = dynamic_cast<const FixedArrayType*>(ty);
+  BOOST_ASSERT(nullptr != arrTy);
   if(!arrTy->getElementType()->isNullable()) {
     return nullptr;
   }
@@ -2461,6 +2524,7 @@ llvm::Value * CodeGenerationContext::getVariableArrayData(llvm::Value * ptr, con
 {
   BOOST_ASSERT(FieldType::VARIABLE_ARRAY == ty->GetEnum());
   llvm::Type * llvmPtrToEltType = dynamic_cast<const SequentialType *>(ty)->getElementType()->LLVMGetType(this);
+  BOOST_ASSERT(nullptr != llvmPtrToEltType);
   llvmPtrToEltType = llvm::PointerType::get(llvmPtrToEltType, 0);
   return buildVarArrayGetPtr(ptr, llvmPtrToEltType);
 }
@@ -2474,7 +2538,8 @@ llvm::Value * CodeGenerationContext::getVariableArrayNull(const IQLToLLVMValue *
 llvm::Value * CodeGenerationContext::getVariableArrayNull(llvm::Value * ptr, const FieldType * ty)
 {
   BOOST_ASSERT(FieldType::VARIABLE_ARRAY == ty->GetEnum());
-  const VariableArrayType * arrTy = reinterpret_cast<const VariableArrayType*>(ty);
+  const VariableArrayType * arrTy = dynamic_cast<const VariableArrayType*>(ty);
+  BOOST_ASSERT(nullptr != arrTy);
   if(!arrTy->getElementType()->isNullable()) {
     return nullptr;
   }
@@ -2932,7 +2997,7 @@ CodeGenerationContext::buildCastIPv4(const IQLToLLVMValue * e,
     {
       b->CreateStore(b->getInt32(0), ret);
       int32_t bytesToCopy = std::min(argType->GetSize(), 4);
-      const FieldType * eltType = reinterpret_cast<const FixedArrayType*>(argType)->getElementType();
+      const FieldType * eltType = dynamic_cast<const FixedArrayType*>(argType)->getElementType();
       const FieldType * int8FieldType = Int8Type::Get(argType->getContext(), eltType->isNullable());
       const FieldType * int32FieldType = Int32Type::Get(argType->getContext(), eltType->isNullable());
       const FieldType * int32FieldTypeNotNull = Int32Type::Get(argType->getContext(), false);
@@ -3082,7 +3147,7 @@ CodeGenerationContext::buildCastIPv6(const IQLToLLVMValue * e,
   case FieldType::FIXED_ARRAY:
     {
       int32_t bytesToCopy = std::min(argType->GetSize(), 16);
-      const FieldType * eltType = reinterpret_cast<const FixedArrayType*>(argType)->getElementType();
+      const FieldType * eltType = dynamic_cast<const FixedArrayType*>(argType)->getElementType();
       const FieldType * int8FieldType = Int8Type::Get(argType->getContext(), eltType->isNullable());
       const FieldType * int8FieldTypeNotNull = Int8Type::Get(argType->getContext(), false);
       const FieldType * int32FieldTypeNotNull = Int32Type::Get(argType->getContext(), false);
@@ -5068,7 +5133,6 @@ CodeGenerationContext::buildStructElementwiseCompare(const IQLToLLVMValue * lhs,
 {
   // Unwrap to C++
   llvm::IRBuilder<> * b = LLVMBuilder;
-  const FieldType * eltType = reinterpret_cast<const FixedArrayType*>(promoted)->getElementType();
 
   // Constants zero and one are used frequently
   const IQLToLLVMValue * zero = buildFalse();
@@ -5141,7 +5205,6 @@ CodeGenerationContext::buildStructElementwiseCompare(const IQLToLLVMValue * lhs,
 {
   // Unwrap to C++
   llvm::IRBuilder<> * b = LLVMBuilder;
-  const FieldType * eltType = reinterpret_cast<const FixedArrayType*>(promoted)->getElementType();
 
   // Constants zero and one are used frequently
   const IQLToLLVMValue * zero = buildFalse();
@@ -5332,7 +5395,7 @@ CodeGenerationContext::buildCompare(const IQLToLLVMValue * lhs,
       b->CreateStore(r, ret);
       return IQLToLLVMValue::eLocal;
     } else {
-      const FieldType * eltType = reinterpret_cast<const FixedArrayType*>(promoted)->getElementType();
+      const FieldType * eltType = dynamic_cast<const FixedArrayType*>(promoted)->getElementType();
       auto idx = IQLToLLVMRValue::get(this, b->getInt32(0), IQLToLLVMValue::eLocal);
       const FieldType * idxTy = Int32Type::Get(promoted->getContext(), false);
       const IQLToLLVMValue * cmp = nullptr;

@@ -665,7 +665,7 @@ const RecordType * TypeCheckContext::getAggregateRecord()
 {
   if (mAggregateTypeCheckSymbolTable != NULL &&
       mAggregateRecord == NULL) {
-    mAggregateRecord = new RecordType(mContext, *mAggregateMembers);
+    mAggregateRecord = RecordType::get(mContext, *mAggregateMembers);
   }  
   return mAggregateRecord;
 }

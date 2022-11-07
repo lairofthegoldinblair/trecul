@@ -216,6 +216,18 @@ DynamicRecordContext::~DynamicRecordContext()
       ++it) {
     delete *it;
   }
+
+  for(std::set<IQLFieldConstructor*>::iterator it = mFields.begin();
+      it != mFields.end();
+      ++it) {
+    delete *it;
+  }
+
+  for(std::set<IQLRecordConstructor*>::iterator it = mRecordCtors.begin();
+      it != mRecordCtors.end();
+      ++it) {
+    delete *it;
+  }
 }
 
 FieldType * DynamicRecordContext::lookup(const Digest& id) const
@@ -237,6 +249,16 @@ void DynamicRecordContext::add(const RecordType * ty)
 void DynamicRecordContext::add(IQLExpression * expr)
 {
   mExprs.insert(expr);
+}
+
+void DynamicRecordContext::add(IQLFieldConstructor * f)
+{
+  mFields.insert(f);
+}
+
+void DynamicRecordContext::add(IQLRecordConstructor * r)
+{
+  mRecordCtors.insert(r);
 }
 
 llvm::Type * FieldType::LLVMGetType(CodeGenerationContext * ctxt) const

@@ -95,6 +95,7 @@ BOOST_AUTO_TEST_CASE(testVarcharDataType)
     BOOST_CHECK((const char *)(&v) + 1 != v.c_str());
     BOOST_CHECK_EQUAL(i, v.size());
     BOOST_CHECK(boost::algorithm::equals(expected, v.c_str()));
+    ::free(const_cast<char *>(v.Large.Ptr));
   }
 }
 
@@ -1435,6 +1436,7 @@ BOOST_AUTO_TEST_CASE(testIQLArrayRowConstructor)
     }
     t1.getTarget()->getFree().free(outputBuf);
   }
+  recTy.getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLMultipleWhile)
@@ -2355,6 +2357,7 @@ BOOST_AUTO_TEST_CASE(testIQLLiteralCompares)
     int32_t val = equals.execute(lhs, NULL, &runtimeCtxt);
     BOOST_CHECK_EQUAL(val, 1);
   }
+  recTy.getFree().free(lhs);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32SingleElementCompare)
@@ -2396,6 +2399,8 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32SingleElementCompare)
   BOOST_CHECK_EQUAL(val, 0);
   val = ne.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 1);
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLFixedArrayCompareProgram)
@@ -2461,6 +2466,7 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayCompareProgram)
     BOOST_CHECK_EQUAL(0, recTy.getInt32("lastRet", lhs));
     BOOST_CHECK_EQUAL(2, recTy.getInt32("lastIndex", lhs));
   }  
+  recTy.GetFree()->free(lhs);
 }
 
 void testIQLArrayInt32Compare(bool isVariable)
@@ -2904,6 +2910,8 @@ BOOST_AUTO_TEST_CASE(testIQLStructCompare)
   BOOST_CHECK_EQUAL(val, 1);
   val = ge.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 1);
+  recTy.getFree().free(lhs);
+  rhsTy.getFree().free(rhs);
 }
 
 BOOST_AUTO_TEST_CASE(testSubnetContainmentOps)
@@ -2998,6 +3006,7 @@ BOOST_AUTO_TEST_CASE(testSubnetContainmentOps)
   BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("M", outputBuf));
   BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("N", outputBuf));
   BOOST_CHECK_EQUAL(0, t1.getTarget()->get<Int32Type>("O", outputBuf));
+  t1.getTarget()->GetFree()->free(outputBuf);
   recTy.GetFree()->free(inputBuf);
 }
 
@@ -3347,6 +3356,7 @@ void testIQLStructFieldAccess(const char * prefix, const char * updatePrefix, st
     }
     BOOST_CHECK_EQUAL(133.23,
                       t1.getTarget()->get<DoubleType>("c", outputBuf));
+    t1.getTarget()->GetFree()->free(outputBuf);
   }
 
   {
@@ -4164,7 +4174,8 @@ BOOST_AUTO_TEST_CASE(testIQLRecordUpdate)
     } catch(std::exception& ) {
     }
   }
-  recTy.GetFree()->free(lhs);
+  recTy.getFree().free(lhs);
+  rhsTy.getFree().free(rhs1);
 }
 
 BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
@@ -4230,6 +4241,8 @@ BOOST_AUTO_TEST_CASE(testRecordTypeSerialize)
   BOOST_CHECK_EQUAL(6236, recTy.getFieldAddress("g").getArrayInt32(outputBuf, 2));
   BOOST_CHECK_EQUAL(123, recTy.getFieldAddress("h").getInt8(outputBuf));
   BOOST_CHECK_EQUAL(2343, recTy.getFieldAddress("i").getInt16(outputBuf));
+  recTy.getFree().free(inputBuf);
+  recTy.getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testRecordTypeNullBitmap)
@@ -5907,6 +5920,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferFloats)
   BOOST_CHECK_EQUAL(23.334, t1.getTarget()->getDouble("h", outputBuf));
   BOOST_CHECK_EQUAL(23334, t1.getTarget()->getDouble("i", outputBuf));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLFunctionNamesNotAllowedAsVariables)
@@ -7000,6 +7014,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransfer2Regex)
     t1.getTarget()->getFree().free(outputBuf);
   }
   recordType->getFree().free(inputBuf);
+  recordType2->getFree().free(inputBuf2);
 }
 
 BOOST_AUTO_TEST_CASE(testMemcpyCoalese)
@@ -8711,6 +8726,7 @@ BOOST_AUTO_TEST_CASE(testIQLNegateNullable)
 			   t1.getTarget()->getMemberOffset("d").getDecimalPtr(outputBuf),
 			   16));
   t1.getTarget()->getFree().free(outputBuf);
+  recordType->getFree().free(inputBuf);
 
   inputBuf = recordType->GetMalloc()->malloc();
   recordType->getFieldAddress("x").setNull(inputBuf);
@@ -8948,7 +8964,6 @@ void testIsNull(bool isNullable)
   t1.getTarget()->GetFree()->free(outputBuf);
   
   if (isNullable) {
-    inputBuf = recordType->GetMalloc()->malloc();
     recordType->getFieldAddress("a").setNull(inputBuf);
     recordType->getFieldAddress("c").setNull(inputBuf);
     BOOST_CHECK_EQUAL(FieldType::INT32, t1.getTarget()->getMember("b").GetType()->GetEnum());
@@ -10385,6 +10400,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordPrintModule)
       m->execute(outputBuf, sstr, false);
       BOOST_CHECK(boost::algorithm::equals("12\t23434.333\tthis is a VARCHAR allocated on the heap", sstr.str()));
     }
+    t1.getTarget()->getFree().free(outputBuf);
   }
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "ARRAY[12,13] AS a, 14 AS b");
@@ -10398,6 +10414,7 @@ BOOST_AUTO_TEST_CASE(testIQLRecordPrintModule)
       m->execute(outputBuf, sstr, true);
       BOOST_CHECK(boost::algorithm::equals("{12\t13}\t14\n", sstr.str()));
     }
+    t1.getTarget()->getFree().free(outputBuf);
   }
 }
 
