@@ -709,7 +709,8 @@ void CodeGenerationContext::buildFree(const IQLToLLVMValue * val, const FieldTyp
     BOOST_ASSERT(nullptr != eltTy);
     if (FieldType::VARCHAR == eltTy->GetEnum() ||
         FieldType::FIXED_ARRAY == eltTy->GetEnum() ||
-        FieldType::VARIABLE_ARRAY == eltTy->GetEnum()) {
+        FieldType::VARIABLE_ARRAY == eltTy->GetEnum() ||
+	FieldType::STRUCT == eltTy->GetEnum()) {
       // Loop over the array call Free
       // Constants one is used frequently
       const IQLToLLVMValue * zero = buildFalse();
@@ -738,20 +739,19 @@ void CodeGenerationContext::buildFree(const IQLToLLVMValue * val, const FieldTyp
       // SET idx = idx + 1
       buildSetNullableValue(counterLValue, buildAdd(buildRef(counter, int32Type), int32Type, one, int32Type, int32Type), int32Type, int32Type);  
       whileFinish();
-    } else if (FieldType::STRUCT == ft->GetEnum()) {
-      const RecordType * structType = dynamic_cast<const RecordType *>(ft);
-      for(std::size_t i=0; i < structType->GetSize(); ++i) {
-        const FieldType * eltType = structType->getElementType(i);
-        const IQLToLLVMValue * idx = IQLToLLVMRValue::get(this, b->getInt64(i), IQLToLLVMValue::eLocal);
-        const IQLToLLVMValue * elt = buildRowRef(val, ft, idx, Int64Type::Get(ft->getContext()), eltType);
-        buildFree(elt, eltType);
-      }
-    }
-    
+    }    
     if (FieldType::VARIABLE_ARRAY == ft->GetEnum()) {
       callArgs[0] = b->CreateLoad(b->getInt8PtrTy(),
                                   b->CreateStructGEP(LLVMVarcharType, val->getValue(this), 2));
       b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&callArgs[0], 1), "");
+    }
+  } else if (FieldType::STRUCT == ft->GetEnum()) {
+    const RecordType * structType = dynamic_cast<const RecordType *>(ft);
+    for(std::size_t i=0; i < structType->GetSize(); ++i) {
+      const FieldType * eltType = structType->getElementType(i);
+      const IQLToLLVMValue * idx = IQLToLLVMRValue::get(this, b->getInt64(i), IQLToLLVMValue::eLocal);
+      const IQLToLLVMValue * elt = buildRowRef(val, ft, idx, Int64Type::Get(ft->getContext()), eltType);
+      buildFree(elt, eltType);
     }
   }
 }
@@ -4440,6 +4440,9 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
     // internal heap tracking.  Here we take the latter path.  It is cheaper but less general
     // in that it assumes that the heap used by the IQL runtime is the same as that used
     // by the client of the runtime.
+    if (iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
+      buildFree(iqllvalue, ft);
+    }
     if (iqlVal->getValueType() != IQLToLLVMValue::eLocal ||
         (iqllvalue->getValueType() == IQLToLLVMValue::eGlobal && nullptr != dynamic_cast<const IQLToLLVMLValue *>(iqlVal))) {
       // TODO: IF we swap args 1,2 we should be able to use buildCall()
@@ -4460,6 +4463,10 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
     llvmVal = b->CreateLoad(ft->LLVMGetType(this), llvmVal);    
   } else if (ft->GetEnum() == FieldType::VARIABLE_ARRAY ||
              ft->GetEnum() == FieldType::FIXED_ARRAY) {
+    if (iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
+      buildFree(iqllvalue, ft);
+    }
+
     if (iqlVal->getValueType() != IQLToLLVMValue::eLocal ||
         (iqllvalue->getValueType() == IQLToLLVMValue::eGlobal && nullptr != dynamic_cast<const IQLToLLVMLValue *>(iqlVal))) {
       // Allocate storage for the VARIABLE_ARRAY, tracking allocation unless the lvalue is global
@@ -4483,6 +4490,10 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
     // Load before store since we have a pointer to the VarArray
     llvmVal = b->CreateLoad(ft->LLVMGetType(this), llvmVal);    
   } else if (ft->GetEnum() == FieldType::STRUCT) {
+    if (iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
+      buildFree(iqllvalue, ft);
+    }
+
     if (iqlVal->getValueType() != IQLToLLVMValue::eLocal ||
         (iqllvalue->getValueType() == IQLToLLVMValue::eGlobal && nullptr != dynamic_cast<const IQLToLLVMLValue *>(iqlVal))) {
       // Allocate storage for the STRUCT

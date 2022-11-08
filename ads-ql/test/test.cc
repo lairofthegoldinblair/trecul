@@ -5575,6 +5575,80 @@ BOOST_AUTO_TEST_CASE(testIQLRecordAggregateWithInvalidGlob)
   }
 }
 
+// This is an important test to run under valgrind or asan.
+// It tests some memory management of VARCHARs
+BOOST_AUTO_TEST_CASE(testUpdateVarchar)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", VarcharType::Get(ctxt)));
+  members.push_back(RecordMember("e", VarcharType::Get(ctxt)));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setVarchar("a", "this is a large  string", inputBuf);
+  recTy.setVarchar("e", "small", inputBuf);
+
+  {
+    // Original value should be freed
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       types, 
+			       "SET a = 'boo';");
+    RecordBuffer outputBuf;
+    up.execute(inputBuf, outputBuf, &runtimeCtxt);
+    BOOST_CHECK(boost::algorithm::equals("boo",
+					 recTy.getVarcharPtr("a", inputBuf)->c_str()));
+    BOOST_CHECK(boost::algorithm::equals("small",
+					 recTy.getVarcharPtr("e", inputBuf)->c_str()));
+  }
+
+  recTy.GetFree()->free(inputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testUpdateVararray)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  // C++ API isn't good for creating variable array values, so use Trecul itself to make a record with a vararray
+  std::vector<RecordMember> members;
+  RecordType emptyTy(ctxt, members);
+  RecordTypeTransfer t1(ctxt, "xfer1", &emptyTy, "CAST(ARRAY[123456, 1234567, 12345678] AS INTEGER[]) AS a, CAST('small' AS VARCHAR) AS e");
+  RecordBuffer dummy, inputBuf;
+  t1.execute(dummy, inputBuf, &runtimeCtxt, false);
+  
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(t1.getTarget());
+  types.push_back(&rhsTy);
+
+
+  {
+    // Original value for field a should be freed
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       types, 
+			       "SET a = ARRAY[1,2,3,4];");
+    RecordBuffer outputBuf;
+    up.execute(inputBuf, outputBuf, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(t1.getTarget()->getArrayInt32("a", 0, inputBuf), 1);
+    BOOST_CHECK_EQUAL(t1.getTarget()->getArrayInt32("a", 1, inputBuf), 2);
+    BOOST_CHECK_EQUAL(t1.getTarget()->getArrayInt32("a", 2, inputBuf), 3);
+    BOOST_CHECK_EQUAL(t1.getTarget()->getArrayInt32("a", 3, inputBuf), 4);
+    BOOST_CHECK(boost::algorithm::equals("small",
+					 t1.getTarget()->getVarcharPtr("e", inputBuf)->c_str()));
+  }
+
+   t1.getTarget()->GetFree()->free(inputBuf);
+}
+
 void ValidateArrayConcatAggregate(RecordTypeAggregate& a1,
                                   boost::shared_ptr<RecordType> recordType,
                                   const std::string& aggCol,
@@ -9676,8 +9750,8 @@ BOOST_AUTO_TEST_CASE(testIQLRecordTransferFixedArray)
                                          t2.getTarget()->getArrayVarcharPtr("g", 1, outputBuf)->c_str()));
     BOOST_CHECK(boost::algorithm::equals("short",
                                          t2.getTarget()->getArrayVarcharPtr("g", 2, outputBuf)->c_str()));
-    t1.getTarget()->getFree().free(outputBuf);
     t2.getTarget()->getFree().free(outputBuf2);
+    t1.getTarget()->getFree().free(outputBuf);
   }
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "ARRAY[g[0] + g[1] + g[2]] AS g");

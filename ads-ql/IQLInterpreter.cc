@@ -808,6 +808,7 @@ extern "C" void InternalVarcharAllocate(int32_t len, int32_t sz, Varchar * resul
   char * buf = trackForDelete ? 
     (char *) ctxt->malloc(sz) : 
     (char*) ::malloc(sz);
+  ::memset(buf, 0, sz);
   result->Large.Ptr = buf;
 }
 
