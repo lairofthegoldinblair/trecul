@@ -1171,7 +1171,8 @@ void CodeGenerationContext::buildLocalVariable(const char * nm, const IQLToLLVMV
     const IQLToLLVMLValue * localLVal = lookup(nm);
     // Set the value; no need to type promote since type of the
     // variable is inferred from the initializer
-    buildSetNullableValue(localLVal, init, ft, false);
+    // No need to free a global lhs since this is local and just created
+    buildSetNullableValue(localLVal, init, ft, false, false);
   }
 }
 
@@ -1290,7 +1291,7 @@ CodeGenerationContext::buildArray(std::vector<IQLToLLVMTypedValue>& vals,
                                                       IQLToLLVMRValue::get(this, b->getInt64(i), IQLToLLVMValue::eLocal), Int64Type::Get(arrayTy->getContext()),
                                                       eltTy);                      
     
-    buildSetNullableValue(arrElt, vals[i].getValue(), eltTy, false);
+    buildSetNullableValue(arrElt, vals[i].getValue(), vals[i].getType(), eltTy);
   }
 
   // return pointer to array
@@ -1549,8 +1550,8 @@ CodeGenerationContext::buildRow(std::vector<IQLToLLVMTypedValue>& vals,
     const IQLToLLVMLValue * structElt = buildRowLValue(structVal, structTy,
                                                        IQLToLLVMRValue::get(this, b->getInt64(i), IQLToLLVMValue::eLocal), Int64Type::Get(structTy->getContext()),
                                                        eltTy);
-    
-    buildSetNullableValue(structElt, vals[i].getValue(), eltTy, false);
+    // No need for type promotion or freeing lhs since this is a c'tor
+    buildSetNullableValue(structElt, vals[i].getValue(), eltTy, false, false);
   }
 
   // return pointer to struct
@@ -1648,7 +1649,8 @@ void CodeGenerationContext::buildStructElementwiseCopy(const IQLToLLVMValue * e,
     const IQLToLLVMValue * converted = buildCast(buildRowRef(e, argType, sourceIdx, argEltTy), argEltTy, retEltTy);
     const IQLToLLVMValue * retIdx = IQLToLLVMRValue::get(this, b->getInt64(destIdx), IQLToLLVMValue::eLocal);
     const IQLToLLVMLValue * rowLValue = buildRowLValue(ret, retType, retIdx, int64Type, retEltTy);
-    buildSetNullableValue(rowLValue, converted, retEltTy, retEltTy);
+    // Don't free lhs of elements since all freeing was done at the container level
+    buildSetNullableValue(rowLValue, converted, retEltTy, false, false);
   }
 }
 
@@ -2635,7 +2637,8 @@ void CodeGenerationContext::buildArrayElementwiseCopy(const IQLToLLVMValue * e,
   const IQLToLLVMValue * converted = buildCast(buildArrayRef(e, argType, idx, int32Type, argEltTy), argEltTy, retEltTy);
   const IQLToLLVMValue * retIdx = buildRef(retCounter, int32Type);
   const IQLToLLVMLValue * arrayLValue = buildArrayLValue(ret, retType, retIdx, int32Type, retEltTy);
-  buildSetNullableValue(arrayLValue, converted, retEltTy, retEltTy);
+  // Don't free lhs of elements since all freeing was done at the container level
+  buildSetNullableValue(arrayLValue, converted, retEltTy, false, false);
 
   // SET idx = idx + 1
   buildSetNullableValue(counterLValue, buildAdd(buildRef(counter, int32Type), int32Type, one, int32Type, int32Type), int32Type, int32Type);  
@@ -4388,7 +4391,8 @@ llvm::Value * CodeGenerationContext::buildEntryBlockAlloca(const FieldType * ty,
 
 void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
 					   const IQLToLLVMLValue * iqllvalue,
-					   const FieldType * ft)
+					   const FieldType * ft,
+					   bool freeGlobalLeftHandSide)
 {
   llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Value * lvalue = iqllvalue->getValuePointer(this)->getValue(this);
@@ -4440,7 +4444,7 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
     // internal heap tracking.  Here we take the latter path.  It is cheaper but less general
     // in that it assumes that the heap used by the IQL runtime is the same as that used
     // by the client of the runtime.
-    if (iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
+    if (freeGlobalLeftHandSide && iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
       buildFree(iqllvalue, ft);
     }
     if (iqlVal->getValueType() != IQLToLLVMValue::eLocal ||
@@ -4463,7 +4467,7 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
     llvmVal = b->CreateLoad(ft->LLVMGetType(this), llvmVal);    
   } else if (ft->GetEnum() == FieldType::VARIABLE_ARRAY ||
              ft->GetEnum() == FieldType::FIXED_ARRAY) {
-    if (iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
+    if (freeGlobalLeftHandSide && iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
       buildFree(iqllvalue, ft);
     }
 
@@ -4490,7 +4494,7 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
     // Load before store since we have a pointer to the VarArray
     llvmVal = b->CreateLoad(ft->LLVMGetType(this), llvmVal);    
   } else if (ft->GetEnum() == FieldType::STRUCT) {
-    if (iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
+    if (freeGlobalLeftHandSide && iqllvalue->getValueType() == IQLToLLVMValue::eGlobal) {
       buildFree(iqllvalue, ft);
     }
 
@@ -4527,7 +4531,8 @@ void CodeGenerationContext::buildSetValue2(const IQLToLLVMValue * iqlVal,
 void CodeGenerationContext::buildSetNullableValue(const IQLToLLVMLValue * lval,
 						  const IQLToLLVMValue * val,
 						  const FieldType * ft,
-						  bool allowNullToNonNull)
+						  bool allowNullToNonNull,
+						  bool freeGlobalLeftHandSide)
 {
   // Check nullability of value and target
   if (lval->isNullable()) {
@@ -4560,7 +4565,7 @@ void CodeGenerationContext::buildSetNullableValue(const IQLToLLVMLValue * lval,
       // Emit then value.
       b->SetInsertPoint(thenBB);  
       lval->setNull(this, false);
-      buildSetValue2 (val, lval, ft);
+      buildSetValue2 (val, lval, ft, freeGlobalLeftHandSide);
       b->CreateBr(mergeBB);
 
       // Now the NULL case: here we just clear the NULL bit
@@ -4570,13 +4575,13 @@ void CodeGenerationContext::buildSetNullableValue(const IQLToLLVMLValue * lval,
       b->SetInsertPoint(mergeBB);
     } else {
       // Setting non-nullable value into a nullable lvalue.
-      buildSetValue2 (val, lval, ft);
+      buildSetValue2 (val, lval, ft, freeGlobalLeftHandSide);
       lval->setNull(this, false);
     }
   } else {
     BOOST_ASSERT(allowNullToNonNull ||
 		 val->getNull(this) == NULL);
-    buildSetValue2 (val, lval, ft);
+    buildSetValue2 (val, lval, ft, freeGlobalLeftHandSide);
   }
 }
 
@@ -4588,13 +4593,13 @@ void CodeGenerationContext::buildSetNullableValue(const IQLToLLVMLValue * lval,
   // TODO: Would it be more efficient to push the type promotion down because we
   // are checking nullability twice this way.
   const IQLToLLVMValue * cvt = buildCast(val, valType, lvalType);
-  buildSetNullableValue(lval, cvt, lvalType, false);
+  buildSetNullableValue(lval, cvt, lvalType, false, true);
 }
 
 void CodeGenerationContext::buildSetValue(const IQLToLLVMValue * iqlVal, const char * loc, const FieldType * ft)
 {
   const IQLToLLVMLValue * lval = lookup(loc);
-  buildSetNullableValue(lval, iqlVal, ft, false);
+  buildSetNullableValue(lval, iqlVal, ft, false, true);
 }
 
 void CodeGenerationContext::buildCaseBlockBegin(const FieldType * caseType)
@@ -4672,7 +4677,7 @@ void CodeGenerationContext::buildCaseBlockThen(const IQLToLLVMValue *value, cons
   IQLToLLVMCaseState * state = IQLCase.top();
   // Store converted value in the case return variable
   buildSetNullableValue(state->Local, cvtVal, 
-			caseType, allowNullToNonNull);
+			caseType, allowNullToNonNull, true);
   // Branch to block with PHI
   b->CreateBr(state->getMergeBlock());
   
@@ -6679,7 +6684,7 @@ void CodeGenerationContext::buildSetField(int * pos, const IQLToLLVMValue * val)
     IsIdentity = false;
   }
 
-  buildSetNullableValue(&fieldLVal, val, fieldType, false);
+  buildSetNullableValue(&fieldLVal, val, fieldType, false, true);
 }
 
 void CodeGenerationContext::buildSetFields(const char * recordName, int * pos)
@@ -6895,7 +6900,7 @@ void SumAggregate::updateNull(CodeGenerationContext * ctxt,
 			      const IQLToLLVMLValue * fieldLVal,
 			      const FieldType * ft)
 {
-  ctxt->buildSetNullableValue(fieldLVal, inc, ft, false);
+  ctxt->buildSetNullableValue(fieldLVal, inc, ft, false, true);
 }
 
 void SumAggregate::updateNotNull(CodeGenerationContext * ctxt,
@@ -6911,7 +6916,7 @@ void SumAggregate::updateNotNull(CodeGenerationContext * ctxt,
 					      ctxt->buildVariableRef(aggFn.c_str(), ft),
 					      ft,
 					      ft);
-  ctxt->buildSetNullableValue(fieldLVal, sum, ft, false);
+  ctxt->buildSetNullableValue(fieldLVal, sum, ft, false, true);
 }
 
 
@@ -6952,7 +6957,7 @@ void MaxMinAggregate::updateNull(CodeGenerationContext * ctxt,
                                  const IQLToLLVMLValue * fieldLVal,
                                  const FieldType * ft)
 {
-  ctxt->buildSetNullableValue(fieldLVal, inc, ft, false);
+  ctxt->buildSetNullableValue(fieldLVal, inc, ft, false, true);
 }
 
 void MaxMinAggregate::updateNotNull(CodeGenerationContext * ctxt,
@@ -7020,7 +7025,7 @@ void ArrayConcatAggregate::updateNull(CodeGenerationContext * ctxt,
 {
   // Create a one element array and set that as value
   std::vector<IQLToLLVMTypedValue> vals = { IQLToLLVMTypedValue(inc, incTy) };
-  ctxt->buildSetNullableValue(fieldLVal, ctxt->buildArray(vals, ft), ft, false);  
+  ctxt->buildSetNullableValue(fieldLVal, ctxt->buildArray(vals, ft), ft, false, true);  
 }
 
 void ArrayConcatAggregate::updateNotNull(CodeGenerationContext * ctxt,
@@ -7032,7 +7037,7 @@ void ArrayConcatAggregate::updateNotNull(CodeGenerationContext * ctxt,
                                          llvm::BasicBlock * mergeBlock)
 {
   const IQLToLLVMValue * arr = ctxt->buildArrayConcat(ctxt->buildVariableRef(aggFn.c_str(), ft), ft, inc, incTy, ft);
-  ctxt->buildSetNullableValue(fieldLVal, arr, ft, false);
+  ctxt->buildSetNullableValue(fieldLVal, arr, ft, false, true);
 }
 
 boost::shared_ptr<AggregateFunction> AggregateFunction::get(const char * fn)

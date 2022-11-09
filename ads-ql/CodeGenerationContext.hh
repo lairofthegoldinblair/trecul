@@ -1222,14 +1222,17 @@ public:
   // Helper for buildSetValue2 that removes a value from local heap tracking
   void buildEraseAllocationTracking(const IQLToLLVMValue * iqlVal, const FieldType * ft);
   // This method sets a value that is assumed to be non-null and type promoted.
+  // Not meant to be called directly, use buildSetNullableValue instead
   void buildSetValue2(const IQLToLLVMValue * iqlVal,
 		      const IQLToLLVMLValue * iqllvalue,
-		      const FieldType * ft);
+		      const FieldType * ft,
+		      bool freeGlobalLeftHandSide);
   // This method sets a possibly null value that is type promoted
   void buildSetNullableValue(const IQLToLLVMLValue * lval,
 			     const IQLToLLVMValue * val,
 			     const FieldType * ft,
-			     bool allowNullToNonNull);
+			     bool allowNullToNonNull,
+			     bool freeGlobalLeftHandSide);
   // This method sets a possible null value to a variable loc which is assumed to be of the
   // correct type (this method doesn't do type promotion either).
   void buildSetValue(const IQLToLLVMValue * iqlVal, const char * loc, const FieldType * ft);
