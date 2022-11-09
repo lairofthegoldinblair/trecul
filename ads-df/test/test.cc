@@ -33,6 +33,7 @@
  */
 
 #include <cmath>
+#include <fstream>
 #include <iostream>
 
 #include <boost/format.hpp>
