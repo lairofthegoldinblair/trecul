@@ -35,7 +35,9 @@
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   set (EXTRA_LIBS ${EXTRA_LIBS} ${LIB_NCURSES})
 else(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-  set (EXTRA_LIBS ${EXTRA_LIBS} ${LIB_TINFO})
+  if(LIB_TINFO)
+    set (EXTRA_LIBS ${EXTRA_LIBS} ${LIB_TINFO})
+  endif(LIB_TINFO)
 endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 add_library(ads-ql CodeGenerationContext.cc GetVariablesPass.cc  IQLInterpreter.cc	LLVMGen.cc  RecordType.cc  TypeCheckContext.cc IQLAnalyze.c	IQLExpression.cc   IQLLexer.c	IQLToLLVM.c md5.c IQLGetVariables.c  IQLParser.c	IQLTypeCheck.c	SuperFastHash.c
