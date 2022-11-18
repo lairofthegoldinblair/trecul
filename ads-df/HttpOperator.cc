@@ -893,6 +893,7 @@ public:
       requestIO(*getCompletionPorts()[0], *getOutputPorts()[0]);
       return true;
     }
+    return false;
   }
 
   void dequeue(HttpSession& session)
@@ -1142,7 +1143,7 @@ HttpRequestLineParser::~HttpRequestLineParser()
 ParserState HttpRequestLineParser::import(AsyncDataBlock& source, 
 					  RecordBuffer target)
 {
-  while(!source.isEmpty()) {
+  while(source.size() > 0) {
     switch(mState) {
     case METHOD_START:
       if (!isWhitespace(source)) {
@@ -1155,16 +1156,16 @@ ParserState HttpRequestLineParser::import(AsyncDataBlock& source,
     case METHOD:
       if (isToken(source)) {
 	break;
-      } else if (*source.begin() == ' ') {
+      } else if (*static_cast<const char *>(source.data()) == ' ') {
 	mState = URI_START;
 	break;
       } else {
 	return ParserState::error(-1);
       }
     case URI_START:
-      if (*source.begin() == ' ') {
+      if (*static_cast<const char *>(source.data()) == ' ') {
 	break;
-      } else if (*source.begin() == '/') {
+      } else if (*static_cast<const char *>(source.data()) == '/') {
 	mState = URI_PATH;
 	break;
       } else if (isAlpha(source)) {
@@ -1183,28 +1184,28 @@ ParserState HttpRequestLineParser::import(AsyncDataBlock& source,
       // be the correct way to parse.
       if (isScheme(source)) {
 	break;
-      } else if (*source.begin() == ':') {
+      } else if (*static_cast<const char *>(source.data()) == ':') {
 	mState = URI_SCHEME_SLASH;
 	break;
       } else {
 	return ParserState::error(-1);
       }
     case URI_SCHEME_SLASH:
-      if (*source.begin() == '/') {
+      if (*static_cast<const char *>(source.data()) == '/') {
 	mState = URI_SCHEME_SLASH_SLASH;
 	break;
       } else {
 	return ParserState::error(-1);
       }
     case URI_SCHEME_SLASH_SLASH:
-      if (*source.begin() == '/') {
+      if (*static_cast<const char *>(source.data()) == '/') {
 	mState = URI_HOST_START;
 	break;
       } else {
 	return ParserState::error(-1);
       }
     case URI_HOST_START:
-      if (*source.begin() != '[') {
+      if (*static_cast<const char *>(source.data()) != '[') {
 	mState = URI_HOST;
 	// Fall Through
       } else {
@@ -1217,13 +1218,13 @@ ParserState HttpRequestLineParser::import(AsyncDataBlock& source,
       }
       // Fall through when done with host chars
     case URI_HOST_END:
-      if(*source.begin() == ':') {
+      if(*static_cast<const char *>(source.data()) == ':') {
 	mState = URI_PORT;
 	break;
-      } else if (*source.begin() == '/') {
+      } else if (*static_cast<const char *>(source.data()) == '/') {
 	mState = URI_PATH;
 	break;
-      } else if (*source.begin() == ' ') {
+      } else if (*static_cast<const char *>(source.data()) == ' ') {
 	throw std::runtime_error("TODO: Not implemented yet");
       } else {
 	return ParserState::error(-1);
@@ -1233,25 +1234,25 @@ ParserState HttpRequestLineParser::import(AsyncDataBlock& source,
     case URI_PORT:
       if (isDigit(source)) {
 	break;
-      } else if (*source.begin() == '/') {
+      } else if (*static_cast<const char *>(source.data()) == '/') {
 	mState = URI_PATH;
 	break;
-      } else if (*source.begin() == ' ') {
+      } else if (*static_cast<const char *>(source.data()) == ' ') {
 	throw std::runtime_error("TODO: Not implemented yet");
       } else {
 	return ParserState::error(-1);
       }
     case URI_PATH:
-      if (*source.begin() == ' ') {
+      if (*static_cast<const char *>(source.data()) == ' ') {
 	// TODO: Handle extra spaces before version.
 	mState = VERSION_HTTP_H;
 	break;
-      } else if (*source.begin() == '?') {
+      } else if (*static_cast<const char *>(source.data()) == '?') {
 	mState = QUERY_STRING;
 	break;
-      } else if (*source.begin() == '/') {
+      } else if (*static_cast<const char *>(source.data()) == '/') {
 	break;
-      } else if (*source.begin() == '%') {
+      } else if (*static_cast<const char *>(source.data()) == '%') {
 	// TODO: This is only valid if we have a % HEXDIGIT HEXDIGIT
 	break;
       } else if (isPathChar(source)) {
@@ -1264,35 +1265,35 @@ ParserState HttpRequestLineParser::import(AsyncDataBlock& source,
       throw std::runtime_error("TODO: Not implemented yet");
       break;
     case VERSION_HTTP_H:
-      if (*source.begin() == 'H') {
+      if (*static_cast<const char *>(source.data()) == 'H') {
 	mState = VERSION_HTTP_HT;
 	break;
       } else {
 	return ParserState::error(-1);
       }
     case VERSION_HTTP_HT:
-      if (*source.begin() == 'T') {
+      if (*static_cast<const char *>(source.data()) == 'T') {
 	mState = VERSION_HTTP_HTT;
 	break;
       } else {
 	return ParserState::error(-1);
       }
     case VERSION_HTTP_HTT:
-      if (*source.begin() == 'T') {
+      if (*static_cast<const char *>(source.data()) == 'T') {
 	mState = VERSION_HTTP_HTTP;
 	break;
       } else {
 	return ParserState::error(-1);
       }
     case VERSION_HTTP_HTTP:
-      if (*source.begin() == 'P') {
+      if (*static_cast<const char *>(source.data()) == 'P') {
 	mState = VERSION_HTTP_SLASH;
 	break;
       } else {
 	return ParserState::error(-1);
       }
     case VERSION_HTTP_SLASH:
-      if (*source.begin() == '/') {
+      if (*static_cast<const char *>(source.data()) == '/') {
 	mState = VERSION_HTTP_MAJOR_START;
 	break;
       } else {
@@ -1308,7 +1309,7 @@ ParserState HttpRequestLineParser::import(AsyncDataBlock& source,
     case VERSION_HTTP_MAJOR:
       if (isDigit(source)) {
 	break;
-      } else if(*source.begin() == '.') {
+      } else if(*static_cast<const char *>(source.data()) == '.') {
 	mState = VERSION_HTTP_MINOR_START;
 	break;
       } else {
@@ -1324,39 +1325,39 @@ ParserState HttpRequestLineParser::import(AsyncDataBlock& source,
     case VERSION_HTTP_MINOR:
       if (isDigit(source)) {
 	break;
-      } else if(*source.begin() == '\r') {
+      } else if(*static_cast<const char *>(source.data()) == '\r') {
 	mState = NEWLINE;
 	break;
-      } else if(*source.begin() == ' ') {
+      } else if(*static_cast<const char *>(source.data()) == ' ') {
 	mState = CR;
 	break;
-      } else if(*source.begin() == '\n') {
+      } else if(*static_cast<const char *>(source.data()) == '\n') {
 	goto done;
       } else {
 	return ParserState::error(-1);
       }
     case CR:
-      if (*source.begin() == ' ') {
+      if (*static_cast<const char *>(source.data()) == ' ') {
 	break;    
-      } else if (*source.begin() == '\r') {
+      } else if (*static_cast<const char *>(source.data()) == '\r') {
 	mState = NEWLINE;
 	break;
-      } else if (*source.begin() == '\n') {
+      } else if (*static_cast<const char *>(source.data()) == '\n') {
 	goto done;
       }
     case NEWLINE:
-      if (*source.begin() == '\n') {
+      if (*static_cast<const char *>(source.data()) == '\n') {
 	goto done;
       } else {
 	return ParserState::error(-1);
       }
     }
-    source.consume(1);
+    source += 1;
   }
   return ParserState::exhausted();
 
  done:
-  source.consume(1);
+  source += 1;
   return ParserState::success();
 }
 
@@ -1384,5 +1385,6 @@ ParserState HttpRequestParser::import(AsyncDataBlock& source,
       } 
     }
   }
+  return ParserState::error(-1);
 }
 

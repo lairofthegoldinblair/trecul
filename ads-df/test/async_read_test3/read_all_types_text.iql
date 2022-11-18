@@ -1,0 +1,7 @@
+/*  This tests case insensitivity of keywords in the format.
+ */
+r = read_block[file="simple_text.txt"];
+p = parse[format="a integer, b BIGINT, c DECimal, e VARCHAR, f CHAR(8), g datetime, h Date", mode="text"];
+r -> p;
+d = write[file="output.txt", mode="text"];
+p -> d;

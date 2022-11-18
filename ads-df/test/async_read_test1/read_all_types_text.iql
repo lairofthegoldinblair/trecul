@@ -1,0 +1,7 @@
+/* Test that we can parse text files with headers.
+ */
+r = read_block[file="simple_text.txt"];
+p = parse[format="a INTEGER, b BIGINT, c DECIMAL, e VARCHAR, f CHAR(8), g DATETIME, h DATE, i TINYINT, j SMALLINT, k IPV4, l IPV6, m CIDRv4, n CIDRv6", mode="text", skipHeader="true"];
+r->p;
+d = write[file="output.txt", mode="text"];
+p -> d;

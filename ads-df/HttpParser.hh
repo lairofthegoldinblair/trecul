@@ -63,32 +63,32 @@ public:
 
   static bool isHost(const AsyncDataBlock& source)
   {
-    char c = *((const char *) source.begin());
+    char c = *static_cast<const char *>(source.data());
     return isAlpha(c) || isDigit(c) || c == '.' || c == '-';
   }
 
   static bool isScheme(const AsyncDataBlock& source)
   {
-    char c = *((const char *) source.begin());
+    char c = *static_cast<const char *>(source.data());
     return  isAlpha(c) || isDigit(c) || c == '+' ||
       c == '-' || c == '.';
   }
 
   static bool isChar(const AsyncDataBlock& source)
   {
-    uint8_t c = *source.begin();
+    uint8_t c = *static_cast<const uint8_t *>(source.data());
     return c <= 127;
   }
 
   static bool isCtl(const AsyncDataBlock& source)
   {
-    uint8_t c = *source.begin();
+    uint8_t c = *static_cast<const uint8_t *>(source.data());
     return c <= 31 || c == 127;
   }
 
   static bool isSeparator(const AsyncDataBlock& source)
   {
-    char c = *((const char *) source.begin());
+    char c = *static_cast<const char *>(source.data());
     switch (c) {
     case '(': case ')': case '<': case '>': case '@':
     case ',': case ';': case ':': case '\\': case '"':
@@ -102,19 +102,19 @@ public:
 
   static bool isAlpha(const AsyncDataBlock& source)
   {
-    char c = *((const char *) source.begin());
+    char c = *static_cast<const char *>(source.data());
     return isAlpha(c);
   }
 
   static bool isDigit(const AsyncDataBlock& source)
   {
-    char c = *((const char *) source.begin());
+    char c = *static_cast<const char *>(source.data());
     return isDigit(c);
   }
 
   static bool isHexDigit(const AsyncDataBlock& source)
   {
-    char c = *((const char *) source.begin());
+    char c = *static_cast<const char *>(source.data());
     return (c >= '0' && c <= '9') || isAlpha(c);
   }
 
@@ -125,13 +125,13 @@ public:
   
   static bool isPathChar(const AsyncDataBlock& source)
   {
-    char c = *((const char *) source.begin());
+    char c = *static_cast<const char *>(source.data());
     return isPathChar(c);
   }
 
   static bool isWhitespace(const AsyncDataBlock& source)
   {
-    char c = *((const char *) source.begin());
+    char c = *static_cast<const char *>(source.data());
     return c == ' ' || c == '\r' || c == '\n';
   }
 };

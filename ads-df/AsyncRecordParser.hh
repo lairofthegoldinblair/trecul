@@ -3,9 +3,13 @@
 
 #include <stdint.h>
 
+#include <array>
 #include <stdexcept>
 #include <iostream>
 
+#include <boost/array.hpp>
+#include <boost/asio/buffer.hpp>
+#include <boost/asio/buffers_iterator.hpp>
 #include <boost/serialization/serialization.hpp>
 
 #include "RecordBuffer.hh"
@@ -15,6 +19,8 @@
 #include "FileService.hh"
 #include "RecordParser.hh"
 #include "StreamBufferBlock.hh"
+
+typedef boost::asio::mutable_buffer AsyncDataBlock;
 
 // Coroutine-ish parser classes
 
@@ -60,55 +66,6 @@ public:
   int32_t result() const
   {
     return mResult;
-  }
-};
-
-class AsyncDataBlock
-{
-protected:
-  // Mark for saving data in block
-  uint8_t * mCurrentBlockMark;
-  // Start of the data block
-  uint8_t * mCurrentBlockStart;
-  // End of valid data in the block
-  uint8_t * mCurrentBlockEnd;
-  // Current position within block
-  uint8_t * mCurrentBlockPtr;
-public:
-  AsyncDataBlock();
-  AsyncDataBlock(uint8_t * start, uint8_t * end);
-  void rebind(uint8_t * start, uint8_t * end);
-  uint8_t * start()
-  {
-    return mCurrentBlockStart;
-  }
-  uint8_t * begin()
-  {
-    return mCurrentBlockPtr;
-  }
-  uint8_t * end()
-  {
-    return mCurrentBlockEnd;
-  }
-  const uint8_t * begin() const
-  {
-    return mCurrentBlockPtr;
-  }
-  const uint8_t * end() const
-  {
-    return mCurrentBlockEnd;
-  }
-  bool isEmpty() const
-  {
-    return begin() == end();
-  }
-  void consume(std::size_t sz) 
-  {
-    mCurrentBlockPtr += sz;
-  }
-  void consumeAll() 
-  {
-    mCurrentBlockPtr = mCurrentBlockEnd;
   }
 };
 
@@ -183,14 +140,13 @@ private:
 
   bool importInternal(AsyncDataBlock& source, RecordBuffer target) 
   {
-    uint8_t * start = source.begin();
-    uint8_t * found = (uint8_t *) memchr((char *) source.begin(), mTerm,
-					 (std::size_t) (source.end()-source.begin()));
+    auto start = static_cast<const char *>(source.data());
+    auto found = static_cast<const char *>(memchr(source.data(), mTerm, boost::asio::buffer_size(source)));
     if(found) {
-      source.consume(std::size_t(found - start) + 1);
+      source += std::size_t(found - start) + 1;
       return true;
     } else {
-      source.consumeAll();
+      source += boost::asio::buffer_size(source);
       return false;
     }
   }
@@ -242,50 +198,258 @@ public:
   bool isConsumeOnly() const { return true; }
 };
 
-class ImportDecimalInt32
+template<typename _ImporterType>
+class ImportNullableField
 {
+private:
+  _ImporterType mImporter;
+  enum State { START, READ, READ_2, READ_3, READ_4 };
+  State mState;
+  char mLookAheadBuffer;
+
+  template<typename BuffersType>
+  static void consume(BuffersType & bufs, std::size_t sz)
+  {
+    // First first buffer with non-zero size
+    for(auto & buf : bufs) {
+      if (buf.size() > 0) {
+        auto to_consume = std::min(buf.size(), sz);
+        buf += to_consume;
+        sz -= to_consume;
+        if (0 == sz) {
+          return;
+        }
+      }
+    }
+  }
+
+  template<typename BuffersType>
+  bool isNullMarker(BuffersType& sources)
+  {
+    auto it = boost::asio::buffers_begin(sources);
+    return '\\' == *it++  && 'N' == *it;
+  }
+
+public:
+  template<typename... Args>
+  ImportNullableField(Args&&... args)
+    :
+    mImporter(std::forward<Args>(args)...),
+    mState(START),
+    mLookAheadBuffer('\\')
+  {
+  }
+
+  ParserState import(AsyncDataBlock& source, RecordBuffer target)
+  {
+    std::array<AsyncDataBlock, 1> sources = { source };
+    auto ret = import(sources, target);
+    source = sources[0];
+    return ret;
+  }
+
+  template<typename BuffersType>
+  ParserState import(BuffersType& sources, RecordBuffer target)
+  {
+    switch(mState) {
+      while(true) {
+      case START:
+        // Fast path : we have the potential null marker available
+        if (boost::asio::buffer_size(sources) >= 2) {
+          if (isNullMarker(sources)) {
+            mImporter.setNull(target);
+            consume(sources, 2U);
+            mState = START;
+            return ParserState::success();
+          } else {
+            while(true) {
+            case READ:
+              auto ret = mImporter.import(sources, target);
+              mState = ret.isExhausted() ? READ : START;
+              return ret;
+            }
+          }
+        }
+
+        if (boost::asio::buffer_size(sources) == 1) {
+          if ('\\' != *boost::asio::buffers_begin(sources)) {
+            while(true) {
+            case READ_2:
+              auto ret = mImporter.import(sources, target);
+              mState = ret.isExhausted() ? READ_2 : START;
+              return ret;
+            }
+          } else {
+            consume(sources, 1);
+            mState = READ_3;
+            return ParserState::exhausted();
+            {
+              case READ_3:
+                boost::array<AsyncDataBlock, std::tuple_size<BuffersType>::value+1> tmp;
+                tmp[0] = AsyncDataBlock(&mLookAheadBuffer, 1);
+                for(std::size_t i=0; i<std::tuple_size<BuffersType>::value; ++i) {
+                  tmp[i+1] = sources[i];
+                }
+                auto ret = mImporter.import(tmp, target);
+                for(std::size_t i=0; i<std::tuple_size<BuffersType>::value; ++i) {
+                  sources[i] = tmp[i+1];
+                }
+                // If exhausted then we must have consumed the '\' so we don't use it a second time
+                BOOST_ASSERT(tmp[0].size() > 0 || !ret.isExhausted());
+                mState = ret.isExhausted() ? READ_4 : START;
+                return ret;              
+            }
+            while(true) {
+            case READ_4:
+              auto ret = mImporter.import(sources, target);
+              mState = ret.isExhausted() ? READ_4 : START;
+              return ret;              
+            }
+          }
+        }
+
+        mState = START;
+        return ParserState::exhausted();
+      }
+    }
+    return ParserState::error(-2);
+  }
+};
+
+template<typename _TreculType>
+class ImportDecimalInteger
+{
+public:
+  typedef typename TreculNativeType<_TreculType>::type integer_type;
 private:
   FieldAddress mTargetOffset;
   enum State { START, READ_FIRST, READ_DIGITS };
   State mState;
-  int32_t mValue;
+  integer_type mValue;
   uint8_t mTerm;
   bool mNeg;
 
-  bool importInternal(AsyncDataBlock& source, RecordBuffer target) 
+  template<typename BuffersType>
+  bool importInternal(BuffersType& sources, RecordBuffer target)
   {
-    int32_t val = mValue;
-    uint8_t * start = source.begin();
-    uint8_t * end = source.end();
-    for(uint8_t * s = start; s != end; ++s) {
-      if (*s > '9' || *s < '0')  {
-	// TODO: Right now assuming and not validating a single delimiter character
-	// TODO: Protect against overflow	
-	mTargetOffset.setInt32(mNeg ? -val : val, target);
-	source.consume(std::size_t(s - start));
-	mValue = 0;
-	mNeg = false;
-	return true;
+    integer_type val = mValue;
+    for(auto & source : sources) {
+      uint8_t * start = static_cast<uint8_t *>(source.data());
+      uint8_t * end = start + boost::asio::buffer_size(source);
+      for(uint8_t * s = start; s != end; ++s) {
+        if (*s > '9' || *s < '0')  {
+          // TODO: Right now assuming and not validating a single delimiter character
+          // TODO: Protect against overflow	
+          mTargetOffset.set<_TreculType>(mNeg ? -val : val, target);
+          source += std::size_t(s - start);
+          mValue = 0;
+          mNeg = false;
+          return true;
+        }
+        val = val * 10 + (*s - '0');
       }
-      val = val * 10 + (*s - '0');
+      mValue = val;
+      source += boost::asio::buffer_size(source);
     }
-    mValue = val;
-    source.consumeAll();
     return false;
   }
 
-public:
-  ImportDecimalInt32(const FieldAddress& targetOffset,
-		     uint8_t term);
+  template<typename BuffersType>
+  static void consume(BuffersType & bufs, std::size_t sz)
+  {
+    // First first buffer with non-zero size
+    for(auto & buf : bufs) {
+      if (buf.size() > 0) {
+        auto to_consume = std::min(buf.size(), sz);
+        buf += to_consume;
+        sz -= to_consume;
+        if (0 == sz) {
+          return;
+        }
+      }
+    }
+  }
 
-  ParserState import(AsyncDataBlock& source, RecordBuffer target);
+public:
+  ImportDecimalInteger(const FieldAddress& targetOffset,
+		     uint8_t term)
+    :
+    mTargetOffset(targetOffset),
+    mState(START),
+    mValue(0),
+    mTerm(term),
+    mNeg(false)
+  {
+  }
+
+  ParserState import(AsyncDataBlock& source, RecordBuffer target)
+  {
+    std::array<AsyncDataBlock, 1> sources = { source };
+    auto ret = import(sources, target);
+    source = sources[0];
+    return ret;
+  }
+
+  template<typename BuffersType>
+  ParserState import(BuffersType& sources, RecordBuffer target)
+  {
+    switch(mState) {
+      while(true) {
+        BOOST_ASSERT(0 == mValue);
+        BOOST_ASSERT(!mNeg);
+        if (0 == boost::asio::buffer_size(sources)) {
+          mState = READ_FIRST;
+          return ParserState::exhausted();
+        case READ_FIRST:
+          if (0 == boost::asio::buffer_size(sources)) {
+            return ParserState::error(-1);
+          }
+        }
+        // if (*static_cast<const char *>(source.data()) == '-') {
+        if (*boost::asio::buffers_begin(sources) == '-') {
+          mNeg = true;
+          consume(sources, 1);
+        // } else if (*static_cast<const char *>(source.data()) == '+') {
+        } else if (*boost::asio::buffers_begin(sources) == '+') {
+          consume(sources, 1);
+        }
+        while(true) {
+          if (0 == boost::asio::buffer_size(sources)) {
+            mState = READ_DIGITS;
+            return ParserState::exhausted();
+          case READ_DIGITS:
+            if (0 == boost::asio::buffer_size(sources)) {
+              return ParserState::error(-1);
+            }
+          }
+          if (importInternal(sources, target)) {
+            mState = START;
+            return ParserState(ParserState::success());
+          case START:
+            break;
+          }
+        }
+      }
+    }
+    return ParserState::error(-2);
+  }
+
+  void setNull(RecordBuffer buf)
+  {
+    mTargetOffset.setNull(buf);
+  }
 };
 
-class ImportDecimalInt32Spec : public ImporterSpec
+template<typename _TreculType>
+class ImportDecimalIntegerSpec : public ImporterSpec
 {
+public:
+  typedef ImportDecimalInteger<_TreculType> importer_type;
+  typedef ImportNullableField<importer_type> nullable_importer_type;
 private:
   FieldAddress mTargetOffset;
   uint8_t mTerm;
+  bool mNullable;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
@@ -294,38 +458,359 @@ private:
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(ImporterSpec);
     ar & BOOST_SERIALIZATION_NVP(mTargetOffset);
     ar & BOOST_SERIALIZATION_NVP(mTerm);
+    ar & BOOST_SERIALIZATION_NVP(mNullable);
   }
-  ImportDecimalInt32Spec()
+  ImportDecimalIntegerSpec()
     :
     mTerm(0)
   {
   }
 public:
-  ImportDecimalInt32Spec(const FieldAddress & targetOffset,
-			 uint8_t term)
+  ImportDecimalIntegerSpec(const FieldAddress & targetOffset,
+                           uint8_t term,
+                           bool nullable)
     :
     mTargetOffset(targetOffset),
-    mTerm(term)
+    mTerm(term),
+    mNullable(nullable)
   {
   }
 
   ImporterDelegate makeObject(void * buf) const
   {
-    ImportDecimalInt32 * obj = new (buf) ImportDecimalInt32(mTargetOffset, mTerm);
-    return ImporterDelegate::fromMethod<ImportDecimalInt32, &ImportDecimalInt32::import>(obj);
+    if (mNullable) {
+      nullable_importer_type * obj = new (buf) nullable_importer_type(mTargetOffset, mTerm);
+      return ImporterDelegate::fromMethod<nullable_importer_type, &nullable_importer_type::import>(obj);
+    } else {
+      importer_type * obj = new (buf) importer_type(mTargetOffset, mTerm);
+      return ImporterDelegate::fromMethod<importer_type, &importer_type::import>(obj);
+    }
   }
 
   std::size_t objectSize() const
   {
-    return sizeof(ImportDecimalInt32);
+    return mNullable ? sizeof(nullable_importer_type) : sizeof(importer_type);
   }
   std::size_t objectAlignment() const
   {
-    return boost::alignment_of<ImportDecimalInt32>::value;
+    return mNullable ? boost::alignment_of<nullable_importer_type >::value : boost::alignment_of<importer_type >::value;
   }
 };
 
-class ImportDouble
+struct ImportDateType
+{
+  typedef std::array<uint8_t, 3> array_type;
+  typedef std::array<unsigned short, 3> nums_type;
+  static array_type sizes;
+  static void createAndSet(const nums_type & nums, FieldAddress addr, RecordBuffer buf)
+  {
+    typedef boost::gregorian::date date;
+    // This call profiles to be pretty slow.
+    // Can this be improved without losing too much
+    // safety?
+    date t(date(nums[0], nums[1], nums[2]));
+    addr.setDate(t, buf);
+  }
+};
+
+struct ImportDatetimeType
+{
+  typedef std::array<uint8_t, 6> array_type;
+  typedef std::array<unsigned short, 6> nums_type;
+  static array_type sizes;
+  static void createAndSet(const nums_type & nums, FieldAddress addr, RecordBuffer buf)
+  {
+    typedef boost::posix_time::ptime ptime;
+    typedef boost::posix_time::time_duration time_duration;
+    typedef boost::gregorian::date date;
+    // This call profiles to be pretty slow.
+    // Can this be improved without losing too much
+    // safety?
+    ptime t(date(nums[0], nums[1], nums[2]),
+    	    time_duration(nums[3],nums[4],nums[5]));
+    addr.setDatetime(t, buf);
+  }
+};
+
+template <typename _DatetimeType>
+class ImportDefaultDatetime
+{
+private:
+  FieldAddress mTargetOffset;
+  enum State { START, READ_DELIM, READ_DIGITS };
+  State mState = START;
+  typename _DatetimeType::nums_type mNums;
+  uint8_t mOuterIndex = 0;
+  uint8_t mInnerIndex = 0;
+
+  template<typename BuffersType>
+  static void consume(BuffersType & bufs, std::size_t sz)
+  {
+    // First first buffer with non-zero size
+    for(auto & buf : bufs) {
+      if (buf.size() > 0) {
+        auto to_consume = std::min(buf.size(), sz);
+        buf += to_consume;
+        sz -= to_consume;
+        if (0 == sz) {
+          return;
+        }
+      }
+    }
+  }
+
+public:
+  ImportDefaultDatetime(const FieldAddress& targetOffset)
+    :
+    mTargetOffset(targetOffset)
+  {
+    for(std::size_t i=0; i<std::tuple_size<typename _DatetimeType::array_type>::value; ++i) {
+      mNums[i] = 0;
+    }
+  }
+
+  ParserState import(AsyncDataBlock& source, RecordBuffer target) 
+  {
+    std::array<AsyncDataBlock, 1> sources = { source };
+    auto ret = import(sources, target);
+    source = sources[0];
+    return ret;
+  }
+
+  template<typename BuffersType>
+  ParserState import(BuffersType& sources, RecordBuffer target)
+  {
+    // Importing a fixed format of 10 chars
+    // YYYY-MM-DD
+    switch(mState) {
+      while(true) {
+      case START:
+       for(mOuterIndex=0; mOuterIndex<std::tuple_size<typename _DatetimeType::array_type>::value; ++mOuterIndex) {
+          mNums[mOuterIndex] = 0;
+          for(mInnerIndex=0; mInnerIndex<_DatetimeType::sizes[mOuterIndex]; mInnerIndex++) {
+            if (0 == boost::asio::buffer_size(sources)) {
+              mState = READ_DIGITS;
+              return ParserState::exhausted();
+            case READ_DIGITS:
+              if (0 == boost::asio::buffer_size(sources)) {
+                return ParserState::error(-1);
+              }
+            }
+            auto s = *boost::asio::buffers_begin(sources);
+            if (s > '9' || s < '0')  {
+              return ParserState::error(-1);
+            }
+            mNums[mOuterIndex] = mNums[mOuterIndex] * 10 + (s - '0');
+            consume(sources, 1);
+          }
+          if (mOuterIndex+1 != std::tuple_size<typename _DatetimeType::array_type>::value) {
+            if (0 == boost::asio::buffer_size(sources)) {
+              mState = READ_DELIM;
+              return ParserState::exhausted();
+            case READ_DELIM:
+              if (0 == boost::asio::buffer_size(sources)) {
+                return ParserState::error(-1);
+              }
+            }
+            consume(sources, 1);
+          }
+        }
+       _DatetimeType::createAndSet(mNums, mTargetOffset, target);
+       mState = START;
+       return ParserState::success();
+      }
+    }
+    return ParserState::error(-2);
+  }
+
+  void setNull(RecordBuffer buf)
+  {
+    mTargetOffset.setNull(buf);
+  }
+};
+
+template <typename _DatetimeType>
+class ImportDefaultDatetimeSpec : public ImporterSpec
+{
+public:
+  typedef ImportDefaultDatetime<_DatetimeType> importer_type;
+  typedef ImportNullableField<importer_type> nullable_importer_type;
+private:
+  FieldAddress mTargetOffset;
+  bool mNullable = false;
+  // Serialization
+  friend class boost::serialization::access;
+  template <class Archive>
+  void serialize(Archive & ar, const unsigned int version)
+  {
+    ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(ImporterSpec);
+    ar & BOOST_SERIALIZATION_NVP(mTargetOffset);
+    ar & BOOST_SERIALIZATION_NVP(mNullable);
+  }
+  ImportDefaultDatetimeSpec() {}
+public:
+  ImportDefaultDatetimeSpec(const FieldAddress & targetOffset,
+                           bool nullable)
+    :
+    mTargetOffset(targetOffset),
+    mNullable(nullable)
+  {
+  }
+
+  ImporterDelegate makeObject(void * buf) const
+  {
+    if (mNullable) {
+      nullable_importer_type * obj = new (buf) nullable_importer_type(mTargetOffset);
+      return ImporterDelegate::fromMethod<nullable_importer_type, &nullable_importer_type::import>(obj);
+    } else {
+      importer_type * obj = new (buf) importer_type(mTargetOffset);
+      return ImporterDelegate::fromMethod<importer_type, &importer_type::import>(obj);
+    }
+  }
+
+  std::size_t objectSize() const
+  {
+    return mNullable ? sizeof(nullable_importer_type) : sizeof(importer_type);
+  }
+  std::size_t objectAlignment() const
+  {
+    return mNullable ? boost::alignment_of<nullable_importer_type >::value : boost::alignment_of<importer_type >::value;
+  }
+};
+
+struct ImportVarcharType
+{
+  static bool parseAndSet(const uint8_t * begin, const uint8_t * end, FieldAddress addr, RecordBuffer buf)
+  {
+    addr.SetVariableLengthString(buf, (const char *) begin, std::distance(begin, end));
+    return true;
+  }
+};
+
+struct ImportDoubleType
+{
+  static bool parseAndSet(const uint8_t * begin, const uint8_t * end, FieldAddress addr, RecordBuffer buf)
+  {
+    char * endptr;
+    addr.setDouble(::strtod((const char *) begin, &endptr), buf);
+    return reinterpret_cast<const char *>(end) == endptr;
+  }
+};
+
+struct ImportFloatType
+{
+  static bool parseAndSet(const uint8_t * begin, const uint8_t * end, FieldAddress addr, RecordBuffer buf)
+  {
+    char * endptr;
+    addr.setDouble(::strtod((const char *) begin, &endptr), buf);
+    return reinterpret_cast<const char *>(end) == endptr;
+  }
+};
+
+struct ImportIPv4Type
+{
+  static bool parseAndSet(const uint8_t * begin, const uint8_t * end, FieldAddress addr, RecordBuffer buf)
+  {
+    // TODO: When we require c++17 then we can use string_view and avoid copy (or we should not use
+    // boost and just call the underlying c API to parse
+    addr.setIPv4(boost::asio::ip::make_address_v4(std::string((const char *) begin, (const char *) end)), buf);
+    return true;
+  }
+};
+
+struct ImportCIDRv4Type
+{
+  static bool parseAndSet(const uint8_t * begin, const uint8_t * end, FieldAddress addr, RecordBuffer buf)
+  {
+    // TODO: When we require c++17 then we can use string_view and avoid copy (or we should not use
+    // boost and just call the underlying c API to parse
+    std::array<char, 1> toks = { '/' };
+    const char * sep = std::search((const char *) begin, (const char *) end,
+                                   &toks[0], &toks[1]);
+    auto prefix = boost::asio::ip::make_address_v4(std::string((const char *) begin, sep));
+    uint8_t prefix_length = sep == (const char *) end || sep+1 == (const char *) end ? 32 : atoi(sep+1);
+    addr.setCIDRv4({ prefix,  prefix_length}, buf);
+    return true;
+  }
+};
+
+struct ImportIPv6Type
+{
+  static bool parseAndSet(const uint8_t * begin, const uint8_t * end, FieldAddress addr, RecordBuffer buf)
+  {
+    // TODO: When we require c++17 then we can use string_view and avoid copy (or we should not use
+    // boost and just call the underlying c API to parse
+    std::string tmp((const char *) begin, (const char *) end);
+    // Try to parse as v4 first and use that if it succeeds.
+    boost::system::error_code ec;
+    auto v4addr = boost::asio::ip::make_address_v4(tmp, ec);
+    if (!ec) {
+      addr.setIPv6(boost::asio::ip::make_address_v6(boost::asio::ip::v4_mapped, v4addr), buf);
+      return true;    
+    } else {
+      auto v6addr = boost::asio::ip::make_address_v6(tmp, ec);
+      if (!ec) {
+        addr.setIPv6(v6addr, buf);
+        return true;
+      } else {
+        return false;
+      }
+    }
+  }
+};
+
+struct ImportCIDRv6Type
+{
+  static bool parseAndSet(const uint8_t * begin, const uint8_t * end, FieldAddress addr, RecordBuffer buf)
+  {
+    // TODO: When we require c++17 then we can use string_view and avoid copy (or we should not use
+    // boost and just call the underlying c API to parse
+    std::array<char, 1> toks = { '/' };
+    const char * sep = std::search((const char *) begin, (const char *) end,
+                                   &toks[0], &toks[1]);
+    // Try to parse as v4 first and use that if it succeeds.
+    std::string tmp((const char *) begin, sep);
+    boost::system::error_code ec;
+    auto v4addr = boost::asio::ip::make_address_v4(tmp, ec);
+    if (!ec) {
+      int32_t prefix_length = sep == (const char *) end || sep+1 == (const char *) end ? 32 : atoi(sep+1);
+      if (prefix_length < 0 || prefix_length > 32) {
+        return false;
+      }
+      addr.setCIDRv6({ boost::asio::ip::make_address_v6(boost::asio::ip::v4_mapped, v4addr), (uint8_t) (prefix_length + 96) },
+                     buf);
+      return true;    
+    } else {
+      auto v6addr = boost::asio::ip::make_address_v6(tmp, ec);
+      if (!ec) {
+        int32_t prefix_length = sep == (const char *) end || sep+1 == (const char *) end ? 128 : atoi(sep+1);
+        if (prefix_length < 0 || prefix_length > 128) {
+          return false;
+        }
+        addr.setCIDRv6({ v6addr, (uint8_t) prefix_length }, buf);
+        return true;
+      } else {
+        return false;
+      }
+    }
+  }
+};
+
+struct ImportDecimalType
+{
+  static bool parseAndSet(const uint8_t * begin, const uint8_t * end, FieldAddress addr, RecordBuffer buf)
+  {
+    decContext decCtxt;
+    decContextDefault(&decCtxt, DEC_INIT_DECIMAL128); // no traps, please
+    decimal128 * dec = addr.getDecimalPtr(buf);
+    decimal128FromString(dec, (char *) begin, &decCtxt);
+    addr.clearNull(buf);
+    return 0 == decCtxt.status;
+  }
+};
+
+template<typename _ImportFieldType>
+class ImportOptionalBuffer
 {
 private:
   FieldAddress mTargetOffset;
@@ -335,17 +820,108 @@ private:
   uint8_t mTerm;
 
 public:
-  ImportDouble(const FieldAddress& targetOffset,
-		     uint8_t term);
+  ImportOptionalBuffer(const FieldAddress& targetOffset,
+                      uint8_t term)
+    :
+    mTargetOffset(targetOffset),
+    mState(START),
+    mLocal(NULL),
+    mTerm(term)
+  {
+  }
+  
+  ParserState import(AsyncDataBlock& source, RecordBuffer target)
+  {
+    std::array<AsyncDataBlock, 1> sources = { source };
+    auto ret = import(sources, target);
+    source = sources[0];
+    return ret;
+  }
 
-  ParserState import(AsyncDataBlock& source, RecordBuffer target);
+  template<typename BuffersType>
+  ParserState import(BuffersType& sources, RecordBuffer target)
+  {
+    switch(mState) {
+      while(true) {      
+      case START:
+        // Fast path; we find a terminator in the input buffer and
+        // just call atof.
+        if (1 == std::distance(boost::asio::buffer_sequence_begin(sources), boost::asio::buffer_sequence_end(sources))) {
+          uint8_t term = mTerm;
+          for(auto & source : sources) {
+            for(uint8_t * s = static_cast<uint8_t *>(source.data()), * e = static_cast<uint8_t *>(source.data()) + boost::asio::buffer_size(source);
+                s != e; ++s) {
+              if (*s == term) {
+                bool ret = _ImportFieldType::parseAndSet(static_cast<uint8_t *>(source.data()), s, mTargetOffset, target);
+                source += int(ret)*(s - static_cast<uint8_t *>(source.data()));
+                mState = START;
+                return ret ? ParserState::success() : ParserState::error(-1);
+              }
+            }
+          }
+          // Already know that there is no terminator, so copy everything then head to slow path with a read
+          mLocal = new std::vector<uint8_t>();
+          for(auto & source : sources) {
+            mLocal->insert(mLocal->end(), static_cast<uint8_t *>(source.data()),
+                           static_cast<uint8_t *>(source.data()) + boost::asio::buffer_size(source));
+            source += boost::asio::buffer_size(source);
+          }
+          mState = READ;
+          return ParserState::exhausted();
+        }  
+
+        // Slow path; the field crosses the block boundary.  Copy into
+        // private memory and call out to parse routine from there.
+        do {
+          case READ:
+            if (nullptr == mLocal) {
+              mLocal = new std::vector<uint8_t>();
+            }
+            {
+              uint8_t term = mTerm;
+              for(auto & source : sources) {
+                for(uint8_t * s = static_cast<uint8_t *>(source.data()), * e = static_cast<uint8_t *>(source.data()) + boost::asio::buffer_size(source);
+                    s != e; ++s) {
+                  if (*s == term) {
+                    mLocal->insert(mLocal->end(), static_cast<uint8_t *>(source.data()), s);
+                    mLocal->push_back(0);
+                    // Set end to point to the trailing null terminator
+                    bool ret = _ImportFieldType::parseAndSet(&mLocal->operator[](0), &mLocal->operator[](0) + mLocal->size() - 1, mTargetOffset, target);
+                    source += int(ret)*(s - static_cast<uint8_t *>(source.data()));
+                    delete mLocal;
+                    mLocal = NULL;
+                    mState = START;
+                    return ret ? ParserState::success() : ParserState::error(-1);
+                  } 
+                }
+                mLocal->insert(mLocal->end(), static_cast<uint8_t *>(source.data()), static_cast<uint8_t *>(source.data()) + boost::asio::buffer_size(source));
+                source += boost::asio::buffer_size(source);
+              }
+              mState = READ;
+              return ParserState::exhausted();
+            }
+        } while(true);
+      }
+    }
+    return ParserState::error(-2);
+  }
+
+  void setNull(RecordBuffer buf)
+  {
+    mTargetOffset.setNull(buf);
+  }
 };
 
-class ImportDoubleSpec : public ImporterSpec
+template<typename _ImportFieldType>
+class ImportOptionalBufferSpec : public ImporterSpec
 {
+public:
+  typedef ImportOptionalBuffer<_ImportFieldType> importer_type;
+  typedef ImportNullableField<importer_type> nullable_importer_type;
 private:
   FieldAddress mTargetOffset;
   uint8_t mTerm;
+  bool mNullable;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
@@ -354,34 +930,170 @@ private:
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(ImporterSpec);
     ar & BOOST_SERIALIZATION_NVP(mTargetOffset);
     ar & BOOST_SERIALIZATION_NVP(mTerm);
+    ar & BOOST_SERIALIZATION_NVP(mNullable);
   }
-  ImportDoubleSpec()
+  ImportOptionalBufferSpec()
     :
     mTerm(0)
   {
   }
 public:
-  ImportDoubleSpec(const FieldAddress & targetOffset,
-			 uint8_t term)
+  ImportOptionalBufferSpec(const FieldAddress & targetOffset,
+                           uint8_t term,
+                           bool nullable)
     :
     mTargetOffset(targetOffset),
-    mTerm(term)
+    mTerm(term),
+    mNullable(nullable)
   {
   }
 
   ImporterDelegate makeObject(void * buf) const
   {
-    ImportDouble * obj = new (buf) ImportDouble(mTargetOffset, mTerm);
-    return ImporterDelegate::fromMethod<ImportDouble, &ImportDouble::import>(obj);
+    if (mNullable) {
+      nullable_importer_type * obj = new (buf) nullable_importer_type(mTargetOffset, mTerm);
+      return ImporterDelegate::fromMethod<nullable_importer_type, &nullable_importer_type::import>(obj);
+    } else {
+      importer_type * obj = new (buf) importer_type(mTargetOffset, mTerm);
+      return ImporterDelegate::fromMethod<importer_type, &importer_type::import>(obj);
+    }
   }
 
   std::size_t objectSize() const
   {
-    return sizeof(ImportDouble);
+    return mNullable ? sizeof(nullable_importer_type) : sizeof(importer_type);
   }
   std::size_t objectAlignment() const
   {
-    return boost::alignment_of<ImportDouble>::value;
+    return mNullable ? boost::alignment_of<nullable_importer_type >::value : boost::alignment_of<importer_type >::value;
+  }
+};
+
+template<typename _ImportFieldType>
+class ImportWithBuffer
+{
+private:
+  FieldAddress mTargetOffset;
+  enum State { START, READ };
+  State mState;
+  std::vector<uint8_t> mLocal;
+  uint8_t mTerm;
+
+public:
+  ImportWithBuffer(const FieldAddress& targetOffset,
+                      uint8_t term)
+    :
+    mTargetOffset(targetOffset),
+    mState(START),
+    mTerm(term)
+  {
+  }
+
+  ParserState import(AsyncDataBlock& source, RecordBuffer target)
+  {
+    std::array<AsyncDataBlock, 1> sources = { source };
+    auto ret = import(sources, target);
+    source = sources[0];
+    return ret;
+  }
+
+  template<typename BuffersType>
+  ParserState import(BuffersType& sources, RecordBuffer target)
+  {
+    switch(mState) {
+      while(true) {      
+      case START:
+        // Slow path; the field crosses the block boundary.  Copy into
+        // private memory and call atof from there.
+        mLocal.resize(0);
+        do {
+            case READ:
+            {
+              uint8_t term = mTerm;
+              for(auto & source : sources) {
+                for(uint8_t * s = static_cast<uint8_t *>(source.data()), * e = static_cast<uint8_t *>(source.data()) + boost::asio::buffer_size(source);
+                    s != e; ++s) {
+                  if (*s == term) {
+                    mLocal.insert(mLocal.end(), static_cast<uint8_t *>(source.data()), s);
+                    mLocal.push_back(0);
+                    bool ret = _ImportFieldType::parseAndSet(&mLocal[0], &mLocal[0] + mLocal.size(), mTargetOffset, target);
+                    source += int(ret)*(s - static_cast<uint8_t *>(source.data()));
+                    mLocal.resize(0);
+                    mState = START;
+                    return ret ? ParserState::success() : ParserState::error(-1);
+                  } 
+                }
+                mLocal.insert(mLocal.end(), static_cast<uint8_t *>(source.data()), static_cast<uint8_t *>(source.data()) + boost::asio::buffer_size(source));
+                source += boost::asio::buffer_size(source);
+              }
+            }
+            mState = READ;
+            return ParserState::exhausted();
+        } while(true);
+      }
+    }
+    return ParserState::error(-2);
+  }
+
+  void setNull(RecordBuffer buf)
+  {
+    mTargetOffset.setNull(buf);
+  }
+};
+
+template<typename _ImportFieldType>
+class ImportWithBufferSpec : public ImporterSpec
+{
+  typedef ImportWithBuffer<_ImportFieldType> importer_type;
+  typedef ImportNullableField<importer_type> nullable_importer_type;
+private:
+  FieldAddress mTargetOffset;
+  uint8_t mTerm;
+  bool mNullable;
+  // Serialization
+  friend class boost::serialization::access;
+  template <class Archive>
+  void serialize(Archive & ar, const unsigned int version)
+  {
+    ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(ImporterSpec);
+    ar & BOOST_SERIALIZATION_NVP(mTargetOffset);
+    ar & BOOST_SERIALIZATION_NVP(mTerm);
+    ar & BOOST_SERIALIZATION_NVP(mNullable);
+  }
+  ImportWithBufferSpec()
+    :
+    mTerm(0)
+  {
+  }
+public:
+  ImportWithBufferSpec(const FieldAddress & targetOffset,
+                       uint8_t term,
+                       bool nullable)
+    :
+    mTargetOffset(targetOffset),
+    mTerm(term),
+    mNullable(nullable)
+  {
+  }
+
+  ImporterDelegate makeObject(void * buf) const
+  {
+    if (mNullable) {
+      nullable_importer_type * obj = new (buf) nullable_importer_type(mTargetOffset, mTerm);
+      return ImporterDelegate::fromMethod<nullable_importer_type, &nullable_importer_type::import>(obj);
+    } else {
+      importer_type * obj = new (buf) importer_type(mTargetOffset, mTerm);
+      return ImporterDelegate::fromMethod<importer_type, &importer_type::import>(obj);
+    }
+  }
+
+  std::size_t objectSize() const
+  {
+    return mNullable ? sizeof(nullable_importer_type) : sizeof(importer_type);
+  }
+  std::size_t objectAlignment() const
+  {
+    return mNullable ? boost::alignment_of<nullable_importer_type >::value : boost::alignment_of<importer_type >::value;
   }
 };
 
@@ -399,15 +1111,87 @@ public:
   ImportFixedLengthString(const FieldAddress& targetOffset,
 			  int32_t size);
 
-  ParserState import(AsyncDataBlock& source, RecordBuffer target);
+  ParserState import(AsyncDataBlock& source, RecordBuffer target) 
+  {
+    std::array<AsyncDataBlock, 1> sources = { source };
+    auto ret = import(sources, target);
+    source = sources[0];
+    return ret;
+  }
+
+  template<typename BuffersType>
+  ParserState import(BuffersType& sources, RecordBuffer target)
+  {
+    switch(mState) {
+      while(true) { 
+      case START:
+        // Fast path
+        if (mSize <= sources[0].size()) {
+          mTargetOffset.SetFixedLengthString(target, 
+                                             static_cast<const char *>(sources[0].data()), 
+                                             mSize);
+          sources[0] += mSize;
+          mState = START;
+          return ParserState::success();
+        }
+
+        // Slow path : not enough buffer to copy in one
+        // shot.  Read the remainder of the buffer and try
+        // again.
+        mRead = 0;
+        while(true) {
+          if (0 == boost::asio::buffer_size(sources)) {
+            mState = READ;
+            return ParserState::exhausted();
+          case READ:
+            if (0 == boost::asio::buffer_size(sources)) {
+              return ParserState::error(-1);
+            }
+          }
+          for(auto & source : sources) {
+            if (mSize - mRead <= source.size()) {	  
+              // We're done
+              int32_t toRead = mSize - mRead;
+              memcpy(mTargetOffset.getCharPtr(target) + mRead,
+                     source.data(),
+                     toRead);
+              mTargetOffset.clearNull(target);
+              source += toRead;
+              mState = START;
+              mRead = 0;
+              return ParserState::success();
+            } else {
+              // Partial read
+              int32_t toRead = (int32_t) source.size();
+              memcpy(mTargetOffset.getCharPtr(target) + mRead,
+                     source.data(),
+                     toRead);
+              mRead += toRead;
+              source += source.size();
+            }
+          }
+        }      
+      }
+    }
+    return ParserState::error(-2);
+  }
+
+  void setNull(RecordBuffer buf)
+  {
+    mTargetOffset.setNull(buf);
+  }
 };
 
 class ImportFixedLengthStringSpec : public ImporterSpec
 {
+public:
+  typedef ImportFixedLengthString importer_type;
+  typedef ImportNullableField<importer_type> nullable_importer_type;
 private:
   FieldAddress mTargetOffset;
   int32_t mSize;
   uint8_t mTerm;
+  bool mNullable;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
@@ -417,36 +1201,50 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mTargetOffset);
     ar & BOOST_SERIALIZATION_NVP(mSize);
     ar & BOOST_SERIALIZATION_NVP(mTerm);
+    ar & BOOST_SERIALIZATION_NVP(mNullable);
   }
   ImportFixedLengthStringSpec()
     :
-    mTerm(0)
+    mSize(0),
+    mTerm(0),
+    mNullable(false)
   {
   }
 public:
   ImportFixedLengthStringSpec(const FieldAddress & targetOffset,
 			      int32_t sz,
-			      uint8_t term)
+			      uint8_t term,
+                              bool nullable)
     :
     mTargetOffset(targetOffset),
     mSize(sz),
-    mTerm(term)
+    mTerm(term),
+    mNullable(nullable)
   {
   }
 
   ImporterDelegate makeObject(void * buf) const
   {
-    ImportFixedLengthString * obj = new (buf) ImportFixedLengthString(mTargetOffset, mSize);
-    return ImporterDelegate::fromMethod<ImportFixedLengthString, &ImportFixedLengthString::import>(obj);
+    // ImportFixedLengthString * obj = new (buf) ImportFixedLengthString(mTargetOffset, mSize);
+    // return ImporterDelegate::fromMethod<ImportFixedLengthString, &ImportFixedLengthString::import>(obj);
+    if (mNullable) {
+      nullable_importer_type * obj = new (buf) nullable_importer_type(mTargetOffset, mSize);
+      return ImporterDelegate::fromMethod<nullable_importer_type, &nullable_importer_type::import>(obj);
+    } else {
+      importer_type * obj = new (buf) importer_type(mTargetOffset, mSize);
+      return ImporterDelegate::fromMethod<importer_type, &importer_type::import>(obj);
+    }
   }
 
   std::size_t objectSize() const
   {
-    return sizeof(ImportFixedLengthString);
+    // return sizeof(ImportFixedLengthString);
+    return mNullable ? sizeof(nullable_importer_type) : sizeof(importer_type);
   }
   std::size_t objectAlignment() const
   {
     return boost::alignment_of<ImportFixedLengthString>::value;
+    // return mNullable ? boost::alignment_of<nullable_importer_type >::value : boost::alignment_of<importer_type >::value;
   }
 };
 
@@ -489,10 +1287,6 @@ private:
   bool mSkipHeader;
   // Skip lines starting with this.
   std::string mCommentLine;
-  // Hack perf testing
-  FieldAddress mAkidOffset;
-  FieldAddress mCreDateOffset;
-  FieldAddress mCoopIdOffset;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
@@ -540,6 +1334,7 @@ private:
   // Importer delegates
   std::vector<ImporterDelegate> mImporters;
 public:
+  GenericRecordImporter(ImporterSpec * spec);
   GenericRecordImporter(std::vector<ImporterSpec*>::const_iterator begin,
 			std::vector<ImporterSpec*>::const_iterator end);
   ~GenericRecordImporter();

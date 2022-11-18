@@ -75,8 +75,21 @@
 // non polymorphic classes.
 BOOST_CLASS_EXPORT(ImporterSpec);
 BOOST_CLASS_EXPORT(ConsumeTerminatedStringSpec);
-BOOST_CLASS_EXPORT(ImportDecimalInt32Spec);
 BOOST_CLASS_EXPORT(ImportFixedLengthStringSpec);
+BOOST_CLASS_EXPORT(ImportDecimalIntegerSpec<Int8Type>);
+BOOST_CLASS_EXPORT(ImportDecimalIntegerSpec<Int16Type>);
+BOOST_CLASS_EXPORT(ImportDecimalIntegerSpec<Int32Type>);
+BOOST_CLASS_EXPORT(ImportDecimalIntegerSpec<Int64Type>);
+BOOST_CLASS_EXPORT(ImportOptionalBufferSpec<ImportVarcharType>);
+BOOST_CLASS_EXPORT(ImportOptionalBufferSpec<ImportFloatType>);
+BOOST_CLASS_EXPORT(ImportOptionalBufferSpec<ImportDoubleType>);
+BOOST_CLASS_EXPORT(ImportOptionalBufferSpec<ImportIPv4Type>);
+BOOST_CLASS_EXPORT(ImportOptionalBufferSpec<ImportCIDRv4Type>);
+BOOST_CLASS_EXPORT(ImportOptionalBufferSpec<ImportIPv6Type>);
+BOOST_CLASS_EXPORT(ImportOptionalBufferSpec<ImportCIDRv6Type>);
+BOOST_CLASS_EXPORT(ImportWithBufferSpec<ImportDecimalType>);
+BOOST_CLASS_EXPORT(ImportDefaultDatetimeSpec<ImportDateType>);
+BOOST_CLASS_EXPORT(ImportDefaultDatetimeSpec<ImportDatetimeType>);
 BOOST_CLASS_EXPORT(FileCreationPolicy);
 BOOST_CLASS_EXPORT(MultiFileCreationPolicy);
 BOOST_CLASS_EXPORT(WritableFileFactory);

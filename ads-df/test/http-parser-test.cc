@@ -41,25 +41,22 @@ BOOST_AUTO_TEST_CASE(testRequestLineParser)
 {
   const char * testString = "GET /my/simple/uri HTTP/1.1\r\nWon'tGetHere";
   {
-    AsyncDataBlock blk((uint8_t *) testString,
-		       (uint8_t *) (testString + strlen(testString)));
+    AsyncDataBlock blk((uint8_t *) testString, strlen(testString));
     HttpRequestLineParser p;
     BOOST_CHECK(p.import(blk, RecordBuffer()).isSuccess());
-    BOOST_CHECK(!blk.isEmpty());
-    BOOST_CHECK_EQUAL('W', (char) *blk.begin());
+    BOOST_CHECK(blk.size() > 0);
+    BOOST_CHECK_EQUAL('W', *static_cast<const char *>(blk.data()));
   }
   // Two bites
   for(std::size_t i = 1; i<29; i++) {
-    AsyncDataBlock blk((uint8_t *) testString,
-		       (uint8_t *) (testString + i));
+    AsyncDataBlock blk((uint8_t *) testString, i);
     HttpRequestLineParser p;
     BOOST_CHECK(p.import(blk, RecordBuffer()).isExhausted());
-    BOOST_CHECK(blk.isEmpty());
-    BOOST_CHECK_EQUAL(testString[i], (char) *blk.begin());
-    blk.rebind((uint8_t *) (testString + i),
-	       (uint8_t *) (testString + strlen(testString)));
+    BOOST_CHECK(0 ==blk.size());
+    BOOST_CHECK_EQUAL(testString[i], *static_cast<const char *>(blk.data()));
+    blk = AsyncDataBlock((uint8_t *) (testString + i), strlen(testString) - i);
     BOOST_CHECK(p.import(blk, RecordBuffer()).isSuccess());
-    BOOST_CHECK(!blk.isEmpty());
-    BOOST_CHECK_EQUAL('W', (char) *blk.begin());
+    BOOST_CHECK(blk.size() > 0);
+    BOOST_CHECK_EQUAL('W', *static_cast<const char *>(blk.data()));
   }
 }

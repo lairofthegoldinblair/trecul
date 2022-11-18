@@ -1,0 +1,7 @@
+/*  This tests reading a format from a file.
+ */
+r = read_block[file="simple_text.txt"];
+p = parse[formatFile="formatFile.txt", mode="text"];
+r->p;
+d = write[file="output.txt", mode="text"];
+p -> d;

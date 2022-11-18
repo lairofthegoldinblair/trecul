@@ -3,29 +3,9 @@
 #include "AsyncRecordParser.hh"
 #include "FileSystem.hh"
 
-AsyncDataBlock::AsyncDataBlock(uint8_t * start, uint8_t * end)
-  :
-  mCurrentBlockMark(start),
-  mCurrentBlockStart(start),
-  mCurrentBlockEnd(end),
-  mCurrentBlockPtr(start)
-{
-}
+ImportDateType::array_type ImportDateType::sizes = { 4, 2, 2 };
 
-AsyncDataBlock::AsyncDataBlock()
-  :
-  mCurrentBlockMark(NULL),
-  mCurrentBlockStart(NULL),
-  mCurrentBlockEnd(NULL),
-  mCurrentBlockPtr(NULL)
-{
-}
-
-void AsyncDataBlock::rebind(uint8_t * start, uint8_t * end)
-{
-  mCurrentBlockMark = mCurrentBlockStart = mCurrentBlockPtr = start;
-  mCurrentBlockEnd = end;
-}
+ImportDatetimeType::array_type ImportDatetimeType::sizes = { 4, 2, 2, 2, 2, 2 };
 
 void ImporterSpec::createDefaultImport(const RecordType * recordType,
 				       const RecordType * baseRecordType,
@@ -49,38 +29,80 @@ void ImporterSpec::createDefaultImport(const RecordType * recordType,
       ImporterSpec * spec;
       // Dispatch on in-memory type.
       switch(member.GetType()->GetEnum()) {
-      // case FieldType::VARCHAR:
-      // 	fit.InitVariableLengthTerminatedString(offset, delim, 
-      // 					       member.GetType()->isNullable());
-      // 	break;
+      case FieldType::VARCHAR:
+	spec = new ImportOptionalBufferSpec<ImportVarcharType>(offset,
+                                                               delim,
+                                                               member.GetType()->isNullable());
+	break;
       case FieldType::CHAR:
 	spec = new ImportFixedLengthStringSpec(offset, 
-					       member.GetType()->GetSize(), 
+					       member.GetType()->GetSize(),
+                                               delim,
 					       member.GetType()->isNullable());
 	break;
-      // case FieldType::BIGDECIMAL:
-      // 	fit.InitDelimitedDecimal(offset, delim, member.GetType()->isNullable());
-      // 	break;
-      case FieldType::INT32:
-	spec = new ImportDecimalInt32Spec(offset, 
-					  member.GetType()->isNullable());
+      case FieldType::BIGDECIMAL:
+	spec = new ImportWithBufferSpec<ImportDecimalType>(offset,
+                                                           delim,
+                                                            member.GetType()->isNullable());
 	break;
-      // case FieldType::INT64:
-      // 	fit.InitDecimalInt64(offset, 
-      // 			     member.GetType()->isNullable());
-      // 	break;
-      case FieldType::DOUBLE:
-	spec = new ImportDoubleSpec(offset, 
-				    member.GetType()->isNullable());
+      case FieldType::INT8:
+	spec = new ImportDecimalIntegerSpec<Int8Type>(offset,
+                                                      delim,
+                                                      member.GetType()->isNullable());
+	break;
+      case FieldType::INT16:
+	spec = new ImportDecimalIntegerSpec<Int16Type>(offset,
+                                                       delim,
+                                                       member.GetType()->isNullable());
+	break;
+      case FieldType::INT32:
+	spec = new ImportDecimalIntegerSpec<Int32Type>(offset,
+                                                       delim,
+                                                       member.GetType()->isNullable());
+	break;
+      case FieldType::INT64:
+	spec = new ImportDecimalIntegerSpec<Int64Type>(offset,
+                                                       delim,
+                                                       member.GetType()->isNullable());
+	break;
+      case FieldType::FLOAT:
+	spec = new ImportOptionalBufferSpec<ImportFloatType>(offset,
+                                                             delim,
+                                                             member.GetType()->isNullable());
       	break;
-      // case FieldType::DATETIME:
-      // 	fit.InitDelimitedDatetime(offset, 
-      // 				  member.GetType()->isNullable());
-      // 	break;
-      // case FieldType::DATE:
-      // 	fit.InitDelimitedDate(offset, 
-      // 			      member.GetType()->isNullable());
-      // 	break;
+      case FieldType::DOUBLE:
+	spec = new ImportOptionalBufferSpec<ImportDoubleType>(offset,
+                                                              delim,
+                                                              member.GetType()->isNullable());
+      	break;
+      case FieldType::IPV4:
+	spec = new ImportOptionalBufferSpec<ImportIPv4Type>(offset,
+                                                            delim,
+                                                            member.GetType()->isNullable());
+      	break;
+      case FieldType::CIDRV4:
+	spec = new ImportOptionalBufferSpec<ImportCIDRv4Type>(offset,
+                                                              delim,
+                                                              member.GetType()->isNullable());
+      	break;
+      case FieldType::IPV6:
+	spec = new ImportOptionalBufferSpec<ImportIPv6Type>(offset,
+                                                            delim,
+                                                             member.GetType()->isNullable());
+      	break;
+      case FieldType::CIDRV6:
+	spec = new ImportOptionalBufferSpec<ImportCIDRv6Type>(offset,
+                                                              delim,
+                                                              member.GetType()->isNullable());
+      	break;
+      case FieldType::DATETIME:
+	spec = new ImportDefaultDatetimeSpec<ImportDatetimeType>(offset,
+                                                                 member.GetType()->isNullable());
+	break;
+      case FieldType::DATE:
+	spec = new ImportDefaultDatetimeSpec<ImportDateType>(offset,
+                                                             member.GetType()->isNullable());
+	break;
       case FieldType::FUNCTION:
 	throw std::runtime_error("Importing function types not supported");
 	break;
@@ -121,128 +143,23 @@ ParserState ConsumeTerminatedString::import(AsyncDataBlock& source, RecordBuffer
 {
   switch(mState) {
     while(true) {      
-      if (source.isEmpty()) {
+      if (0 == source.size()) {
 	mState = READ;
 	return ParserState::exhausted();
       case READ:
-	if (source.isEmpty()) {
+	if (0 == source.size()) {
 	  return ParserState::error(-1);
 	}
       }
       if (importInternal(source, target)) {
 	mState = START;
-	return ParserState(ParserState::success());
+	return ParserState::success();
       case START:
 	;
       }
     }
   }
-}
-
-ImportDecimalInt32::ImportDecimalInt32(const FieldAddress& targetOffset,
-				       uint8_t term)
-  :
-  mTargetOffset(targetOffset),
-  mState(START),
-  mValue(0),
-  mTerm(term),
-  mNeg(false)
-{
-}
-
-ParserState ImportDecimalInt32::import(AsyncDataBlock& source, RecordBuffer target) 
-{
-  switch(mState) {
-    while(true) {      
-      if (source.isEmpty()) {
-	mState = READ_FIRST;
-	return ParserState::exhausted();
-      case READ_FIRST:
-	if (source.isEmpty()) {
-	  return ParserState::error(-1);
-	}
-      }
-      if (*source.begin() == '-') {
-	mNeg = true;
-	source.consume(1);
-      } else if (*source.begin() == '+') {
-	source.consume(1);
-      }
-      while(true) {
-	if (source.isEmpty()) {
-	  mState = READ_DIGITS;
-	  return ParserState::exhausted();
-	case READ_DIGITS:
-	  if (source.isEmpty()) {
-	    return ParserState::error(-1);
-	  }
-	}
-	if (importInternal(source, target)) {
-	  mState = START;
-	  return ParserState(ParserState::success());
-	case START:
-	  break;
-	}
-      }
-    }
-  }
-}
-
-ImportDouble::ImportDouble(const FieldAddress& targetOffset,
-			   uint8_t term)
-  :
-  mState(START),
-  mLocal(NULL),
-  mTerm(term)
-{
-}
-
-ParserState ImportDouble::import(AsyncDataBlock& source, RecordBuffer target)
-{
-  switch(mState) {
-    while(true) {      
-    case START:
-      // Fast path; we find a terminator in the input buffer and
-      // just call atof.
-      {
-	uint8_t term = mTerm;
-	for(uint8_t * s = source.begin(), * e = source.end();
-	    s != e; ++s) {
-	  if (*s == term) {
-	    mTargetOffset.setDouble(atof((char *) source.begin()), target);
-	    source.consume(s - source.begin());
-	    return ParserState::success();	    
-	  }
-	}
-      }  
-
-      // Slow path; the field crosses the block boundary.  Copy into
-      // private memory and call atof from there.
-      mLocal = new std::vector<uint8_t>();
-      do {
-	mLocal->insert(mLocal->end(), source.begin(), source.end());
-	source.consumeAll();
-	mState = READ;
-	return ParserState::exhausted();
-      case READ:
-      {
-	uint8_t term = mTerm;
-	for(uint8_t * s = source.begin(), * e = source.end();
-	    s != e; ++s) {
-	  if (*s == term) {
-	    mLocal->insert(mLocal->end(), source.begin(), s);
-	    mTargetOffset.setDouble(atof((char *) &mLocal->front()), target);
-	    source.consume(s - source.begin());
-	    delete mLocal;
-	    mLocal = NULL;
-	    mState = START;
-	    return ParserState::success();	    
-	  } 
-	}
-      }
-      } while(true);
-    }
-  }
+  return ParserState::error(-2);
 }
 
 ImportFixedLengthString::ImportFixedLengthString(const FieldAddress& targetOffset,
@@ -252,59 +169,6 @@ ImportFixedLengthString::ImportFixedLengthString(const FieldAddress& targetOffse
   mState(START),
   mSize(sz)
 {
-}
-
-ParserState ImportFixedLengthString::import(AsyncDataBlock& source, RecordBuffer target) 
-{
-  switch(mState) {
-    while(true) { 
-    case START:
-      // Fast path
-      if (source.begin() + mSize <= source.end()) {
-	mTargetOffset.SetFixedLengthString(target, 
-					   (const char *) source.begin(), 
-					   mSize);
-	source.consume(mSize);
-	mState = START;
-	return ParserState::success();
-      }
-
-      // Slow path : not enough buffer to copy in one
-      // shot.  Read the remainder of the buffer and try
-      // again.
-      mRead = 0;
-      while(true) {
-	if (source.isEmpty()) {
-	  mState = READ;
-	  return ParserState::exhausted();
-	case READ:
-	  if (source.isEmpty()) {
-	    return ParserState::error(-1);
-	  }
-	}
-	if (mSize - mRead + source.begin() <= source.end()) {	  
-	  // We're done
-	  int32_t toRead = mSize - mRead;
-	  memcpy(mTargetOffset.getCharPtr(target) + mRead,
-		 source.begin(),
-		 toRead);
-	  mTargetOffset.clearNull(target);
-	  source.consume(toRead);
-	  mState = START;
-	  mRead = 0;
-	  return ParserState::success();
-	} else {
-	  // Partial read
-	  int32_t toRead = (int32_t) (source.end() - source.begin());
-	  memcpy(mTargetOffset.getCharPtr(target) + mRead,
-		 source.begin(),
-		 source.end() - source.begin());
-	  mRead += toRead;
-	  source.consumeAll();
-	}	       
-      }      
-    }
-  }
 }
 
 LogicalAsyncParser::LogicalAsyncParser()
@@ -445,6 +309,20 @@ void LogicalAsyncParser::create(class RuntimePlanBuilder& plan)
   plan.mapOutputPort(this, 0, opType, 0);  
 }
 
+GenericRecordImporter::GenericRecordImporter(ImporterSpec * spec)
+  :
+  mImporterObjects(NULL)
+{
+  // Convert the import specs into objects and delegates
+  // for fast invocation (that avoids virtual functions/vtable
+  // lookup).
+    
+  // We want all importer state to be packed into a small
+  // region of memory.
+  mImporterObjects = new uint8_t [spec->objectSize()];
+  mImporters.push_back(spec->makeObject(mImporterObjects));
+}
+
 GenericRecordImporter::GenericRecordImporter(std::vector<ImporterSpec*>::const_iterator begin,
 					     std::vector<ImporterSpec*>::const_iterator end)
   :
@@ -482,7 +360,7 @@ class GenericAsyncParserOperator : public RuntimeOperator
 private:
   typedef GenericAsyncParserOperatorType operator_type;
 
-  enum State { START, READ, READ_NEW_RECORD, WRITE, WRITE_EOF };
+  enum State { START, READ, READ_NEW_RECORD, READ_SKIP, WRITE, WRITE_EOF };
   State mState;
 
   // // The importer objects themselves
@@ -495,6 +373,8 @@ private:
   GenericRecordImporter mImporters;
   // The field I am currently importing
   GenericRecordImporter::iterator mIt;
+  // Skip importer for reading and throwing away lines
+  GenericRecordImporter mSkipImporter;
   // Input buffer for the file.
   AsyncDataBlock mInputBuffer;
   // Status of last call to parser
@@ -505,6 +385,8 @@ private:
   RecordBuffer mOutput;
   // Records imported
   uint64_t mRecordsImported;
+  // Have we run the skip importer
+  bool mSkipped;
 
   const operator_type & getLogParserType()
   {
@@ -518,7 +400,9 @@ public:
     RuntimeOperator(services, opType),
     mImporters(getLogParserType().mImporters.begin(),
 	       getLogParserType().mImporters.end()),
-    mRecordsImported(0)
+    mSkipImporter(getLogParserType().mSkipImporter),
+    mRecordsImported(0),
+    mSkipped(false)
   {
     // std::size_t sz = getLogParserType().mCommentLine.size();
     // if (sz > std::numeric_limits<int32_t>::max()) {
@@ -561,7 +445,8 @@ public:
   void start()
   {
     mState = START;
-    mRecordsImported = 0;    
+    mRecordsImported = 0;
+    mSkipped = false;
     onEvent(NULL);
   }
 
@@ -569,48 +454,12 @@ public:
   {
     switch(mState) {
     case START:
-      // TODO: Handle cases in which we have to skip the first line
-      // e.g. a header or a partial line in a map reduce style split.
-      // // Allocate a new input buffer for the file in question.
-      // if ((*mFileIt)->getBegin() > 0) {
-      //   throw std::runtime_error("Not implemented yet");
-      //   // mInputBuffer = DataBlock::get((*mFileIt)->getFilename().c_str(), 
-      //   // 				64*1024,
-      //   // 				(*mFileIt)->getBegin()-1,
-      //   // 				(*mFileIt)->getEnd());
-      //   // RecordBuffer nullRecord;
-      //   // getLogParserType().mSkipImporter.Import(*mInputBuffer, nullRecord);
-      // } else {
-      //   // mInputBuffer = DataBlock::get((*mFileIt)->getFilename().c_str(), 
-      //   // 				64*1024,
-      //   // 				(*mFileIt)->getBegin(),
-      //   // 				(*mFileIt)->getEnd());
-      //   mFileService->requestOpenForRead((*mFileIt)->getFilename().c_str(), 
-      // 				   (*mFileIt)->getBegin(),
-      // 				   (*mFileIt)->getEnd(),
-      // 				   getCompletionPorts()[0]);
-      //   requestCompletion(0);
-      //   mState = OPEN_FILE;
-      //   return;
-      // case OPEN_FILE:
-      //   {
-      //     RecordBuffer buf;
-      //     read(port, buf);
-      //     mFileHandle = mFileService->getOpenResponse(buf);
-      //   }
-      //   if (getLogParserType().mSkipHeader) {
-      //     throw std::runtime_error("Async skip header not implemented yet");
-      //     //   RecordBuffer nullRecord;
-      //     //   getLogParserType().mSkipImporter.Import(*mInputBuffer, nullRecord);
-      //   }
-      // }
-	
       // Read all of the record in the file.
       while(true) {
 	// If empty read a block; it is OK to exhaust a file
 	// here but not while in the middle of a record, so 
 	// we make a separate read attempt here.
-	if (mInputBuffer.isEmpty()) {
+	if (0 == mInputBuffer.size()) {
 	  requestRead(0);
 	  mState = READ_NEW_RECORD;
 	  return;
@@ -633,9 +482,56 @@ public:
 	    }
 	    uint8_t * imp = 
 	      (uint8_t *) getLogParserType().mStreamBlock.begin(mInput);
-	    mInputBuffer.rebind(imp, imp + bytesRead);
+	    mInputBuffer = AsyncDataBlock(imp, bytesRead);
 	  }
 	}
+
+        if (!mSkipped && getLogParserType().mSkipHeader) {
+          for(mIt = mSkipImporter.begin();
+              mIt != mSkipImporter.end();
+              ++mIt) {
+            while(true) {
+              mParserState = (*mIt)(mInputBuffer, mOutput);
+              if (mParserState.isSuccess()) {
+                // Successful parse
+                break;
+              } else if (mParserState.isExhausted()) {
+                BOOST_ASSERT(0 == mInputBuffer.size());
+                do {
+                  requestRead(0);
+                  mState = READ_SKIP;
+                  return;
+                  case READ_SKIP:
+                    {
+                      if (mInput != RecordBuffer()) {
+                        getLogParserType().mFree.free(mInput);
+                      }
+                      read(port, mInput);
+                      if (mInput == RecordBuffer()) {
+                        throw std::runtime_error("Parse Error in record: "
+                                                 "end of file reached");
+                      }
+                      int32_t bytesRead = getLogParserType().mStreamBlock.getSize(mInput);
+                      if (0 == bytesRead) {
+                        // ASSERT here instead of trying again?
+                        getLogParserType().mFree.free(mInput);
+                        mInput = RecordBuffer();
+                        continue;
+                      }
+                      uint8_t * imp = 
+                        (uint8_t *) getLogParserType().mStreamBlock.begin(mInput);
+                      mInputBuffer = AsyncDataBlock(imp, bytesRead);
+                    }
+                } while(false);	      
+              } else {
+                // Bad record
+                throw std::runtime_error("Parse Error in record");
+              }
+            }
+            mSkipped = true;
+          }
+        }
+        
 	// This is our actual record.
 	mOutput = getLogParserType().mMalloc.malloc();
 	for(mIt = mImporters.begin();
@@ -647,7 +543,7 @@ public:
 	      // Successful parse
 	      break;
 	    } else if (mParserState.isExhausted()) {
-	      BOOST_ASSERT(mInputBuffer.isEmpty());
+	      BOOST_ASSERT(0 == mInputBuffer.size());
 	      do {
 		requestRead(0);
 		mState = READ;
@@ -671,7 +567,7 @@ public:
 		  }
 		  uint8_t * imp = 
 		    (uint8_t *) getLogParserType().mStreamBlock.begin(mInput);
-		  mInputBuffer.rebind(imp, imp + bytesRead);
+		  mInputBuffer = AsyncDataBlock(imp, bytesRead);
 		}
 	      } while(false);	      
 	    } else {

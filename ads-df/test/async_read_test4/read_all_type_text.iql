@@ -1,0 +1,7 @@
+/*  This tests reading nullable data
+ */
+r = read_block[file="simple_text.txt"];
+p = parse[format="a INTEGER NULL, b BIGINT NULL, c DECIMAL NULL, e VARCHAR NULL, f CHAR(8) NULL, g DATETIME NULL, h DATE NULL, i TINYINT NULL, j SMALLINT NULL, k IPV4 NULL, l IPV6 NULL, m CIDRv4 NULL, n CIDRv6 NULL", mode="text"];
+r -> p;
+d = write[file="output.txt", mode="text"];
+p -> d;
