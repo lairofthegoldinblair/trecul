@@ -2914,6 +2914,144 @@ BOOST_AUTO_TEST_CASE(testIQLStructCompare)
   rhsTy.getFree().free(rhs);
 }
 
+BOOST_AUTO_TEST_CASE(testCidrConstructor)
+{
+  DynamicRecordContext ctxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(ctxt, members);
+  RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
+			"198.162.22.0/24 AS a"
+			",255.255.255.255/32 AS b"
+			",255.255.255.255/31 AS c"
+			",255.255.255.255/30 AS d"
+			",255.255.255.255/29 AS e"
+			",255.255.255.255/28 AS f"
+			",255.255.255.255/27 AS g"
+			",255.255.255.255/26 AS h"
+			",255.255.255.255/25 AS i"
+			",255.255.255.255/24 AS j"
+			",255.255.255.255/23 AS k"
+			",255.255.255.255/17 AS l"
+			",255.255.255.255/16 AS m"
+			",255.255.255.255/15 AS n"
+			",255.255.255.255/9 AS o"
+			",255.255.255.255/8 AS p"
+			",255.255.255.255/7 AS q"
+			",255.255.255.255/1 AS r"
+			",255.255.255.255/0 AS s"
+			",a:b:c::/48 AS A"
+			",ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/48 AS B"
+			",ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128 AS C"
+			",ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/44 AS D"
+			",ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/0 AS E"
+			",ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128 AS F"
+                        );
+  InterpreterContext runtimeCtxt;
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  RecordBuffer outputBuf;
+  t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("198.162.22.0"),
+                    t1.getTarget()->getCIDRv4("a", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(24U, 
+                    t1.getTarget()->getCIDRv4("a", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.255.255.254"),
+              t1.getTarget()->getCIDRv4("c", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(31U, 
+                    t1.getTarget()->getCIDRv4("c", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.255.255.252"),
+              t1.getTarget()->getCIDRv4("d", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(30U, 
+                    t1.getTarget()->getCIDRv4("d", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.255.255.248"),
+              t1.getTarget()->getCIDRv4("e", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(29U, 
+                    t1.getTarget()->getCIDRv4("e", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.255.255.240"),
+              t1.getTarget()->getCIDRv4("f", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(28U, 
+                    t1.getTarget()->getCIDRv4("f", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.255.255.224"),
+              t1.getTarget()->getCIDRv4("g", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(27U, 
+                    t1.getTarget()->getCIDRv4("g", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.255.255.192"),
+              t1.getTarget()->getCIDRv4("h", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(26U, 
+                    t1.getTarget()->getCIDRv4("h", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.255.255.128"),
+              t1.getTarget()->getCIDRv4("i", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(25U, 
+                    t1.getTarget()->getCIDRv4("i", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.255.255.0"),
+              t1.getTarget()->getCIDRv4("j", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(24U, 
+                    t1.getTarget()->getCIDRv4("j", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.255.254.0"),
+              t1.getTarget()->getCIDRv4("k", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(23U, 
+                    t1.getTarget()->getCIDRv4("k", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.255.128.0"),
+              t1.getTarget()->getCIDRv4("l", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(17U, 
+                    t1.getTarget()->getCIDRv4("l", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.255.0.0"),
+              t1.getTarget()->getCIDRv4("m", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(16U, 
+                    t1.getTarget()->getCIDRv4("m", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.254.0.0"),
+              t1.getTarget()->getCIDRv4("n", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(15U, 
+                    t1.getTarget()->getCIDRv4("n", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.128.0.0"),
+              t1.getTarget()->getCIDRv4("o", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(9U, 
+                    t1.getTarget()->getCIDRv4("o", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("255.0.0.0"),
+              t1.getTarget()->getCIDRv4("p", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(8U, 
+                    t1.getTarget()->getCIDRv4("p", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("254.0.0.0"),
+              t1.getTarget()->getCIDRv4("q", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(7U, 
+                    t1.getTarget()->getCIDRv4("q", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("128.0.0.0"),
+              t1.getTarget()->getCIDRv4("r", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(1U, 
+                    t1.getTarget()->getCIDRv4("r", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v4("0.0.0.0"),
+              t1.getTarget()->getCIDRv4("s", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(0U, 
+                    t1.getTarget()->getCIDRv4("s", outputBuf).prefix_length);
+
+  BOOST_CHECK(boost::asio::ip::make_address_v6("a:b:c::") == 
+              t1.getTarget()->getCIDRv6("A", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(48U, 
+                    t1.getTarget()->getCIDRv6("A", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v6("ffff:ffff:ffff::"),
+              t1.getTarget()->getCIDRv6("B", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(48U, 
+                    t1.getTarget()->getCIDRv6("B", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v6("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"),
+              t1.getTarget()->getCIDRv6("C", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(128U, 
+                    t1.getTarget()->getCIDRv6("C", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v6("ffff:ffff:fff0::"),
+              t1.getTarget()->getCIDRv6("D", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(44U, 
+                    t1.getTarget()->getCIDRv6("D", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v6("::"),
+              t1.getTarget()->getCIDRv6("E", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(0U, 
+                    t1.getTarget()->getCIDRv6("E", outputBuf).prefix_length);
+  BOOST_CHECK_EQUAL(boost::asio::ip::make_address_v6("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"),
+              t1.getTarget()->getCIDRv6("F", outputBuf).prefix);
+  BOOST_CHECK_EQUAL(128U, 
+                    t1.getTarget()->getCIDRv6("F", outputBuf).prefix_length);
+  t1.getTarget()->GetFree()->free(outputBuf);
+  recTy.GetFree()->free(inputBuf);
+}
+
+
 BOOST_AUTO_TEST_CASE(testSubnetContainmentOps)
 {
   DynamicRecordContext ctxt;
@@ -9949,9 +10087,9 @@ BOOST_AUTO_TEST_CASE(testIPv4AddressAndCidr)
     RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
     RecordBuffer outputBuf;
     t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
-    auto expected =  boost::asio::ip::make_address_v4("127.0.0.1");
+    auto expected =  boost::asio::ip::make_address_v4("127.0.0.0");
     auto actual = t1.getTarget()->getFieldAddress("a").getCIDRv4(outputBuf);;
-    BOOST_CHECK(expected == actual.prefix);
+    BOOST_CHECK_EQUAL(expected, actual.prefix);
     BOOST_CHECK_EQUAL(23U, actual.prefix_length);
     recTy.getFree().free(inputBuf);
     t1.getTarget()->getFree().free(outputBuf);

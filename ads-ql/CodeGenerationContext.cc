@@ -3496,6 +3496,57 @@ const IQLToLLVMValue * CodeGenerationContext::buildMul(const IQLToLLVMValue * lh
   return buildNullableBinaryOp(lhs, lhsType, rhs, rhsType, retType, &CodeGenerationContext::buildMul);
 }
 
+void CodeGenerationContext::zeroHostBits(const IQLToLLVMValue * prefixLength,
+                                         llvm::Value * ret, 
+                                         const FieldType * retType)
+
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  auto retBytes = FieldType::CIDRV6 == retType->GetEnum() ? 16 : 4;
+
+  llvm::Value * gepIndexes[2];
+  auto bytesToKeepPtr = b->CreateAlloca(b->getInt8Ty());
+  b->CreateStore(b->CreateUDiv(prefixLength->getValue(this), b->getInt8(8)), bytesToKeepPtr);
+  auto bitsInBytesToKeep = b->CreateMul(b->CreateLoad(b->getInt8Ty(), bytesToKeepPtr), b->getInt8(8));
+  auto pred = b->CreateICmpNE(prefixLength->getValue(this), bitsInBytesToKeep);
+  pred = b->CreateZExt(pred, b->getInt32Ty());
+  buildBeginIf();
+  llvm::Value * lastByteToKeepPtr = nullptr;
+  if (FieldType::CIDRV6 == retType->GetEnum()) {
+    gepIndexes[0] = b->getInt64(0);    
+    gepIndexes[1] = b->CreateSExt(b->CreateLoad(b->getInt8Ty(), bytesToKeepPtr), b->getInt64Ty());
+    lastByteToKeepPtr = b->CreateGEP(retType->LLVMGetType(this), ret, llvm::makeArrayRef(&gepIndexes[0], 2), "last_byte");
+  } else {
+    lastByteToKeepPtr = b->CreateBitCast(b->CreateStructGEP(retType->LLVMGetType(this), ret, 0), b->getInt8PtrTy());
+    lastByteToKeepPtr = b->CreateInBoundsGEP(b->getInt8Ty(), lastByteToKeepPtr, b->CreateSExt(b->CreateLoad(b->getInt8Ty(), bytesToKeepPtr), b->getInt64Ty()));
+  }
+  auto bitsToKeep = b->CreateSub(prefixLength->getValue(this), bitsInBytesToKeep);
+  b->CreateStore(b->CreateAnd(b->CreateLoad(b->getInt8Ty(), lastByteToKeepPtr), b->CreateShl(b->getInt8(-1), b->CreateSub(b->getInt8(8), bitsToKeep))),
+                 lastByteToKeepPtr);
+  b->CreateStore(b->CreateAdd(b->CreateLoad(b->getInt8Ty(), bytesToKeepPtr), b->getInt8(1)), bytesToKeepPtr);
+  buildEndIf(IQLToLLVMRValue::get(this, pred, IQLToLLVMValue::eLocal));
+
+  pred = b->CreateICmpULT(b->CreateLoad(b->getInt8Ty(), bytesToKeepPtr), b->getInt8(retBytes));
+  pred = b->CreateZExt(pred, b->getInt32Ty());
+  llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemsetIntrinsic);
+  llvm::Value * args[5];
+  buildBeginIf();
+  if (FieldType::CIDRV6 == retType->GetEnum()) {
+    gepIndexes[0] = b->getInt64(0);    
+    gepIndexes[1] = b->CreateSExt(b->CreateLoad(b->getInt8Ty(), bytesToKeepPtr), b->getInt64Ty());
+    args[0] = b->CreateGEP(retType->LLVMGetType(this), ret, llvm::makeArrayRef(&gepIndexes[0], 2), "cidr_prefix");
+  } else {
+    args[0] = b->CreateBitCast(b->CreateStructGEP(retType->LLVMGetType(this), ret, 0), b->getInt8PtrTy());
+    args[0] = b->CreateInBoundsGEP(b->getInt8Ty(), args[0], b->CreateSExt(b->CreateLoad(b->getInt8Ty(), bytesToKeepPtr), b->getInt64Ty()));
+  }
+  args[1] = b->getInt8(0);
+  args[2] = b->CreateSub(b->getInt64(retBytes), b->CreateSExt(b->CreateLoad(b->getInt8Ty(), bytesToKeepPtr), b->getInt64Ty()));
+  args[3] = b->getInt32(1);
+  args[4] = b->getInt1(0);
+  b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
+  buildEndIf(IQLToLLVMRValue::get(this, pred, IQLToLLVMValue::eLocal));
+}
+
 IQLToLLVMValue::ValueType 
 CodeGenerationContext::buildDiv(const IQLToLLVMValue * lhs, 
 				const FieldType * lhsType, 
@@ -3513,6 +3564,9 @@ CodeGenerationContext::buildDiv(const IQLToLLVMValue * lhs,
     // Cast prefix length to int8 and set in second member of struct
     rhs = buildCastNonNullable(rhs, rhsType, Int8Type::Get(rhsType->getContext()));
     b->CreateStore(rhs->getValue(this), b->CreateStructGEP(retType->LLVMGetType(this), ret, 1));
+
+    zeroHostBits(rhs, ret, retType);
+
     return IQLToLLVMValue::eLocal;
   } else if (lhsType->GetEnum() == FieldType::IPV6) {
     llvm::Value * gepIndexes[2];
@@ -3530,9 +3584,13 @@ CodeGenerationContext::buildDiv(const IQLToLLVMValue * lhs,
     b->CreateCall(fn->getFunctionType(), fn, llvm::makeArrayRef(&args[0], 5), "");
     // Cast prefix length to int8 and set in last position of array
     rhs = buildCastNonNullable(rhs, rhsType, Int8Type::Get(rhsType->getContext()));
+    gepIndexes[0] = b->getInt64(0);    
     gepIndexes[1] = b->getInt64(16);
     llvm::Value * length_ptr  = b->CreateGEP(retType->LLVMGetType(this), ret, llvm::makeArrayRef(&gepIndexes[0], 2), "prefix_length");
     b->CreateStore(rhs->getValue(this), length_ptr);
+
+    zeroHostBits(rhs, ret, retType);
+
     return IQLToLLVMValue::eLocal;
   }
   lhs = buildCastNonNullable(lhs, lhsType, retType);

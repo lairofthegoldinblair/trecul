@@ -533,6 +533,11 @@ private:
   static bool isValueType(const FieldType *);
   static llvm::Value * trimAlloca(llvm::Value * result, const FieldType * resultTy);
 
+  // prefixLength must be Int8, retType must be CIDRv4 or CIDRv6
+  // This zeros out all of the bits after the prefix length
+  void zeroHostBits(const IQLToLLVMValue * prefixLength,
+                    llvm::Value * ret, 
+                    const FieldType * retType);
 public:
   llvm::LLVMContext * LLVMContext;
   llvm::Module * LLVMModule;
