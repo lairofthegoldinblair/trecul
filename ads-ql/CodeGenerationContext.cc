@@ -6775,7 +6775,7 @@ void CodeGenerationContext::buildSetField(int * pos, const IQLToLLVMValue * val)
       }
       FieldAddress inputAddress;
       llvm::Value * inputBase = lookupBasePointer(inputArg.c_str())->getValue(this);
-      if (!inputType->isMemberPointer(llvmVal, inputBase, inputAddress) ||
+      if (!inputType->isMemberPointer(this, llvmVal, inputBase, inputAddress) ||
 	  inputAddress != outputAddress) {    
 	IsIdentity = false;
       }

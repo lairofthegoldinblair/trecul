@@ -2302,39 +2302,45 @@ llvm::Value * RecordType::LLVMMemberGetPointer(const std::string& member,
 }
 
 // Is the LLVM value a pointer to a member of this record?
-bool RecordType::isMemberPointer(llvm::Value * val,
+bool RecordType::isMemberPointer(CodeGenerationContext * ctxt,
+                                 llvm::Value * val,
 				 llvm::Value * basePointer,
 				 FieldAddress & addr) const
 {
   // Members are bitcast of a untyped pointer to an offset
   // from base:
   // bitcast <i8*> getelementptr i8* load <i8**> $base $offset to <ty *>
-  if (llvm::BitCastInst * bcast = llvm::dyn_cast<llvm::BitCastInst>(val)) {
-    if(llvm::GetElementPtrInst * gep = 
-       llvm::dyn_cast<llvm::GetElementPtrInst>(bcast->getOperand(0))) {
-      // OK.  Could be a winner, look more closely.
-      const llvm::Value * pointer = gep->getPointerOperand();
-      if (const llvm::LoadInst * load = llvm::dyn_cast<llvm::LoadInst>(pointer)) {
-	pointer = load->getOperand(0);
-	bool hasConstantIndices = gep->hasAllConstantIndices();
-	unsigned numIndices = gep->getNumIndices();
-	if (pointer == basePointer &&
-	    hasConstantIndices &&
-	    numIndices == 1) {
-	  if (llvm::ConstantInt * idx =
-	      llvm::dyn_cast<llvm::ConstantInt>(*gep->idx_begin())) {
-	    // We have a winner!  
-	    // TODO: Extra sanity check that this is a valid
-	    // offset and that the bitcast type convert is compatible
-	    // with the type of the corresponding field.
-	    std::map<uint32_t,uint32_t>::const_iterator posIt =
-	      mByteOffsetToPosition.find(idx->getValue().getSExtValue());
-	    if (posIt != mByteOffsetToPosition.end()) {
-	      addr = FieldAddress(posIt->first, posIt->second);
-	      return true;
-	    }
-	  }
-	}
+  if (!ctxt->LLVMContext->hasSetOpaquePointersValue()) {
+    if (llvm::BitCastInst * bcast = llvm::dyn_cast<llvm::BitCastInst>(val)) {
+      val = bcast->getOperand(0);
+    } else {
+      return false;
+    }
+  }
+  if(llvm::GetElementPtrInst * gep = 
+     llvm::dyn_cast<llvm::GetElementPtrInst>(val)) {
+    // OK.  Could be a winner, look more closely.
+    const llvm::Value * pointer = gep->getPointerOperand();
+    if (const llvm::LoadInst * load = llvm::dyn_cast<llvm::LoadInst>(pointer)) {
+      pointer = load->getOperand(0);
+      bool hasConstantIndices = gep->hasAllConstantIndices();
+      unsigned numIndices = gep->getNumIndices();
+      if (pointer == basePointer &&
+          hasConstantIndices &&
+          numIndices == 1) {
+        if (llvm::ConstantInt * idx =
+            llvm::dyn_cast<llvm::ConstantInt>(*gep->idx_begin())) {
+          // We have a winner!  
+          // TODO: Extra sanity check that this is a valid
+          // offset and that the bitcast type convert is compatible
+          // with the type of the corresponding field.
+          std::map<uint32_t,uint32_t>::const_iterator posIt =
+            mByteOffsetToPosition.find(idx->getValue().getSExtValue());
+          if (posIt != mByteOffsetToPosition.end()) {
+            addr = FieldAddress(posIt->first, posIt->second);
+            return true;
+          }
+        }
       }
     }
   }

@@ -2365,7 +2365,8 @@ public:
 				     llvm::Value * basePointer, 
 				     bool populateSymbolTable,
 				     const char * symbolTablePrefix = "") const;
-  bool isMemberPointer(llvm::Value * val,
+  bool isMemberPointer(CodeGenerationContext * ctxt,
+                       llvm::Value * val,
 		       llvm::Value * basePointer,
 		       FieldAddress& addr) const;
   llvm::Value * LLVMMemberGetNull(const std::string& member, CodeGenerationContext * ctxt, llvm::Value * basePointer) const;

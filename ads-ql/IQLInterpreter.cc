@@ -133,7 +133,7 @@ public:
     return mJIT->addObjectFile(std::move(obj));
   }
 
-  llvm::Expected<llvm::JITEvaluatedSymbol> findSymbol(const std::string Name) {
+  llvm::Expected<llvm::orc::ExecutorAddr> findSymbol(const std::string Name) {
     return mJIT->lookup(Name);
   }
 };
@@ -3039,7 +3039,17 @@ public:
 			      std::string & objectFile);
   IQLRecordBufferMethodHandle(const std::string& objectFile);
   ~IQLRecordBufferMethodHandle();
-  void * getFunPtr(const std::string& name);
+  template<typename T>
+  T getFunPtr(const std::string& nm)
+  {
+    // TODO: Prepend __????
+    auto ExprSymbol = mJIT->findSymbol(nm);
+
+    // return reinterpret_cast<void *>(llvm::cantFail(ExprSymbol.getAddress()));
+    llvm::ExitOnError ExitOnErr;
+    return ExitOnErr(std::move(ExprSymbol)).toPtr<T>();
+  }
+
   static void onObjectLoaded(llvm::orc::MaterializationResponsibility & mr, const llvm::object::ObjectFile &obj,
 			     const llvm::RuntimeDyld::LoadedObjectInfo & objInfo,
 			     std::string & objectFile)
@@ -3100,16 +3110,6 @@ void IQLRecordBufferMethodHandle::initialize(std::unique_ptr<llvm::Module> modul
 				    this->onObjectFinalized(mr, obj, objInfo);
 				  });
   llvm::cantFail(mJIT->addModule(llvm::orc::ThreadSafeModule(std::move(module), std::move(context))));
-}
-
-void * IQLRecordBufferMethodHandle::getFunPtr(const std::string& nm)
-{
-  // TODO: Prepend __????
-  auto ExprSymbol = mJIT->findSymbol(nm);
-
-  // return reinterpret_cast<void *>(llvm::cantFail(ExprSymbol.getAddress()));
-  llvm::ExitOnError ExitOnErr;
-  return reinterpret_cast<void *>(ExitOnErr(std::move(ExprSymbol)).getAddress());
 }
 
 class IQLParserStuff
@@ -3478,15 +3478,15 @@ void IQLTransferModule::initImpl(std::unique_ptr<llvm::Module> module)
   funNames.push_back(mCopyFunName);
   funNames.push_back(mMoveFunName);
   mImpl = new IQLRecordBufferMethodHandle(std::move(module), funNames, mObjectFile);
-  mCopyFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
-  mMoveFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[1]);
+  mCopyFunction = mImpl->getFunPtr<LLVMFuncType>(funNames[0]);
+  mMoveFunction = mImpl->getFunPtr<LLVMFuncType>(funNames[1]);
 }
 
 void IQLTransferModule::initImpl()
 {
   mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
-  mCopyFunction = (LLVMFuncType) mImpl->getFunPtr(mCopyFunName);
-  mMoveFunction = (LLVMFuncType) mImpl->getFunPtr(mMoveFunName);
+  mCopyFunction = mImpl->getFunPtr<LLVMFuncType>(mCopyFunName);
+  mMoveFunction = mImpl->getFunPtr<LLVMFuncType>(mMoveFunName);
 }
 
 void IQLTransferModule::execute(RecordBuffer & source, RecordBuffer & target, class InterpreterContext * ctxt, bool isSourceMove) const
@@ -3656,15 +3656,15 @@ void IQLTransferModule2::initImpl(std::unique_ptr<llvm::Module> module)
   funNames.push_back(mCopyFunName);
   funNames.push_back(mMoveFunName);
   mImpl = new IQLRecordBufferMethodHandle(std::move(module), funNames, mObjectFile);
-  mCopyFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
-  mMoveFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[1]);
+  mCopyFunction = mImpl->getFunPtr<LLVMFuncType>(funNames[0]);
+  mMoveFunction = mImpl->getFunPtr<LLVMFuncType>(funNames[1]);
 }
 
 void IQLTransferModule2::initImpl()
 {
   mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
-  mCopyFunction = (LLVMFuncType) mImpl->getFunPtr(mCopyFunName);
-  mMoveFunction = (LLVMFuncType) mImpl->getFunPtr(mMoveFunName);
+  mCopyFunction = mImpl->getFunPtr<LLVMFuncType>(mCopyFunName);
+  mMoveFunction = mImpl->getFunPtr<LLVMFuncType>(mMoveFunName);
 }
 
 void IQLTransferModule2::execute(RecordBuffer * sources, 
@@ -3704,13 +3704,13 @@ void IQLUpdateModule::initImpl(std::unique_ptr<llvm::Module> module)
   std::vector<std::string> funNames;
   funNames.push_back(mFunName);
   mImpl = new IQLRecordBufferMethodHandle(std::move(module), funNames, mObjectFile);
-  mFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
+  mFunction = mImpl->getFunPtr<LLVMFuncType>(funNames[0]);
 }
 
 void IQLUpdateModule::initImpl()
 {
   mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
-  mFunction = (LLVMFuncType) mImpl->getFunPtr(mFunName);
+  mFunction = mImpl->getFunPtr<LLVMFuncType>(mFunName);
 }
 
 void IQLUpdateModule::execute(RecordBuffer & source, RecordBuffer target, class InterpreterContext * ctxt) const
@@ -3872,13 +3872,13 @@ void IQLRecordTypeOperationModule::initImpl(std::unique_ptr<llvm::Module> module
   std::vector<std::string> funNames;
   funNames.push_back(mFunName);
   mImpl = new IQLRecordBufferMethodHandle(std::move(module), funNames, mObjectFile);
-  mFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
+  mFunction = mImpl->getFunPtr<LLVMFuncType>(funNames[0]);
 }
 
 void IQLRecordTypeOperationModule::initImpl()
 {
   mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
-  mFunction = (LLVMFuncType) mImpl->getFunPtr(mFunName);
+  mFunction = mImpl->getFunPtr<LLVMFuncType>(mFunName);
 }
 
 IQLRecordTypeOperationModule & IQLRecordTypeOperationModule::operator=(const IQLRecordTypeOperationModule & rhs)
@@ -3922,13 +3922,13 @@ void IQLFunctionModule::initImpl(std::unique_ptr<llvm::Module> module)
   std::vector<std::string> funNames;
   funNames.push_back(mFunName);
   mImpl = new IQLRecordBufferMethodHandle(std::move(module), funNames, mObjectFile);
-  mFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
+  mFunction = mImpl->getFunPtr<LLVMFuncType>(funNames[0]);
 }
 
 void IQLFunctionModule::initImpl()
 {
   mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
-  mFunction = (LLVMFuncType) mImpl->getFunPtr(mFunName);
+  mFunction = mImpl->getFunPtr<LLVMFuncType>(mFunName);
 }
 
 int32_t IQLFunctionModule::execute(RecordBuffer sourceA, RecordBuffer sourceB, class InterpreterContext * ctxt) const
@@ -4510,17 +4510,17 @@ void IQLAggregateModule::initImpl(std::unique_ptr<llvm::Module> module)
   funNames.push_back(mUpdateName);
   funNames.push_back(mTransferName);
   mImpl = new IQLRecordBufferMethodHandle(std::move(module), funNames, mObjectFile);
-  mInitFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[0]);
-  mUpdateFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[1]);
-  mTransferFunction = (LLVMFuncType) mImpl->getFunPtr(funNames[2]);
+  mInitFunction = mImpl->getFunPtr<LLVMFuncType>(funNames[0]);
+  mUpdateFunction = mImpl->getFunPtr<LLVMFuncType>(funNames[1]);
+  mTransferFunction = mImpl->getFunPtr<LLVMFuncType>(funNames[2]);
 }
 
 void IQLAggregateModule::initImpl()
 {
   mImpl = new IQLRecordBufferMethodHandle(mObjectFile);
-  mInitFunction = (LLVMFuncType) mImpl->getFunPtr(mInitName);
-  mUpdateFunction = (LLVMFuncType) mImpl->getFunPtr(mUpdateName);
-  mTransferFunction = (LLVMFuncType) mImpl->getFunPtr(mTransferName);
+  mInitFunction = mImpl->getFunPtr<LLVMFuncType>(mInitName);
+  mUpdateFunction = mImpl->getFunPtr<LLVMFuncType>(mUpdateName);
+  mTransferFunction = mImpl->getFunPtr<LLVMFuncType>(mTransferName);
 }
 
 void IQLAggregateModule::executeInit(RecordBuffer & source, 
