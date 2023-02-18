@@ -264,9 +264,13 @@ private:
   // Note that IQLToLLVMValue::mNullBit is a value not a pointer/memory location
   // which is why this is here and not inside IQLToLLVMLocal::mValue.
   llvm::Value * mNullBit;
+  // With LLVM moving to opaque/untyped pointers we store the type that the
+  // mNullBit pointer is pointing to (which should be i1).
+  llvm::Type * mNullBitType;
 public:
   IQLToLLVMLocal(IQLToLLVMTypedValue lval,
-		 llvm::Value * lvalNull);
+		 llvm::Value * lvalNull,
+                 llvm::Type * lvalNullTy);
 
   ~IQLToLLVMLocal();
 
@@ -280,7 +284,10 @@ public:
   ValueType getValueType() const override;
   static IQLToLLVMLocal * get(CodeGenerationContext * ctxt,
 			      IQLToLLVMTypedValue lval,
-			      llvm::Value * lvalNull);
+			      llvm::Value * lvalNull,
+                              llvm::Type * lvalNullTy);
+  static IQLToLLVMLocal * get(CodeGenerationContext * ctxt,
+			      IQLToLLVMTypedValue lval);
 };
 
 class IQLToLLVMArgument : public IQLToLLVMLValue
@@ -383,7 +390,7 @@ public:
    * of these small can make a big impact on the
    * amount of memory used during SSA creation (Mem2Reg pass).
    */
-  typedef std::map<const llvm::Type*, 
+  typedef std::map<const FieldType*, 
 		   std::vector<llvm::Value *> > local_cache;
   
   typedef IQLToLLVMValue::ValueType (CodeGenerationContext::*UnaryOperatorMemFn) (const IQLToLLVMValue * lhs, 
@@ -526,11 +533,6 @@ private:
   static bool isValueType(const FieldType *);
   static llvm::Value * trimAlloca(llvm::Value * result, const FieldType * resultTy);
 
-  static bool isChar(llvm::Type * ty);
-  static bool isChar(llvm::Value * val);
-  static int32_t getCharArrayLength(llvm::Type * ty);
-  static int32_t getCharArrayLength(llvm::Value * val);
-
 public:
   llvm::LLVMContext * LLVMContext;
   llvm::Module * LLVMModule;
@@ -597,8 +599,9 @@ public:
    */
   void defineVariable(const char * name,
 		      llvm::Value * val,
-		      llvm::Value * nullVal,
                       const FieldType * ft,
+		      llvm::Value * nullVal,
+		      llvm::Type * nullValTy,
 		      IQLToLLVMValue::ValueType globalOrLocal);
 
   /**
@@ -1204,8 +1207,8 @@ public:
    * Reuse of local variables so that we don't put too much pressure
    * on mem2reg to eliminate them.
    */
-  llvm::Value * getCachedLocal(llvm::Type * ty);
-  void returnCachedLocal(llvm::Value * v);
+  llvm::Value * getCachedLocal(const FieldType * ty);
+  void returnCachedLocal(llvm::Value * v, const FieldType * ty);
 
   /**   
    * Create a mutable variable by doing an alloca in the entry block of the function.

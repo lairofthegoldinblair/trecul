@@ -190,8 +190,7 @@ llvm::Value * IQLToLLVMField::getValue(CodeGenerationContext * ctxt) const
   
   const FieldType * ft = getType();
   if(ctxt->isPointerToValueType(outputVal, ft)) {
-    outputVal = ctxt->LLVMBuilder->CreateLoad(outputVal->getType()->getPointerElementType(),
-                                              outputVal);
+    outputVal = ctxt->LLVMBuilder->CreateLoad(ft->LLVMGetType(ctxt), outputVal);
   }
   return outputVal;
 }
@@ -292,7 +291,7 @@ llvm::Value * IQLToLLVMArrayElement::getValue(CodeGenerationContext * ctxt) cons
 {
   llvm::Value * outputVal = mValue.getValue()->getValue(ctxt);
   if(ctxt->isPointerToValueType(outputVal, mValue.getType())) {
-    outputVal = ctxt->LLVMBuilder->CreateLoad(outputVal->getType()->getPointerElementType(),
+    outputVal = ctxt->LLVMBuilder->CreateLoad(mValue.getType()->LLVMGetType(ctxt),
                                               outputVal);
   }
   return outputVal;
@@ -338,11 +337,14 @@ IQLToLLVMArrayElement * IQLToLLVMArrayElement::get(CodeGenerationContext * ctxt,
 }
 
 IQLToLLVMLocal::IQLToLLVMLocal(IQLToLLVMTypedValue val,
-			       llvm::Value * nullBit)
+			       llvm::Value * nullBit,
+                               llvm::Type * nullBitTy)
   :
   mValue(val),
-  mNullBit(nullBit)
+  mNullBit(nullBit),
+  mNullBitType(nullBitTy)
 {
+  BOOST_ASSERT((mNullBit != nullptr && mNullBitType != nullptr) || (mNullBit == nullptr && mNullBitType == nullptr));
 }
 
 IQLToLLVMLocal::~IQLToLLVMLocal()
@@ -375,7 +377,7 @@ llvm::Value * IQLToLLVMLocal::getValue(CodeGenerationContext * ctxt) const
 {
   llvm::Value * outputVal = mValue.getValue()->getValue(ctxt);
   if(ctxt->isPointerToValueType(outputVal, mValue.getType())) {
-    outputVal = ctxt->LLVMBuilder->CreateLoad(outputVal->getType()->getPointerElementType(),
+    outputVal = ctxt->LLVMBuilder->CreateLoad(mValue.getType()->LLVMGetType(ctxt),
                                               outputVal);
   }
   return outputVal;
@@ -385,7 +387,7 @@ llvm::Value * IQLToLLVMLocal::getNull(CodeGenerationContext * ctxt) const
 {
   if (isNullable()) {
     llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
-    return b->CreateLoad(mNullBit->getType()->getPointerElementType(), mNullBit);
+    return b->CreateLoad(mNullBitType, mNullBit);
   } else {
     return nullptr;
   }
@@ -403,9 +405,18 @@ IQLToLLVMValue::ValueType IQLToLLVMLocal::getValueType() const
 
 IQLToLLVMLocal * IQLToLLVMLocal::get(CodeGenerationContext * ctxt,
 				     IQLToLLVMTypedValue lval,
-				     llvm::Value * lvalNull)
+				     llvm::Value * lvalNull,
+                                     llvm::Type * lvalNullTy)
 {
-  IQLToLLVMLocal * tmp = new IQLToLLVMLocal(lval, lvalNull);
+  IQLToLLVMLocal * tmp = new IQLToLLVMLocal(lval, lvalNull, lvalNullTy);
+  ctxt->ValueFactory.push_back(tmp);
+  return tmp;
+}
+
+IQLToLLVMLocal * IQLToLLVMLocal::get(CodeGenerationContext * ctxt,
+				     IQLToLLVMTypedValue lval)
+{
+  IQLToLLVMLocal * tmp = new IQLToLLVMLocal(lval, nullptr, nullptr);
   ctxt->ValueFactory.push_back(tmp);
   return tmp;
 }
@@ -440,7 +451,7 @@ llvm::Value * IQLToLLVMArgument::getValue(CodeGenerationContext * ctxt) const
 {
   llvm::Value * outputVal = mValue;
   if(ctxt->isPointerToValueType(outputVal, mType)) {
-    outputVal = ctxt->LLVMBuilder->CreateLoad(outputVal->getType()->getPointerElementType(),
+    outputVal = ctxt->LLVMBuilder->CreateLoad(mType->LLVMGetType(ctxt),
                                               outputVal);
   }
   return outputVal;
@@ -653,13 +664,14 @@ bool CodeGenerationContext::isPointerToValueType(llvm::Value * val, const FieldT
 
 void CodeGenerationContext::defineVariable(const char * name,
 					   llvm::Value * val,
-					   llvm::Value * nullVal,
                                            const FieldType * ft, 
+					   llvm::Value * nullVal,
+					   llvm::Type * nullValTy,
 					   IQLToLLVMValue::ValueType globalOrLocal)
 {
   const IQLToLLVMValue * tmp = IQLToLLVMRValue::get(this, val, 
                                                     NULL, globalOrLocal);
-  IQLToLLVMLocal * local = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(tmp, ft), nullVal);
+  IQLToLLVMLocal * local = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(tmp, ft), nullVal, nullValTy);
   mSymbolTable->add(name, NULL, local);
 }
 
@@ -723,7 +735,7 @@ void CodeGenerationContext::buildFree(const IQLToLLVMValue * val, const FieldTyp
       // Allocate and initialize counter
       llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
       const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-      IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
+      IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type));
       buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
         
       whileBegin();
@@ -806,7 +818,7 @@ void CodeGenerationContext::buildRecordTypePrint(const RecordType * recordType, 
   // If requested output record delimiter, output it.
   // A bit of a hack here since __OutputRecordDelimiter__ local does not have
   // type information so we add it here.
-  IQLToLLVMLocal outputRecordDelimiter(IQLToLLVMTypedValue(lookup("__OutputRecordDelimiter__")->getValuePointer(this), int32Type), nullptr);
+  IQLToLLVMLocal outputRecordDelimiter(IQLToLLVMTypedValue(lookup("__OutputRecordDelimiter__")->getValuePointer(this), int32Type), nullptr, nullptr);
   const IQLToLLVMValue * pred = buildCompare(buildRef(&outputRecordDelimiter, int32Type), int32Type, buildTrue(), int32Type, int32Type, IQLToLLVMOpEQ);
   buildBeginIf();
   // output record delimiter
@@ -955,7 +967,7 @@ void CodeGenerationContext::buildPrint(const IQLToLLVMValue * val, const FieldTy
       // Allocate and initialize counter
       llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
       const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-      IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
+      IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type));
       buildSetNullableValue(counterLValue, buildFalse(), int32Type, int32Type);
       
       const IQLToLLVMValue * endIdx = IQLToLLVMRValue::get(this, getArraySize(val, ft), IQLToLLVMValue::eLocal);
@@ -1142,17 +1154,19 @@ void CodeGenerationContext::buildDeclareLocal(const char * nm, const FieldType *
 {
   // TODO: Check for duplicate declaration
   llvm::Value * allocAVal = buildEntryBlockAlloca(ft,nm);
-  // NULL handling
-  llvm::Value * nullVal = NULL;
   if (ft->isNullable()) {
+    // NULL handling
+    llvm::Value * nullVal = NULL;
     llvm::IRBuilder<> * b = LLVMBuilder;
     nullVal = buildEntryBlockAlloca(b->getInt1Ty(), 
                                     (boost::format("%1%NullBit") %
                                      nm).str().c_str());
     b->CreateStore(b->getFalse(), nullVal);
-  } 
+    defineVariable(nm, allocAVal, ft, nullVal, b->getInt1Ty(), IQLToLLVMValue::eLocal);
+  } else {
+    defineVariable(nm, allocAVal, ft, nullptr, nullptr, IQLToLLVMValue::eLocal);
+  }
 
-  defineVariable(nm, allocAVal, nullVal, ft, IQLToLLVMValue::eLocal);
 }
 
 void CodeGenerationContext::buildLocalVariable(const char * nm, const IQLToLLVMValue * init, const FieldType * ft)
@@ -1163,7 +1177,7 @@ void CodeGenerationContext::buildLocalVariable(const char * nm, const IQLToLLVMV
   if (ft->GetEnum() == FieldType::FIXED_ARRAY && 
       !ft->isNullable() &&
       init->getValueType() == IQLToLLVMValue::eLocal) {
-    defineVariable(nm, init->getValue(this), NULL, ft, IQLToLLVMValue::eLocal);    
+    defineVariable(nm, init->getValue(this), ft, nullptr, nullptr, IQLToLLVMValue::eLocal);    
   } else {
     // Allocate local
     buildDeclareLocal(nm, ft);
@@ -1670,7 +1684,7 @@ CodeGenerationContext::buildCall(const char * treculName,
   llvm::IRBuilder<> * b = LLVMBuilder;
 
   std::vector<llvm::Value *> callArgs;
-  llvm::Value * fn = LLVMModule->getFunction(it->second.c_str());
+  llvm::Function * fn = LLVMModule->getFunction(it->second.c_str());
   if (fn == NULL) {
     throw std::runtime_error((boost::format("Call to function %1% passed type checking "
 					    "but implementation function %2% does not exist") %
@@ -1701,9 +1715,7 @@ CodeGenerationContext::buildCall(const char * treculName,
     }
   }
   
-  llvm::Type * unwrapped = fn->getType();
-  llvm::PointerType * ptrTy = llvm::dyn_cast<llvm::PointerType>(unwrapped);
-  llvm::FunctionType * fnTy = llvm::dyn_cast<llvm::FunctionType>(ptrTy->getElementType());
+  llvm::FunctionType * fnTy = fn->getFunctionType();
   if (fnTy->getReturnType() == llvm::Type::getVoidTy(c)) {
     // Validate the calling convention.  If returning void must
     // also take RuntimeContext as last argument and take pointer
@@ -1714,31 +1726,43 @@ CodeGenerationContext::buildCall(const char * treculName,
 	!fnTy->getParamType(fnTy->getNumParams()-2)->isPointerTy())
       throw std::runtime_error("Internal Error");
 
-    const llvm::Type * retTy = retType->LLVMGetType(this);
-    // The return type is determined by next to last argument.
-    llvm::Type * retArgTy = llvm::cast<llvm::PointerType>(fnTy->getParamType(fnTy->getNumParams()-2))->getElementType();
 
     // Must alloca a value for the return value and pass as an arg.
     // No guarantee that the type of the formal of the function is exactly
     // the same as the LLVM ret type (in particular, CHAR(N) return
-    // values will have a int8* formal) so we do a bitcast.
+    // values will have a int8* formal) so we do a bitcast.   Also fixed arrays
+    // will be passed as pointers to the element type as well.
     llvm::Value * retVal = retTmp;
-    if (retTy != retArgTy) {
-      const llvm::ArrayType * arrTy = llvm::dyn_cast<llvm::ArrayType>(retTy);
-      if (retArgTy != b->getInt8Ty() ||
-	  NULL == arrTy ||
-	  arrTy->getElementType() != b->getInt8Ty()) {
-	throw std::runtime_error("INTERNAL ERROR: mismatch between IQL function "
-				 "return type and LLVM formal argument type.");
-      }
+    if (FieldType::CHAR == retType->GetEnum()) {
       retVal = LLVMBuilder->CreateBitCast(retVal,
-					  llvm::PointerType::get(retArgTy, 0),
-					  "callReturnTempCast");
+					  llvm::PointerType::get(b->getInt8Ty(), 0),
+					  "callReturnTempCast"); 
+    } else if(FieldType::FIXED_ARRAY == retType->GetEnum()) {
+      const FixedArrayType * arrTy = dynamic_cast<const FixedArrayType*>(retType);
+      retVal = LLVMBuilder->CreateBitCast(retVal,
+					  llvm::PointerType::get(arrTy->getElementType()->LLVMGetType(this), 0),
+					  "callReturnTempCast"); 
     }
+    // const llvm::Type * retTy = retType->LLVMGetType(this);
+    // // The return type is determined by next to last argument.
+    // llvm::Type * retArgTy = llvm::cast<llvm::PointerType>(fnTy->getParamType(fnTy->getNumParams()-2))->getElementType();
+    // if (retTy != retArgTy) {
+    //   const llvm::ArrayType * arrTy = llvm::dyn_cast<llvm::ArrayType>(retTy);
+    //   if (retArgTy != b->getInt8Ty() ||
+    //       NULL == arrTy ||
+    //       arrTy->getElementType() != b->getInt8Ty()) {
+    //     throw std::runtime_error("INTERNAL ERROR: mismatch between IQL function "
+    //     			 "return type and LLVM formal argument type.");
+    //   }
+    //   retVal = LLVMBuilder->CreateBitCast(retVal,
+    //     				  llvm::PointerType::get(retArgTy, 0),
+    //     				  "callReturnTempCast");
+    // }
     callArgs.push_back(retVal);					
     // Also must pass the context for allocating the string memory.
     llvm::Value * contextVal = getContextArgumentRef();
-    callArgs.push_back(LLVMBuilder->CreateLoad(llvm::cast<llvm::PointerType>(contextVal->getType())->getElementType(),
+    // BOOST_ASSERT(llvm::cast<llvm::PointerType>(contextVal->getType())->getElementType() == LLVMDecContextPtrType);
+    callArgs.push_back(LLVMBuilder->CreateLoad(LLVMDecContextPtrType,
 					       contextVal,
 					       "ctxttmp"));    
     LLVMBuilder->CreateCall(fnTy,
@@ -2269,7 +2293,7 @@ CodeGenerationContext::buildCastDecimal(const IQLToLLVMValue * e,
       return buildCall("InternalDecimalFromVarchar", args, ret, retType);
     }
   case FieldType::BIGDECIMAL:
-    b->CreateStore(b->CreateLoad(e1->getType()->getPointerElementType(), e1), ret);
+    b->CreateStore(b->CreateLoad(argType->LLVMGetType(this), e1), ret);
     return e->getValueType();
   case FieldType::DATE:
     {
@@ -2617,14 +2641,14 @@ void CodeGenerationContext::buildArrayElementwiseCopy(const IQLToLLVMValue * e,
   // Allocate and initialize counter
   llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
   const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
+  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type));
   buildSetNullableValue(counterLValue, beginIdx, int32Type, int32Type);
         
   // DECLARE retIdx = retBeginIdx
   // Allocate and initialize counter
   llvm::Value * retAllocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"retIdx");
   const IQLToLLVMValue * retCounter = IQLToLLVMRValue::get(this, retAllocAVal, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * retCounterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(retCounter, int32Type), nullptr);
+  IQLToLLVMLocal * retCounterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(retCounter, int32Type));
   buildSetNullableValue(retCounterLValue, retBeginIdx, int32Type, int32Type);
         
   whileBegin();
@@ -2794,7 +2818,7 @@ void CodeGenerationContext::buildEraseAllocationTracking(const IQLToLLVMValue * 
       // Allocate and initialize counter
       llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
       const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-      IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
+      IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type));
       buildSetNullableValue(counterLValue, buildFalse(), int32Type, int32Type);
 
       const IQLToLLVMValue * endIdx = IQLToLLVMRValue::get(this, getArraySize(iqlVal, ft), IQLToLLVMValue::eLocal);
@@ -3648,8 +3672,8 @@ CodeGenerationContext::buildCharAdd(const IQLToLLVMValue * lhs,
   llvm::Value * e2 = rhs->getValue(this);
 
   llvm::Type * int8Ptr = b->getInt8PtrTy(0);
-  unsigned lhsSz = getCharArrayLength(e1)-1;
-  unsigned rhsSz = getCharArrayLength(e2)-1;
+  unsigned lhsSz = lhsType->GetSize();
+  unsigned rhsSz = rhsType->GetSize();
   // Allocate target storage and
   // memcpy the two char variables to the target at appropriate offsets.
   // Allocate storage for return value.  Bit cast for argument to memcpy
@@ -3876,13 +3900,15 @@ CodeGenerationContext::buildVarcharGetPtr(llvm::Value * varcharPtr)
   
   b->CreateCondBr(buildVarArrayIsSmall(varcharPtr), smallBB, largeBB);
   b->SetInsertPoint(smallBB);
-  b->CreateStore(b->CreateConstGEP1_64(b->CreateBitCast(varcharPtr, 
-							b->getInt8PtrTy()), 
+  b->CreateStore(b->CreateConstGEP1_64(b->getInt8Ty(),
+                                       b->CreateBitCast(varcharPtr, b->getInt8PtrTy()), 
 				       1),
 		 ret);
   b->CreateBr(contBB);
   b->SetInsertPoint(largeBB);
-  b->CreateStore(b->CreateLoad(b->CreateStructGEP(varcharPtr, 2)), ret);
+  b->CreateStore(b->CreateLoad(b->getInt8PtrTy(),
+                               b->CreateStructGEP(LLVMVarcharType, varcharPtr, 2)),
+                 ret);
   b->CreateBr(contBB);
   b->SetInsertPoint(contBB);
   return b->CreateLoad(b->getInt8PtrTy(), ret);
@@ -4133,7 +4159,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildRef(const IQLToLLVMValue * al
   if (isPointerToValueType(allocAVal->getValue(this), resultTy)) {
     //std::cout << "Loading variable " << var << "\n";
     return IQLToLLVMRValue::get(this, 
-                                b->CreateLoad(allocAVal->getValue(this)->getType()->getPointerElementType(),
+                                b->CreateLoad(resultTy->LLVMGetType(this),
                                               allocAVal->getValue(this)),
                                 allocAVal->getNull(this),
                                 IQLToLLVMValue::eLocal);
@@ -4289,30 +4315,6 @@ const IQLToLLVMValue * CodeGenerationContext::buildNullableBinaryOp(const IQLToL
   return IQLToLLVMRValue::get(this, result, nv, vt);
 }
 
-bool CodeGenerationContext::isChar(llvm::Type * ty)
-{
-  // This is safe for now since we don't have int8 as an 
-  // IQL type.  Ultimately this should be removed and
-  // we should be using FieldType for this info.
-  llvm::PointerType * pTy = llvm::dyn_cast<llvm::PointerType>(ty);
-  llvm::ArrayType * aTy = pTy != NULL ? llvm::dyn_cast<llvm::ArrayType>(pTy->getElementType()) : NULL;
-  return aTy != NULL && aTy->getElementType()->isIntegerTy(8);
-}
-bool CodeGenerationContext::isChar(llvm::Value * val)
-{
-  return isChar(val->getType());
-}
-
-int32_t CodeGenerationContext::getCharArrayLength(llvm::Type * ty)
-{
-  return llvm::cast<llvm::ArrayType>(llvm::cast<llvm::PointerType>(ty)->getElementType())->getNumElements();
-}
-
-int32_t CodeGenerationContext::getCharArrayLength(llvm::Value * val)
-{
-  return getCharArrayLength(val->getType());
-}
-
 llvm::Value * CodeGenerationContext::trimAlloca(llvm::Value * result, 
 						const FieldType * resultType)
 {
@@ -4345,7 +4347,7 @@ llvm::Value * CodeGenerationContext::trimAlloca(llvm::Value * result,
   return result;
 }
 
-llvm::Value * CodeGenerationContext::getCachedLocal(llvm::Type * ty)
+llvm::Value * CodeGenerationContext::getCachedLocal(const FieldType * ty)
 {
   local_cache::iterator it = AllocaCache->find(ty);
   if (it == AllocaCache->end() || 0==it->second.size()) return NULL;
@@ -4354,12 +4356,9 @@ llvm::Value * CodeGenerationContext::getCachedLocal(llvm::Type * ty)
   return v;
 }
 
-void CodeGenerationContext::returnCachedLocal(llvm::Value * v)
+void CodeGenerationContext::returnCachedLocal(llvm::Value * v, const FieldType * ty)
 {
-  const llvm::Type * ty = v->getType();
-  const llvm::PointerType * pty = llvm::dyn_cast<llvm::PointerType>(ty);
-  if (pty == NULL) return;
-  ty = pty->getElementType();
+  const llvm::PointerType * pty = llvm::dyn_cast<llvm::PointerType>(v->getType());
   local_cache c(*AllocaCache);
   local_cache::iterator it = c.find(ty);
   if (it == c.end()) {
@@ -4615,16 +4614,18 @@ void CodeGenerationContext::buildCaseBlockBegin(const FieldType * caseType)
   llvm::BasicBlock * mergeBB = llvm::BasicBlock::Create(*c, "casemerge", f);
   // Allocate space for a result.  Try to reuse space used for a
   // completed CASE.
-  llvm::Type * retTy = caseType->LLVMGetType(this);
-  llvm::Value * result = getCachedLocal(retTy);
+  llvm::Value * result = getCachedLocal(caseType);
   if (result == NULL) {
+    llvm::Type * retTy = caseType->LLVMGetType(this);
     result = buildEntryBlockAlloca(retTy, "caseResult");    
   }
   llvm::Value * nullVal = NULL;
+  llvm::Type * nullValTy = NULL;
   if (caseType->isNullable()) {
-    nullVal = buildEntryBlockAlloca(b->getInt1Ty(), "caseNullBit");
+    nullValTy = b->getInt1Ty();
+    nullVal = buildEntryBlockAlloca(nullValTy, "caseNullBit");
   }     
-  IQLToLLVMLocal * lVal = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(IQLToLLVMRValue::get(this, result, IQLToLLVMValue::eLocal), caseType), nullVal);
+  IQLToLLVMLocal * lVal = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(IQLToLLVMRValue::get(this, result, IQLToLLVMValue::eLocal), caseType), nullVal, nullValTy);
   IQLCase.push(new IQLToLLVMCaseState(lVal, mergeBB));  
   BOOST_ASSERT(IQLCase.size() != 0);
 }
@@ -4711,7 +4712,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildCaseBlockFinish(const FieldTy
       isPointerToValueType(result, caseType)) {
     // The pointer to the local will not be used beyond this point,
     // so it may be reused.
-    returnCachedLocal(result);
+    returnCachedLocal(result, caseType);
     result = b->CreateLoad(caseType->LLVMGetType(this), result);
   }
   // Done with this CASE so pop off.
@@ -4934,20 +4935,20 @@ CodeGenerationContext::buildArrayElementwiseEquals(const IQLToLLVMValue * lhs,
   // DECLARE ret = true
   // Allocate return value and initialize to true
   const IQLToLLVMValue * ret = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(), "ret"), nullptr, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type), nullptr);
+  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type));
   buildSetNullableValue(retLValue, one, int32Type, int32Type);
   
   // DECLARE idx = 0
   // Allocate and initialize counter
   llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
   const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
+  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type));
   buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
 
   // DECLARE notDone = true
   // notDone flag is a hack since I haven't implemented IF and BREAK.   Initialize to true.
   const IQLToLLVMValue * notDone = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(),"notDone"), IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type), nullptr);
+  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type));
   buildSetNullableValue(notDoneLValue, one, int32Type, int32Type);
 
   whileBegin();
@@ -5010,20 +5011,20 @@ CodeGenerationContext::buildArrayElementwiseCompare(const IQLToLLVMValue * lhs,
   // DECLARE ret = false
   // Allocate return value and initialize to false
   const IQLToLLVMValue * ret = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(), "ret"), nullptr, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type), nullptr);
+  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type));
   buildSetNullableValue(retLValue, zero, int32Type, int32Type);
   
   // DECLARE idx = 0
   // Allocate and initialize counter
   llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
   const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
+  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type));
   buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
 
   // DECLARE notDone = true
   // notDone flag is a hack since I haven't implemented IF and BREAK.   Initialize to true.
   const IQLToLLVMValue * notDone = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(),"notDone"), IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type), nullptr);
+  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type));
   buildSetNullableValue(notDoneLValue, one, int32Type, int32Type);
 
   whileBegin();
@@ -5099,7 +5100,7 @@ void CodeGenerationContext::buildArrayElementwiseHash(const IQLToLLVMValue * e,
   // Allocate and initialize counter
   llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
   const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type), nullptr);
+  IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type));
   buildSetNullableValue(counterLValue, zero, int32Type, int32Type);
         
   whileBegin();
@@ -5159,13 +5160,13 @@ CodeGenerationContext::buildStructElementwiseCompare(const IQLToLLVMValue * lhs,
   // DECLARE ret = false
   // Allocate return value and initialize to false
   const IQLToLLVMValue * ret = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(), "ret"), nullptr, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type), nullptr);
+  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type));
   buildSetNullableValue(retLValue, zero, int32Type, int32Type);
   
   // DECLARE notDone = true
   // notDone flag is a hack since I haven't implemented IF and BREAK.   Initialize to true.
   const IQLToLLVMValue * notDone = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(),"notDone"), IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type), nullptr);
+  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type));
   buildSetNullableValue(notDoneLValue, one, int32Type, int32Type);
 
   for(std::size_t i=0; i<promoted->getNumElements(); ++i) {
@@ -5231,13 +5232,13 @@ CodeGenerationContext::buildStructElementwiseCompare(const IQLToLLVMValue * lhs,
   // DECLARE ret = false
   // Allocate return value and initialize to false
   const IQLToLLVMValue * ret = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(), "ret"), nullptr, IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type), nullptr);
+  IQLToLLVMLocal * retLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(ret, int32Type));
   buildSetNullableValue(retLValue, zero, int32Type, int32Type);
   
   // DECLARE notDone = true
   // notDone flag is a hack since I haven't implemented IF and BREAK.   Initialize to true.
   const IQLToLLVMValue * notDone = IQLToLLVMRValue::get(this, buildEntryBlockAlloca(b->getInt32Ty(),"notDone"), IQLToLLVMValue::eLocal);
-  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type), nullptr);
+  IQLToLLVMLocal * notDoneLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(notDone, int32Type));
   buildSetNullableValue(notDoneLValue, one, int32Type, int32Type);
 
 
@@ -5376,13 +5377,13 @@ CodeGenerationContext::buildCompare(const IQLToLLVMValue * lhs,
     // TODO: I don't really know what the semantics of char(N) equality are (e.g. when the sizes aren't equal).
     // FWIW, semantics of char(N) equality is that one compares assuming
     // space padding to MAX(M,N)
-    // For now I am draconian and say they are never equal????  
-    if (getCharArrayLength(e1) != getCharArrayLength(e2)) {
+    // For now I am draconian and say they are never equal????
+    if (lhsType->GetSize() != rhsType->GetSize()) {
       r = b->getInt32(0);
       b->CreateStore(r, ret);
       return IQLToLLVMValue::eLocal;
     } else {
-      llvm::Value * m = buildMemcmp(e1, FieldAddress(), e2, FieldAddress(), getCharArrayLength(e1));
+      llvm::Value * m = buildMemcmp(e1, FieldAddress(), e2, FieldAddress(), lhsType->GetSize());
       // Compare result to zero and return
       return buildCompareResult(b->CreateICmp(intOp, b->getInt32(0),m),
 				ret);
@@ -5406,7 +5407,7 @@ CodeGenerationContext::buildCompare(const IQLToLLVMValue * lhs,
     // FWIW, semantics of char(N) equality is that one compares assuming
     // space padding to MAX(M,N)
     // For now I am draconian and say they are never equal????  
-    if (getCharArrayLength(e1) != getCharArrayLength(e2)) {
+    if (lhsType->GetSize() != rhsType->GetSize()) {
       r = b->getInt32(0);
       b->CreateStore(r, ret);
       return IQLToLLVMValue::eLocal;
@@ -5951,13 +5952,10 @@ void CodeGenerationContext::buildHash(const std::vector<IQLToLLVMTypedValue> & a
         std::vector<IQLToLLVMTypedValue> hashArgs( { IQLToLLVMTypedValue(elt, eltTy) } );
         buildHash(hashArgs, previousHash, firstFlag);
       }
-    } else if (isChar(argVal)) {
-      // Hash on array length - 1 for CHAR types because of trailing null char and we want
+    } else if (args[i].getType()->GetEnum() == FieldType::CHAR) {
+      // Don't has on trailing null terminator in char type to maintain
       // consistency with varchar hashing.
-      unsigned arrayLen = getCharArrayLength(argVal);
-      if (args[i].getType()->GetEnum() == FieldType::CHAR) {
-	arrayLen -= 1;
-      }
+      unsigned arrayLen = args[i].getType()->GetSize();
       llvm::Value * sz = b->getInt32(arrayLen);
       callArgs[0] = b->CreateBitCast(argVal, argTy);
       callArgs[1] = sz;
@@ -6026,13 +6024,15 @@ const IQLToLLVMValue * CodeGenerationContext::buildSortPrefix(const IQLToLLVMVal
       b->CreateXor(argVal, b->getInt64(0x8000000000000000LL), "int64PrefixOffset");
     retVal = b->CreateLShr(offsetVal, b->getInt64(64-prefixBits), "int64PrefixAs64");
     retVal = b->CreateTrunc(retVal, b->getInt32Ty(), "int64Prefix");
-  } else if (isChar(argVal)) {
+  } else if (argTy->GetEnum() == FieldType::CHAR ||
+             argTy->GetEnum() == FieldType::IPV6 ||
+             argTy->GetEnum() == FieldType::CIDRV6) {
     // Take top 32 bits of array, byte swap into a uint32_t and then divide by 2
     // TODO: If there are less than 32 bits in the array then there is room
     // for parts of other field(s) in the prefix...
     retVal = b->getInt32(0);
-    int numBytes = getCharArrayLength(argVal) >= 4 ? 
-      4 : (int) getCharArrayLength(argVal);
+    int numBytes = argTy->GetSize() >= 4 ? 
+      4 : (int) argTy->GetSize();
     for(int i = 0; i<numBytes; ++i) {
       llvm::Value * tmp = b->CreateLoad(b->getInt8Ty(),
                                         b->CreateConstInBoundsGEP2_64(argTy->LLVMGetType(this), argVal, 0, i));
@@ -6085,7 +6085,7 @@ void CodeGenerationContext::buildReturnValue(const IQLToLLVMValue * iqlVal, cons
   // Due to our uniform implementation of mutable variables, our return location is actually
   // a pointer to a pointer (should be pointer to retType)
   llvm::Value * locOfLoc = lookup("__ReturnValue__")->getValuePointer(this)->getValue(this);
-  llvm::Value * loc = b->CreateLoad(locOfLoc->getType()->getPointerElementType(), locOfLoc);
+  llvm::Value * loc = b->CreateLoad(llvm::PointerType::get(retType->LLVMGetType(this), 0), locOfLoc);
 
   llvm::Value * llvmVal = iqlVal->getValue(this);
 
@@ -6115,10 +6115,6 @@ void CodeGenerationContext::buildReturnValue(const IQLToLLVMValue * iqlVal, cons
     b->CreateStore(llvmVal, loc); 
   } else {
     llvm::Value * val = b->CreateLoad(retType->LLVMGetType(this), llvmVal);
-    llvm::PointerType * st = llvm::dyn_cast<llvm::PointerType>(loc->getType());
-    if (st == NULL || st->getElementType() != val->getType()) {
-      throw std::runtime_error("Type mismatch with return value");
-    }
     b->CreateStore(val, loc);
   }
   // The caller expects a BB into which it can insert LLVMBuildRetVoid.
