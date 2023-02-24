@@ -37,11 +37,13 @@
 
 #include <zlib.h>
 
+#include <condition_variable>
 #include <iostream>
+#include <mutex>
+#include <thread>
 
 #include <boost/iostreams/device/back_inserter.hpp>
 #include <boost/iostreams/stream.hpp>
-#include <boost/thread.hpp>
 
 #include "RuntimePort.hh"
 #include "RuntimePlan.hh"
@@ -54,8 +56,8 @@ class AsyncWriter
 private:
   _Op& mOp;
   RuntimeFifo<RecordBuffer, 14> mRequests;
-  boost::mutex mGuard;
-  boost::condition_variable mCondVar;
+  std::mutex mGuard;
+  std::condition_variable mCondVar;
   std::string mError;
 
   // Used by enqueue to amortize locking overhead
@@ -81,7 +83,7 @@ template <class _Op>
 RecordBuffer AsyncWriter<_Op>::dequeue()
 {
   if (mDequeueBuffer.getSize() == 0) {
-    boost::unique_lock<boost::mutex> lock(mGuard);
+    std::unique_lock<std::mutex> lock(mGuard);
     while(mRequests.getSize() == 0) {
       mCondVar.wait(lock);
     }
@@ -100,7 +102,7 @@ void AsyncWriter<_Op>::enqueue(RecordBuffer buf)
   bool isEOS = RecordBuffer::isEOS(buf);
   mEnqueueBuffer.Push(buf);
   if (isEOS || mEnqueueBuffer.getSize() >= 140) {
-    boost::unique_lock<boost::mutex> lock(mGuard);
+    std::unique_lock<std::mutex> lock(mGuard);
     while(mError.size()==0 && mRequests.getSize() >= 1400) {
       mCondVar.wait(lock);
     }
@@ -137,7 +139,7 @@ void AsyncWriter<_Op>::run()
   }
 
   if (err.size()) {
-    boost::unique_lock<boost::mutex> lock(mGuard);
+    std::unique_lock<std::mutex> lock(mGuard);
     mError = err;
     mCondVar.notify_one();
   }
@@ -146,7 +148,7 @@ void AsyncWriter<_Op>::run()
 template <class _Op>
 void AsyncWriter<_Op>::getError(std::string& err) 
 {
-  boost::unique_lock<boost::mutex> lock(mGuard);
+  std::unique_lock<std::mutex> lock(mGuard);
   err = mError;
 }
 

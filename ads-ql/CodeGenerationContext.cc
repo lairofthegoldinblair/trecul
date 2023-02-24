@@ -6684,7 +6684,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildAggregateFunction(const char 
 
   // TODO: Get the aggregate function instance
   // from the symbol table.
-  boost::shared_ptr<AggregateFunction> agg = AggregateFunction::get(fn);
+  std::shared_ptr<AggregateFunction> agg = AggregateFunction::get(fn);
   agg->update(this, aggFn, e, exprTy, retTy);
   // Move temporarily to the initialization context and provide init
   // for the aggregate variable
@@ -7094,7 +7094,7 @@ void ArrayConcatAggregate::updateNotNull(CodeGenerationContext * ctxt,
   ctxt->buildSetNullableValue(fieldLVal, arr, ft, false, true);
 }
 
-boost::shared_ptr<AggregateFunction> AggregateFunction::get(const char * fn)
+std::shared_ptr<AggregateFunction> AggregateFunction::get(const char * fn)
 {
   AggregateFunction * agg = NULL;
   if (boost::algorithm::iequals(fn, "max")) {
@@ -7109,6 +7109,6 @@ boost::shared_ptr<AggregateFunction> AggregateFunction::get(const char * fn)
     throw std::runtime_error ((boost::format("Unknown aggregate function: %1%")%
 			       fn).str());
   }
-  return boost::shared_ptr<AggregateFunction>(agg);
+  return std::shared_ptr<AggregateFunction>(agg);
 }
 

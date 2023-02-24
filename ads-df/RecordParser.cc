@@ -32,7 +32,11 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <condition_variable>
 #include <iomanip>
+#include <memory>
+#include <mutex>
+#include <thread>
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/algorithm/string/predicate.hpp>
@@ -41,14 +45,12 @@
 #include <boost/filesystem.hpp>
 #include <boost/interprocess/file_mapping.hpp>
 #include <boost/interprocess/mapped_region.hpp>
-#include <boost/make_shared.hpp>
-#include <boost/thread.hpp>
 
 #include "RecordParser.hh"
 
 void stdio_file_traits::expand(std::string pattern, 
 		     int32_t numPartitions,
-		     std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files)
+		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
 {
    gzip_file_traits::expand(pattern, numPartitions, files);
 }
@@ -130,7 +132,7 @@ bool stdio_file_traits::isEOF(stdio_file_traits::file_type f)
 
 void gzip_file_traits::expand(std::string pattern, 
 			      int32_t numPartitions,
-			      std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files)
+			      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
 {
   AutoFileSystem fs(URI::get("file:///"));
   fs->expand(pattern, numPartitions, files);  
@@ -224,13 +226,13 @@ bool FieldImporter::ImportVariableLengthTerminatedStringWithEscapes(DataBlock& s
   return true;
 }
 
-static boost::mutex sDataBlockFactoryGuard;
+static std::mutex sDataBlockFactoryGuard;
 
 DataBlockFactory::DataBlockFactory()
   :
   mGuard(NULL)
 {
-  mGuard = new boost::mutex();
+  mGuard = new std::mutex();
 }
 
 DataBlockFactory::~DataBlockFactory()
@@ -242,7 +244,7 @@ DataBlockFactory& DataBlockFactory::get()
 {
   // TODO: Manage lifetime here...
   static DataBlockFactory * factory = NULL;
-  boost::unique_lock<boost::mutex> lock(sDataBlockFactoryGuard);
+  std::unique_lock<std::mutex> lock(sDataBlockFactoryGuard);
   if (NULL == factory) {
     factory = new DataBlockFactory();
   }
@@ -252,7 +254,7 @@ DataBlockFactory& DataBlockFactory::get()
 void DataBlockFactory::registerCreator(const std::string& uriScheme, 
 					CreateDataBlockFn creator)
 {
-  boost::unique_lock<boost::mutex> lock(*mGuard);
+  std::unique_lock<std::mutex> lock(*mGuard);
   std::string ciScheme = boost::algorithm::to_lower_copy(uriScheme);
   if (mCreators.find(ciScheme) != mCreators.end()) {
     throw std::runtime_error((boost::format("Error: attempt to register "
@@ -268,7 +270,7 @@ DataBlock * DataBlockFactory::create(const char * filename,
 				     uint64_t begin,
 				     uint64_t end)
 {
-  boost::unique_lock<boost::mutex> lock(*mGuard);
+  std::unique_lock<std::mutex> lock(*mGuard);
   UriPtr uri = UriPtr(new URI(filename));
   std::string ciScheme = boost::algorithm::to_lower_copy(uri->getScheme());
   if (0 == ciScheme.size()) {
@@ -338,9 +340,9 @@ static StdioDataBlockRegistrar dataBlockRegistrar;
 class MemoryMappedPrefetch
 {
 private:
-  boost::thread * mThread;
-  boost::mutex mGuard;
-  boost::condition_variable mCondVar;
+  std::thread * mThread;
+  std::mutex mGuard;
+  std::condition_variable mCondVar;
   const uint8_t * mBegin;
   const uint8_t * mEnd;
   // Put this here to avoid having the 
@@ -375,7 +377,7 @@ MemoryMappedPrefetch::MemoryMappedPrefetch()
   mLast(0),
   mStop(false)
 {
-  mThread = new boost::thread(boost::bind(&MemoryMappedPrefetch::run, this));
+  mThread = new std::thread(std::bind(&MemoryMappedPrefetch::run, this));
 }
 
 MemoryMappedPrefetch::~MemoryMappedPrefetch()
@@ -387,7 +389,7 @@ void MemoryMappedPrefetch::run()
 {
   while(true) {
     {
-      boost::unique_lock<boost::mutex> lock(mGuard);
+      std::unique_lock<std::mutex> lock(mGuard);
       while(mBegin == NULL && !mStop) {
 	mCondVar.wait(lock);
       }
@@ -399,7 +401,7 @@ void MemoryMappedPrefetch::run()
       mLast = *it;
     }
     {
-      boost::unique_lock<boost::mutex> lock(mGuard);
+      std::unique_lock<std::mutex> lock(mGuard);
       mBegin = mEnd = NULL;
       mCondVar.notify_one();
     }
@@ -410,7 +412,7 @@ void MemoryMappedPrefetch::start(const uint8_t * begin, const uint8_t * end)
 {
   BOOST_ASSERT(mBegin == NULL);
   BOOST_ASSERT(mEnd == NULL);
-  boost::unique_lock<boost::mutex> lock(mGuard);
+  std::unique_lock<std::mutex> lock(mGuard);
   mBegin = begin;
   mEnd = end;
   mCondVar.notify_one();
@@ -418,7 +420,7 @@ void MemoryMappedPrefetch::start(const uint8_t * begin, const uint8_t * end)
 
 void MemoryMappedPrefetch::stop()
 {
-  boost::unique_lock<boost::mutex> lock(mGuard);
+  std::unique_lock<std::mutex> lock(mGuard);
   while(mBegin != 0) {
     std::cout << "Waiting on prefetcher..." << std::endl;
     mCondVar.wait(lock);
@@ -427,7 +429,7 @@ void MemoryMappedPrefetch::stop()
 
 void MemoryMappedPrefetch::shutdown()
 {
-  boost::unique_lock<boost::mutex> lock(mGuard);
+  std::unique_lock<std::mutex> lock(mGuard);
   mStop = true;
   mCondVar.notify_one();
   if (mThread) {
@@ -453,13 +455,13 @@ MemoryMappedFileBuffer::MemoryMappedFileBuffer(const char * file,
   // We shouldn't read too far past this (to a record boundary if necessary).
   mStreamEnd = std::min(mFileSize, (uintmax_t) mStreamEnd);
 
-  mMapping = boost::shared_ptr<boost::interprocess::file_mapping>(new boost::interprocess::file_mapping(file,
-													boost::interprocess::read_only
-													));
-  mRegion = boost::shared_ptr<boost::interprocess::mapped_region>(new boost::interprocess::mapped_region(*mMapping.get(),
-													boost::interprocess::read_only,
-													beginOffset,
-													mBlockSize));
+  mMapping = std::make_shared<boost::interprocess::file_mapping>(file,
+                                                                 boost::interprocess::read_only
+                                                                 );
+  mRegion = std::make_shared<boost::interprocess::mapped_region>(*mMapping.get(),
+                                                                 boost::interprocess::read_only,
+                                                                 beginOffset,
+                                                                 mBlockSize);
   mCurrentBlockPtr = reinterpret_cast<uint8_t *>(mRegion->get_address());
   mCurrentBlockEnd = mCurrentBlockPtr + std::min(std::size_t(mFileSize-mRegionOffset), 
 						 mRegion->get_size());
@@ -495,7 +497,7 @@ void MemoryMappedFileBuffer::openWindow(std::size_t sz)
   sz = (sz + boost::interprocess::mapped_region::get_page_size() - 1)/boost::interprocess::mapped_region::get_page_size();
   // Open up a block of at least size sz starting at keep.
   mRegionOffset += uint64_t(keep-reinterpret_cast<uint8_t *>(mRegion->get_address()));
-  mRegion = boost::shared_ptr<boost::interprocess::mapped_region>(
+  mRegion = std::shared_ptr<boost::interprocess::mapped_region>(
 								 new boost::interprocess::mapped_region(*mMapping.get(),
 													boost::interprocess::read_only,
 													mRegionOffset,
@@ -535,7 +537,7 @@ ExplicitChunkStrategy::~ExplicitChunkStrategy()
 void ExplicitChunkStrategy::expand(const std::string& file,
 				   int32_t numPartitions)
 {
-  FileSystem * fs = FileSystem::get(boost::make_shared<URI>(file.c_str()));
+  FileSystem * fs = FileSystem::get(std::make_shared<URI>(file.c_str()));
   // Expand file name globbing
   fs->expand(file, numPartitions, mFile);
   FileSystem::release(fs);
@@ -547,7 +549,7 @@ void ExplicitChunkStrategy::expand(const std::string& file,
 }
 
 void ExplicitChunkStrategy::getFilesForPartition(int32_t partition,
-						 std::vector<boost::shared_ptr<FileChunk> >& files) const
+						 std::vector<std::shared_ptr<FileChunk> >& files) const
 {
   files = mFile[partition];
 }
@@ -574,7 +576,7 @@ void SerialChunkStrategy::expand(const PathPtr & uri,
 }
 
 void SerialChunkStrategy::getFilesForPartition(int32_t partition,
-					       std::vector<boost::shared_ptr<FileChunk> >& files) const
+					       std::vector<std::shared_ptr<FileChunk> >& files) const
 {
   // get file that matches the serial.
   std::ostringstream ss;
@@ -585,7 +587,7 @@ void SerialChunkStrategy::getFilesForPartition(int32_t partition,
   PathPtr serialPath = Path::get(mUri, ss.str());
   if (!fs->exists(serialPath)) return;
   const std::string& fname(serialPath->toString());
-  files.push_back(boost::make_shared<FileChunk>(fname, 0,
-						std::numeric_limits<uint64_t>::max()));
+  files.push_back(std::make_shared<FileChunk>(fname, 0,
+                                              std::numeric_limits<uint64_t>::max()));
 }
 

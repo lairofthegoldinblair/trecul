@@ -47,13 +47,13 @@
 #endif
 
 #include <fstream>
+#include <memory>
+#include <thread>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/program_options.hpp>
-#include <boost/shared_ptr.hpp>
 #include <boost/bind/bind.hpp>
 #include <boost/regex.hpp>
 #include <boost/iostreams/stream.hpp>
-#include <boost/thread.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 #if defined(__APPLE__) || defined(__APPLE_CC__)
@@ -157,7 +157,7 @@ ServiceCompletionFifo::~ServiceCompletionFifo()
 
 void ServiceCompletionFifo::write(RecordBuffer buf)
 {
-  boost::mutex::scoped_lock channelGuard(mLock);
+  std::lock_guard<std::mutex> channelGuard(mLock);
   DataflowSchedulerScopedLock schedGuard(mTargetScheduler);
   mQueue.Push(buf);
   mRecordsRead += 1;
@@ -173,7 +173,7 @@ void ServiceCompletionFifo::writeSomeToPort()
 {
   // Move data into the target port.
   // Signal target that read request is complete.
-  boost::mutex::scoped_lock channelGuard(mLock);
+  std::lock_guard<std::mutex> channelGuard(mLock);
   DataflowSchedulerScopedLock schedGuard(mTargetScheduler);
   mQueue.popAndPushSomeTo(mTarget->getLocalBuffer());
   mTargetScheduler.readComplete(*mTarget);
@@ -211,7 +211,7 @@ void RuntimeProcess::init(int32_t partitionStart,
 			  const RuntimeOperatorPlan& plan,
 			  ProcessRemotingFactory& remoting)
 {
-  mRemoteExecution = boost::shared_ptr<ProcessRemoting>(remoting.create(*this));
+  mRemoteExecution = std::shared_ptr<ProcessRemoting>(remoting.create(*this));
   if (partitionStart < 0 || partitionEnd >= numPartitions)
     throw std::runtime_error("Invalid partition allocation to process");
   for(int32_t i=partitionStart; i<=partitionEnd; i++) {
@@ -494,8 +494,8 @@ void RuntimeProcess::run()
 {
   validateGraph();
   // Simple model: one thread per scheduler.
-  std::vector<boost::shared_ptr<boost::thread> > threads;
-  std::vector<boost::shared_ptr<DataflowSchedulerThreadRunner> > runners;
+  std::vector<std::shared_ptr<std::thread> > threads;
+  std::vector<std::shared_ptr<DataflowSchedulerThreadRunner> > runners;
 
   // Start any threads necessary for remote execution
   mRemoteExecution->runRemote(threads);
@@ -505,8 +505,8 @@ void RuntimeProcess::run()
       it != mSchedulers.end();
       ++it) {
     it->second->setOperators(mPartitionIndex[it->first]);
-    runners.push_back(boost::shared_ptr<DataflowSchedulerThreadRunner>(new DataflowSchedulerThreadRunner(*it->second)));
-    threads.push_back(boost::shared_ptr<boost::thread>(new boost::thread(boost::bind(&DataflowSchedulerThreadRunner::run, runners.back()))));
+    runners.push_back(std::shared_ptr<DataflowSchedulerThreadRunner>(new DataflowSchedulerThreadRunner(*it->second)));
+    threads.push_back(std::shared_ptr<std::thread>(new std::thread(std::bind(&DataflowSchedulerThreadRunner::run, runners.back()))));
   }
 
   // // Print out the state of channels every now and then
@@ -527,7 +527,7 @@ void RuntimeProcess::run()
   // }
   
   // Wait for workers to complete.
-  for(std::vector<boost::shared_ptr<boost::thread> >::iterator it = threads.begin();
+  for(std::vector<std::shared_ptr<std::thread> >::iterator it = threads.begin();
       it != threads.end();
       ++it) {
     (*it)->join();
@@ -536,7 +536,7 @@ void RuntimeProcess::run()
   // Check for errors and rethrow.
   int32_t numThreadErrors=0;
   std::stringstream errorMessages;
-  for(std::vector<boost::shared_ptr<DataflowSchedulerThreadRunner> >::iterator it = runners.begin();
+  for(std::vector<std::shared_ptr<DataflowSchedulerThreadRunner> >::iterator it = runners.begin();
       it != runners.end();
       ++it) {
     if ((*it)->isFailed()) {
@@ -585,7 +585,7 @@ void PlanRunner::createSerialized64PlanFromFile(const std::string& f,
   PlanCheckContext ctxt;
   DataflowGraphBuilder gb(ctxt);
   gb.buildGraphFromFile(f);  
-  boost::shared_ptr<RuntimeOperatorPlan> plan = gb.create(partitions);
+  std::shared_ptr<RuntimeOperatorPlan> plan = gb.create(partitions);
   p = PlanGenerator::serialize64(plan);
 }
 
@@ -709,13 +709,13 @@ int PlanRunner::run(int argc, char ** argv)
     std::vector<char> encoded(sz);
     istr.read(&encoded[0], sz);
 
-    boost::shared_ptr<RuntimeOperatorPlan> tmp = PlanGenerator::deserialize64(&encoded[0] ,
+    std::shared_ptr<RuntimeOperatorPlan> tmp = PlanGenerator::deserialize64(&encoded[0] ,
 									      encoded.size());
     RuntimeProcess p(partition,partition,partitions,*tmp.get());
     p.run();
     return 0;
-  } else if (vm.count("map")) {    
 #if defined(TRECUL_HAS_HADOOP)
+  } else if (vm.count("map")) {    
     bool useHp(vm.count("proxy") > 0);
     bool jvmReuse(vm.count("nojvmreuse") == 0);
     std::string inputDir(vm.count("input") ? 
@@ -790,7 +790,7 @@ int PlanRunner::run(int argc, char ** argv)
     PlanCheckContext ctxt;
     DataflowGraphBuilder gb(ctxt);
     gb.buildGraphFromFile(inputFile);
-    boost::shared_ptr<RuntimeOperatorPlan> plan = gb.create(partitions);
+    std::shared_ptr<RuntimeOperatorPlan> plan = gb.create(partitions);
     RuntimeProcess p(partition,partition,partitions,*plan.get());
     p.run();
     return 0;

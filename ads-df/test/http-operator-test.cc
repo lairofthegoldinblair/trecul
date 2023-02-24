@@ -32,16 +32,16 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <chrono>
 #include <iostream>
+#include <thread>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio.hpp>
-#include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
 #include <boost/process.hpp>
 #define BOOST_TEST_MODULE MyTest
 #include <boost/test/unit_test.hpp>
-#include <boost/thread.hpp>
 
 #include "FileSystem.hh"
 #include "RuntimeProcess.hh"
@@ -159,7 +159,7 @@ HttpOperatorProcess::HttpOperatorProcess(const std::string& program)
       break;
     } catch(std::exception & e) {
     }
-    boost::this_thread::sleep(boost::posix_time::seconds(1));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
   }  
   if (i==10) {
     throw std::runtime_error("Failed to start server");
@@ -409,9 +409,9 @@ BOOST_AUTO_TEST_CASE(postTwoRequestsInterleavedWithShutdown)
     // Now wait for a bit to make sure that we've context switched
     // then kill.  We should not be able to make a new connection
     // but should be good to complete processing on existing ones.
-    boost::this_thread::sleep(boost::posix_time::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     p.kill();
-    boost::this_thread::sleep(boost::posix_time::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     tcp::socket s3(io_service);
     s3.connect(*iterator, ec);
     BOOST_CHECK(boost::asio::error::connection_refused == ec);
@@ -449,7 +449,7 @@ BOOST_AUTO_TEST_CASE(postTwoRequestsInterleavedWithErrorRequest)
     tcp::socket s2(io_service);
     s2.connect(*iterator);
     boost::asio::write(s2, boost::asio::buffer(request2.c_str(), 4));
-    boost::this_thread::sleep(boost::posix_time::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     tcp::socket s3(io_service);
     s3.connect(*iterator, ec);
     boost::asio::write(s3, boost::asio::buffer(request3.c_str(), request1.size()));
@@ -490,7 +490,7 @@ BOOST_AUTO_TEST_CASE(postTwoRequestsMultipleRecordsInterleaved1)
     boost::asio::write(s2, boost::asio::buffer(request2.c_str(), request2.size()-2));
     // This pause allows the first records of the two sockets to be processed before sending
     // through the rest of the data.
-    boost::this_thread::sleep(boost::posix_time::seconds(1));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     boost::asio::write(s1, boost::asio::buffer(request1.c_str() + request1.size()-6, 6));
     read200Response(s1);
     s1.close();
@@ -533,7 +533,7 @@ BOOST_AUTO_TEST_CASE(postTwoRequestsMultipleRecordsInterleavedWithClosedConnecti
     s2.close();
     // Wait before killing; there is a race condition for when the close
     // gets to the operator.
-    boost::this_thread::sleep(boost::posix_time::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     p.kill();
     int32_t ret = p.waitForCompletion();
     BOOST_CHECK_EQUAL(0, ret);

@@ -33,10 +33,10 @@
  */
 
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/make_shared.hpp>
 #include <boost/tokenizer.hpp>
 #include "Pipes.hh"
 #include "TemplateFactory.hh"
@@ -70,7 +70,7 @@ class DataflowMapReducer
 {
 private:
   HadoopPipes::TaskContext & mContext;
-  boost::shared_ptr<RuntimeProcess> mProcess;
+  std::shared_ptr<RuntimeProcess> mProcess;
   NativeInputQueueOperator * mInput;
   RuntimeHadoopEmitOperator * mEmit;
   int32_t mRecordsQueued;
@@ -123,8 +123,8 @@ DataflowMapReducer::DataflowMapReducer(int32_t partition,
   mEmit(NULL),
   mRecordsQueued(0)
 {
-  mProcess = boost::make_shared<RuntimeProcess>(partition,partition,
-						numPartitions, plan);
+  mProcess = std::make_shared<RuntimeProcess>(partition,partition,
+                                              numPartitions, plan);
 
   // Find the input operator (if any) for the plan
   std::vector<NativeInputQueueOperator*> ops;
@@ -290,10 +290,10 @@ private:
 		      (((uint64_t) buf[7])) 
 		      );
   }
-  boost::shared_ptr<RuntimeOperatorPlan> tmp;
-  boost::shared_ptr<DataflowMapReducer> mMapReducer;
+  std::shared_ptr<RuntimeOperatorPlan> tmp;
+  std::shared_ptr<DataflowMapReducer> mMapReducer;
 
-  static bool hasInput(boost::shared_ptr<RuntimeOperatorPlan> p)
+  static bool hasInput(std::shared_ptr<RuntimeOperatorPlan> p)
   {
     // Find the input operator (if any) for the plan
     std::vector<const NativeInputQueueOperatorType*> ops;
@@ -383,7 +383,7 @@ public:
 						      *tmp.get(),
 						      context,
 						      true);
-    mMapReducer = boost::shared_ptr<DataflowMapReducer>(raw);
+    mMapReducer = std::shared_ptr<DataflowMapReducer>(raw);
   }
   
   void map(HadoopPipes::MapContext& context) {
@@ -402,8 +402,8 @@ public:
 
 class DataflowReduce: public HadoopPipes::Reducer {
 private:
-  boost::shared_ptr<RuntimeOperatorPlan> tmp;
-  boost::shared_ptr<DataflowMapReducer> mMapReducer;
+  std::shared_ptr<RuntimeOperatorPlan> tmp;
+  std::shared_ptr<DataflowMapReducer> mMapReducer;
 public:
   DataflowReduce(HadoopPipes::TaskContext& context) {
     // A dataflow mapper must have a plan 
@@ -436,7 +436,7 @@ public:
 						      *tmp.get(),
 						      context,
 						      false);
-    mMapReducer = boost::shared_ptr<DataflowMapReducer>(raw);
+    mMapReducer = std::shared_ptr<DataflowMapReducer>(raw);
   }
 
   void reduce(HadoopPipes::ReduceContext& context) {

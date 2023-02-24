@@ -35,12 +35,13 @@
 #ifndef __FILESYSTEM_HH__
 #define __FILESYSTEM_HH__
 
+#include <memory>
+#include <mutex>
 #include <stdint.h>
 #include <string>
 #include <vector>
 #include <map>
 #include <boost/utility.hpp>
-#include <boost/shared_ptr.hpp>
 #include <boost/serialization/nvp.hpp>
 #include <boost/serialization/serialization.hpp>
 #include <boost/serialization/split_member.hpp>
@@ -91,7 +92,7 @@ public:
   uint64_t getEnd() const { return mEnd; }
 };
 
-typedef boost::shared_ptr<class URI> UriPtr;
+typedef std::shared_ptr<class URI> UriPtr;
 
 class URI : boost::noncopyable
 {
@@ -139,7 +140,7 @@ public:
 
 std::ostream& operator<<(std::ostream& str, const URI& val);
 
-typedef boost::shared_ptr<class Path> PathPtr;
+typedef std::shared_ptr<class Path> PathPtr;
 
 class Path : boost::noncopyable
 {
@@ -218,7 +219,7 @@ class FileSystemFactory : public boost::noncopyable
 public:
   typedef class FileSystem * (*CreateFileSystemFn) (UriPtr);
 private:
-  boost::mutex * mGuard;
+  std::mutex * mGuard;
   std::map<std::string, CreateFileSystemFn> mCreators;
   FileSystemFactory();
   ~FileSystemFactory();
@@ -251,7 +252,7 @@ public:
 
   virtual void expand(std::string pattern,
 		      int32_t numPartitions,
-		      std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files) = 0;
+		      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files) = 0;
   /**
    * Get the root of the file system.
    */
@@ -260,7 +261,7 @@ public:
   /**
    * Get information about a path.
    */
-  virtual boost::shared_ptr<FileStatus> getStatus(PathPtr p) =0;
+  virtual std::shared_ptr<FileStatus> getStatus(PathPtr p) =0;
 
   /**
    * Does the path exist
@@ -281,7 +282,7 @@ public:
    * Get a directory listing of a path that isDirectory.
    */
   virtual void list(PathPtr p,
-		    std::vector<boost::shared_ptr<FileStatus> >& result) =0;
+		    std::vector<std::shared_ptr<FileStatus> >& result) =0;
 
   /**
    * Read the contents of a file into a std::string.
@@ -406,7 +407,7 @@ public:
  * TODO: We want path components of serial files to be metadata
  * driven (e.g. partitioning keys).  Integrate that functionality here.
  */
-typedef boost::shared_ptr<class SerialOrganizedTableFile> SerialOrganizedTableFilePtr;
+typedef std::shared_ptr<class SerialOrganizedTableFile> SerialOrganizedTableFilePtr;
 
 class SerialOrganizedTableFile
 {
@@ -532,7 +533,7 @@ public:
    */
   void getSerialFiles(FileSystem * fs,
 		      int32_t serialNumber,
-		      std::vector<boost::shared_ptr<FileChunk> >& files) const;
+		      std::vector<std::shared_ptr<FileChunk> >& files) const;
 };
 
 class Glob

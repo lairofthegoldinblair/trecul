@@ -35,7 +35,6 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/format.hpp>
-#include <boost/make_shared.hpp>
 #include <boost/tokenizer.hpp>
 
 #include "Merger.hh"
@@ -629,7 +628,7 @@ LogicalTableParser::LogicalTableParser(const std::string& table)
 }
 
 LogicalTableParser::LogicalTableParser(const std::string& table,
-				       boost::shared_ptr<const TableMetadata> tableMetadata)
+				       std::shared_ptr<const TableMetadata> tableMetadata)
   :
   mTable(table),
   mCommonVersion(1),
@@ -769,7 +768,7 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
 				    mPredicate.size() ? mPredicate.c_str() : NULL);
     {
       // Scope to hide fs.
-      FileSystem * fs = FileSystem::get(boost::make_shared<URI>(mFileSystem.c_str()));
+      FileSystem * fs = FileSystem::get(std::make_shared<URI>(mFileSystem.c_str()));
       mSOT->bind(fs);
       FileSystem::release(fs);
     }

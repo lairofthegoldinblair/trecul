@@ -63,7 +63,7 @@ private:
   // that will prune the directories we read from.
   std::string mPredicate;
 
-  boost::shared_ptr<const class TableMetadata> mTableMetadata;
+  std::shared_ptr<const class TableMetadata> mTableMetadata;
   class TableOutput * mTableOutput;
 
   // The format of the underlying table.
@@ -84,7 +84,7 @@ private:
 public:
   LogicalTableParser(const std::string& table);
   LogicalTableParser(const std::string& table,
-		     boost::shared_ptr<const class TableMetadata> tableMetadata);
+		     std::shared_ptr<const class TableMetadata> tableMetadata);
   ~LogicalTableParser();
   void check(PlanCheckContext& log);
   void create(class RuntimePlanBuilder& plan);  

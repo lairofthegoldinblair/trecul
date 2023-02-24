@@ -419,7 +419,7 @@ class LogicalOperatorFactory : public boost::noncopyable
 public:
   typedef class LogicalOperator * (*CreateLogicalOperatorFn) (const std::string& opType);
 private:
-  boost::mutex * mGuard;
+  std::mutex * mGuard;
   std::map<std::string, CreateLogicalOperatorFn> mCreators;
   LogicalOperatorFactory();
   ~LogicalOperatorFactory();

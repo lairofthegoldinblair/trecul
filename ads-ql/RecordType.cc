@@ -35,7 +35,6 @@
 #include <iostream>
 #include <boost/format.hpp>
 #include <boost/regex.hpp>
-#include <boost/static_assert.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 // LLVM Includes
@@ -284,12 +283,12 @@ llvm::Type * FieldType::LLVMGetType(CodeGenerationContext * ctxt) const
     return llvm::Type::getDoubleTy(*ctxt->LLVMContext);
   case DATETIME:
     {
-      BOOST_STATIC_ASSERT(sizeof(boost::posix_time::ptime) == 8);
+      static_assert(sizeof(boost::posix_time::ptime) == 8);
       return llvm::Type::getInt64Ty(*ctxt->LLVMContext);
     }
   case DATE:
     {
-      BOOST_STATIC_ASSERT(sizeof(boost::gregorian::date) == 4);
+      static_assert(sizeof(boost::gregorian::date) == 4);
       return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
     }
   case IPV4:
@@ -2226,11 +2225,11 @@ void RecordType::init(bool isSubrecord)
   }
 
   if (!isSubrecord) {
-    mMalloc = boost::shared_ptr<RecordTypeMalloc>(new RecordTypeMalloc(mAllocSize));
-    mFree = boost::shared_ptr<RecordTypeFree>(new RecordTypeFree(this));
-    mSerialize = boost::shared_ptr<RecordTypeSerialize>(new RecordTypeSerialize(mAllocSize, offsets));
-    mDeserialize = boost::shared_ptr<RecordTypeDeserialize>(new RecordTypeDeserialize(mAllocSize, offsets));
-    mPrint = boost::shared_ptr<RecordTypePrint>(new RecordTypePrint(this));
+    mMalloc = std::shared_ptr<RecordTypeMalloc>(new RecordTypeMalloc(mAllocSize));
+    mFree = std::shared_ptr<RecordTypeFree>(new RecordTypeFree(this));
+    mSerialize = std::shared_ptr<RecordTypeSerialize>(new RecordTypeSerialize(mAllocSize, offsets));
+    mDeserialize = std::shared_ptr<RecordTypeDeserialize>(new RecordTypeDeserialize(mAllocSize, offsets));
+    mPrint = std::shared_ptr<RecordTypePrint>(new RecordTypePrint(this));
   }
 }
 

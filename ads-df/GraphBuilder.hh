@@ -35,9 +35,9 @@
 #ifndef __GRAPHBUILDER_HH__
 #define __GRAPHBUILDER_HH__
 
-#include <boost/shared_ptr.hpp>
 #include <boost/variant.hpp>
 #include <map>
+#include <memory>
 
 #include "IQLGraphBuilder.hh"
 
@@ -52,17 +52,17 @@ public:
   /**
    * Serialize the plan to a binary/base256 format.
    */
-  static std::string serialize(boost::shared_ptr<RuntimeOperatorPlan> p);
-  static boost::shared_ptr<RuntimeOperatorPlan> deserialize(const char * p,
+  static std::string serialize(std::shared_ptr<RuntimeOperatorPlan> p);
+  static std::shared_ptr<RuntimeOperatorPlan> deserialize(const char * p,
 							    std::size_t sz);
   /**
    * Serialize the plan to a base64 encoded format.
    */
-  static std::string serialize64(boost::shared_ptr<RuntimeOperatorPlan> p);
-  static boost::shared_ptr<RuntimeOperatorPlan> deserialize64(const char * p,
+  static std::string serialize64(std::shared_ptr<RuntimeOperatorPlan> p);
+  static std::shared_ptr<RuntimeOperatorPlan> deserialize64(const char * p,
 							      std::size_t sz);
   virtual ~PlanGenerator() {}
-  virtual boost::shared_ptr<RuntimeOperatorPlan> create(int32_t numPartitions) =0;
+  virtual std::shared_ptr<RuntimeOperatorPlan> create(int32_t numPartitions) =0;
 };
 
 /**
@@ -100,7 +100,7 @@ public:
   }
 
   // Create the runtime plan from the graph
-  boost::shared_ptr<RuntimeOperatorPlan> create(int32_t numPartitions);
+  std::shared_ptr<RuntimeOperatorPlan> create(int32_t numPartitions);
 };
 
 

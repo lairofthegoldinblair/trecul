@@ -35,6 +35,7 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <thread>
 
 #include <boost/format.hpp>
 #include <boost/algorithm/string.hpp>
@@ -487,7 +488,7 @@ BOOST_AUTO_TEST_CASE(testInputQueueOperator)
 		"a -> b;\n"
 		"b -> c;\n"
 		);
-  boost::shared_ptr<RuntimeOperatorPlan> plan = gb.create(1);
+  std::shared_ptr<RuntimeOperatorPlan> plan = gb.create(1);
   RuntimeProcess p(0,0,1,*plan.get());
   std::vector<NativeInputQueueOperator*> ops;
   p.getOperatorOfType<>(ops);
@@ -520,8 +521,8 @@ BOOST_AUTO_TEST_CASE(testInputQueueOperator)
 BOOST_AUTO_TEST_CASE(testConcurrentFifo)
 {
   ConcurrentFifoProducerConsumer pc;
-  boost::thread p(boost::bind(&ConcurrentFifoProducerConsumer::doProducer, boost::ref(pc)));
-  boost::thread c(boost::bind(&ConcurrentFifoProducerConsumer::doConsumer, boost::ref(pc)));
+  std::thread p(std::bind(&ConcurrentFifoProducerConsumer::doProducer, std::ref(pc)));
+  std::thread c(std::bind(&ConcurrentFifoProducerConsumer::doConsumer, std::ref(pc)));
   p.join();
   c.join();
 }
@@ -2749,7 +2750,7 @@ BOOST_AUTO_TEST_CASE(testSort)
 		"b -> c;\n"
 		"c -> d;\n"
 		);
-  boost::shared_ptr<RuntimeOperatorPlan> plan = gb.create(1);
+  std::shared_ptr<RuntimeOperatorPlan> plan = gb.create(1);
   RuntimeProcess p(0,0,1,*plan.get());
   p.run();
 }

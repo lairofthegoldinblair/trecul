@@ -409,7 +409,7 @@ private:
   // The number of partitions.
   int32_t mPartitions;
   // The operators in the graph.
-  std::vector<boost::shared_ptr<AssignedOperatorType> > mOperators;
+  std::vector<std::shared_ptr<AssignedOperatorType> > mOperators;
   std::map<RuntimeOperatorType *, std::size_t> mOperatorIndex;
   
   // Different connections between operators
@@ -444,7 +444,7 @@ private:
   }
 
   // Predicate for extracting operators associated with a given partition
-  typedef boost::shared_ptr<AssignedOperatorType> op_type_ptr;
+  typedef std::shared_ptr<AssignedOperatorType> op_type_ptr;
   struct OperatorTypeInPartition 
   {
     int32_t Partition;

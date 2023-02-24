@@ -34,10 +34,10 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <sstream>
-#include <boost/thread.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/make_shared.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include "hdfs.h"
 #include "Pipes.hh"
@@ -45,19 +45,19 @@
 #include "RecordParser.hh"
 #include "RuntimeProcess.hh"
 
-typedef boost::shared_ptr<class HdfsFileSystem> HdfsFileSystemPtr;
-typedef boost::shared_ptr<class HdfsFileSystemImpl> HdfsFileSystemImplPtr;
+typedef std::shared_ptr<class HdfsFileSystem> HdfsFileSystemPtr;
+typedef std::shared_ptr<class HdfsFileSystemImpl> HdfsFileSystemImplPtr;
 
 
 class HdfsFileSystemImpl
 {
 private:
-  static boost::mutex fsCacheGuard;
+  static std::mutex fsCacheGuard;
   static std::map<std::string, HdfsFileSystemImplPtr > fsCache;
 
   hdfsFS mFileSystem;
   
-  boost::shared_ptr<FileStatus> createFileStatus(hdfsFileInfo& fi);
+  std::shared_ptr<FileStatus> createFileStatus(hdfsFileInfo& fi);
   HdfsFileSystemImpl(UriPtr uri);
 public:
   static HdfsFileSystemImplPtr get(UriPtr uri);
@@ -65,13 +65,13 @@ public:
 
   PathPtr transformDefaultUri(PathPtr p);
 
-  boost::shared_ptr<FileStatus> getStatus(PathPtr p);
+  std::shared_ptr<FileStatus> getStatus(PathPtr p);
   bool exists(PathPtr p);
   bool removeAll(PathPtr p);
   bool remove(PathPtr p);
 
   void list(PathPtr p,
-	    std::vector<boost::shared_ptr<FileStatus> >& result);
+	    std::vector<std::shared_ptr<FileStatus> >& result);
   void readFile(UriPtr uri, std::string& out);
 
   int32_t write(hdfsFile f, const void * buf, int32_t sz)
@@ -179,7 +179,7 @@ public:
 };
 
 // TODO: Improve cache using a weak_ptr
-boost::mutex HdfsFileSystemImpl::fsCacheGuard;
+std::mutex HdfsFileSystemImpl::fsCacheGuard;
 std::map<std::string, HdfsFileSystemImplPtr > HdfsFileSystemImpl::fsCache;
 HdfsFileSystemImplPtr HdfsFileSystemImpl::get(UriPtr path)
 {
@@ -190,7 +190,7 @@ HdfsFileSystemImplPtr HdfsFileSystemImpl::get(UriPtr path)
   // probably better to be pessimistic and block other
   // threads since they are likely connecting to the
   // same HDFS instance.
-  boost::unique_lock<boost::mutex> lk(fsCacheGuard);
+  std::unique_lock<std::mutex> lk(fsCacheGuard);
   
   std::map<std::string, HdfsFileSystemImplPtr >::iterator it = fsCache.find(path->getHost());
   if (it == fsCache.end()) {
@@ -216,7 +216,7 @@ PathPtr HdfsFileSystemImpl::transformDefaultUri(PathPtr p)
     std::string baseUri(info->mName);
     if(uri->getPath().size() > 1)
       baseUri += uri->getPath().substr(1);
-    uri = boost::shared_ptr<URI>(new URI(baseUri.c_str()));
+    uri = std::shared_ptr<URI>(new URI(baseUri.c_str()));
     hdfsFreeFileInfo(info, 1);
   }
   return Path::get(uri);
@@ -238,23 +238,23 @@ HdfsFileSystemImpl::~HdfsFileSystemImpl()
 {
 }
 
-boost::shared_ptr<FileStatus> HdfsFileSystemImpl::createFileStatus(hdfsFileInfo& fi)
+std::shared_ptr<FileStatus> HdfsFileSystemImpl::createFileStatus(hdfsFileInfo& fi)
 {
   std::string pathStr(fi.mName);
   if(fi.mKind == kObjectKindDirectory &&
      pathStr[pathStr.size()-1] != '/') 
     pathStr += std::string("/");
-  return boost::make_shared<FileStatus>(Path::get(pathStr),
-					fi.mKind == kObjectKindFile,
-					fi.mKind == kObjectKindDirectory,
-					(std::size_t) fi.mSize);
+  return std::make_shared<FileStatus>(Path::get(pathStr),
+                                      fi.mKind == kObjectKindFile,
+                                      fi.mKind == kObjectKindDirectory,
+                                      (std::size_t) fi.mSize);
 }
 
-boost::shared_ptr<FileStatus> HdfsFileSystemImpl::getStatus(PathPtr p)
+std::shared_ptr<FileStatus> HdfsFileSystemImpl::getStatus(PathPtr p)
 {
   p = transformDefaultUri(p);
   if (p == PathPtr()) {
-    return boost::shared_ptr<FileStatus>();
+    return std::shared_ptr<FileStatus>();
   }
   hdfsFileInfo * fileInfo = ::hdfsGetPathInfo(mFileSystem, 
 					      p->toString().c_str());
@@ -262,7 +262,7 @@ boost::shared_ptr<FileStatus> HdfsFileSystemImpl::getStatus(PathPtr p)
     throw std::runtime_error((boost::format("File %1% does not exist") %
 			      p->toString()).str());
   }
-  boost::shared_ptr<FileStatus> tmp = createFileStatus(*fileInfo);
+  std::shared_ptr<FileStatus> tmp = createFileStatus(*fileInfo);
   hdfsFreeFileInfo(fileInfo, 1);
   return tmp;
 }
@@ -304,7 +304,7 @@ bool HdfsFileSystemImpl::remove(PathPtr p)
 }
 
 void HdfsFileSystemImpl::list(PathPtr p,
-			      std::vector<boost::shared_ptr<FileStatus> >& result)
+			      std::vector<std::shared_ptr<FileStatus> >& result)
 {
   int numEntries=-1;
   p = transformDefaultUri(p);
@@ -385,7 +385,7 @@ HdfsFileSystem::~HdfsFileSystem()
   
 void HdfsFileSystem::expand(std::string pattern,
 			      int32_t numPartitions,
-			      std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files)
+			      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
 {
   hdfs_file_traits::expand(pattern, numPartitions, files);
 }
@@ -395,7 +395,7 @@ PathPtr HdfsFileSystem::getRoot()
   return mUri;
 }
 
-boost::shared_ptr<FileStatus> HdfsFileSystem::getStatus(PathPtr p)
+std::shared_ptr<FileStatus> HdfsFileSystem::getStatus(PathPtr p)
 {
   return mImpl->getStatus(p);
 }
@@ -416,7 +416,7 @@ bool HdfsFileSystem::remove(PathPtr p)
 }
 
 void HdfsFileSystem::list(PathPtr p,
-			    std::vector<boost::shared_ptr<FileStatus> >& result)
+			    std::vector<std::shared_ptr<FileStatus> >& result)
 {
   mImpl->list(p, result);
 }
@@ -542,7 +542,7 @@ bool HdfsWritableFileFactory::mkdir(PathPtr p)
   return mFileSystem->mImpl->mkdir(p);
 }
 
-static bool canBeSplit(boost::shared_ptr<FileStatus> file)
+static bool canBeSplit(std::shared_ptr<FileStatus> file)
 {
   // Gzip compressed files cannot be split.  Others can.
   return  !boost::algorithm::ends_with(file->getPath()->toString(), 
@@ -602,15 +602,15 @@ public:
 
 void hdfs_file_traits::expand(std::string pattern, 
 			      int32_t numPartitions,
-			      std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files)
+			      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
 {
   files.resize(numPartitions);
   // TODO: Handle globbing 
   PathPtr path = Path::get(pattern.c_str());
   HdfsFileSystemImplPtr fs = HdfsFileSystemImpl::get(path->getUri());
 
-  std::vector<boost::shared_ptr<FileStatus> > fileInfo;
-  boost::shared_ptr<FileStatus> tmp = fs->getStatus(path);
+  std::vector<std::shared_ptr<FileStatus> > fileInfo;
+  std::shared_ptr<FileStatus> tmp = fs->getStatus(path);
   if (tmp->isDirectory()) {
     fs->list(path, fileInfo);
   } else {
@@ -668,7 +668,7 @@ void hdfs_file_traits::expand(std::string pattern,
   // 	  ++pcit) {
   // 	if (local.end() ==
   // 	    local.find(PlanRunner::JobServers[pcit->mPartition])) {
-  // 	  boost::shared_ptr<FileChunk> chunk(new FileChunk(fileInfo[i].mName,
+  // 	  std::shared_ptr<FileChunk> chunk(new FileChunk(fileInfo[i].mName,
   // 							   offset,
   // 							   offset+fileInfo[i].mBlockSize));
   // 	  // TODO: Choose the partition with fewest chunks.
@@ -724,7 +724,7 @@ void hdfs_file_traits::expand(std::string pattern,
 
   //     if (minHostLoad != std::numeric_limits<std::size_t>::max()) {
   // 	// Attach allocation to partition
-  // 	boost::shared_ptr<FileChunk> chunk(new FileChunk(fileInfo[i].mName,
+  // 	std::shared_ptr<FileChunk> chunk(new FileChunk(fileInfo[i].mName,
   // 							 offset,
   // 							 offset+fileInfo[i].mBlockSize));
   // 	// TODO: Choose the partition with fewest chunks.
@@ -752,7 +752,7 @@ void hdfs_file_traits::expand(std::string pattern,
   //     numRemoteBlocks += 1;
   //     int i = it->first;
   //     tOffset offset = iit->first;
-  //     boost::shared_ptr<FileChunk> chunk(new FileChunk(fileInfo[i].mName,
+  //     std::shared_ptr<FileChunk> chunk(new FileChunk(fileInfo[i].mName,
   // 						       offset,
   // 						       offset+fileInfo[i].mBlockSize));
   //     files[rand() % numPartitions].push_back(chunk);    
@@ -803,7 +803,7 @@ void hdfs_file_traits::expand(std::string pattern,
   	fileAllocation = currentPartitionRemaining;
       }
       // Attach allocation to partition
-      boost::shared_ptr<FileChunk> chunk(new FileChunk(fileInfo[currentFile]->getPath()->getUri()->toString(),
+      std::shared_ptr<FileChunk> chunk(new FileChunk(fileInfo[currentFile]->getPath()->getUri()->toString(),
   						       currentFilePosition,
 						       splittable ?
   						       currentFilePosition+fileAllocation :

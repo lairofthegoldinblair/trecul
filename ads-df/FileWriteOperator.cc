@@ -35,6 +35,8 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <fstream>
+#include <functional>
+#include <iomanip>
 #include <iostream>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio.hpp>
@@ -122,7 +124,7 @@ private:
   RuntimePrinter mPrinter;
   ZLibCompress * mCompressor;
   AsyncWriter<RuntimeWriteOperator> mWriter;
-  boost::thread * mWriterThread;
+  std::thread * mWriterThread;
   int64_t mRead;
 public:
   RuntimeWriteOperator(RuntimeOperator::Services& services, const RuntimeOperatorType& opType);
@@ -174,8 +176,8 @@ void RuntimeWriteOperator::start()
     }
   }
   // Start a thread that will write
-  mWriterThread = new boost::thread(boost::bind(&AsyncWriter<RuntimeWriteOperator>::run, 
-						boost::ref(mWriter)));
+  mWriterThread = new std::thread(std::bind(&AsyncWriter<RuntimeWriteOperator>::run, 
+                                            std::ref(mWriter)));
   mState = START;
   onEvent(NULL);
 }
@@ -308,7 +310,7 @@ RuntimeOperator * RuntimeWriteOperatorType::create(RuntimeOperator::Services& se
 class HdfsFileCommitter
 {
 private:
-  std::vector<boost::shared_ptr<class HdfsFileRename> >mActions;
+  std::vector<std::shared_ptr<class HdfsFileRename> >mActions;
   std::string mError;
   /**
    * Number of actions that have requested commit
@@ -319,7 +321,7 @@ private:
   // manage the lifetime.
   static HdfsFileCommitter * sCommitter;
   static int32_t sRefCount;
-  static boost::mutex sGuard;
+  static std::mutex sGuard;
 public:  
   static HdfsFileCommitter * get();
   static void release(HdfsFileCommitter *);
@@ -354,18 +356,18 @@ public:
   void commit();
   void rollback();
   void dispose();
-  static bool renameLessThan (boost::shared_ptr<HdfsFileRename> lhs, 
-			      boost::shared_ptr<HdfsFileRename> rhs);
+  static bool renameLessThan (std::shared_ptr<HdfsFileRename> lhs, 
+			      std::shared_ptr<HdfsFileRename> rhs);
 };
 
 
 HdfsFileCommitter * HdfsFileCommitter::sCommitter = NULL;
 int32_t HdfsFileCommitter::sRefCount = 0;
-boost::mutex HdfsFileCommitter::sGuard;
+std::mutex HdfsFileCommitter::sGuard;
 
 HdfsFileCommitter * HdfsFileCommitter::get()
 {
-  boost::unique_lock<boost::mutex> lock(sGuard);
+  std::unique_lock<std::mutex> lock(sGuard);
   if (sRefCount++ == 0) {
     sCommitter = new HdfsFileCommitter();
   }
@@ -374,7 +376,7 @@ HdfsFileCommitter * HdfsFileCommitter::get()
 
 void HdfsFileCommitter::release(HdfsFileCommitter *)
 {
-  boost::unique_lock<boost::mutex> lock(sGuard);
+  std::unique_lock<std::mutex> lock(sGuard);
   if(--sRefCount == 0) {
     delete sCommitter;
     sCommitter = NULL;
@@ -395,7 +397,7 @@ void HdfsFileCommitter::track (PathPtr from,
 			       PathPtr to,
 			       FileSystem * fileSystem)
 {
-  mActions.push_back(boost::shared_ptr<HdfsFileRename>(new HdfsFileRename(from, to, fileSystem)));
+  mActions.push_back(std::shared_ptr<HdfsFileRename>(new HdfsFileRename(from, to, fileSystem)));
 }
 
 bool HdfsFileCommitter::commit()
@@ -434,8 +436,8 @@ bool HdfsFileCommitter::commit()
   return true;
 }
 
-bool HdfsFileRename::renameLessThan (boost::shared_ptr<HdfsFileRename> lhs, 
-				     boost::shared_ptr<HdfsFileRename> rhs)
+bool HdfsFileRename::renameLessThan (std::shared_ptr<HdfsFileRename> lhs, 
+				     std::shared_ptr<HdfsFileRename> rhs)
 {
   return strcmp(lhs->mTo->toString().c_str(), 
 		rhs->mTo->toString().c_str()) < 0;
@@ -473,7 +475,7 @@ bool HdfsFileRename::prepare(std::string& err)
       // Check whether the file already exists.  If so and it is
       // the same size as what we just wrote, then assume idempotence
       // and return success.
-      boost::shared_ptr<FileStatus> toStatus, fromStatus;
+      std::shared_ptr<FileStatus> toStatus, fromStatus;
       try {
 	toStatus = 
 	  mFileSystem->getStatus(mTo);
@@ -694,7 +696,7 @@ private:
   PathPtr mRootUri;
   RuntimePrinter mPrinter;
   AsyncWriter<RuntimeHdfsWriteOperator> mWriter;
-  boost::thread * mWriterThread;
+  std::thread * mWriterThread;
   HdfsFileCommitter * mCommitter;
   std::string mError;
   FileCreation * mCreationPolicy;
@@ -948,9 +950,12 @@ OutputFile * StreamingFileCreation::createFile(const std::string& filePath,
   
   if (mPolicy.mFileSeconds > 0) {
     mTimer.expires_from_now(boost::posix_time::seconds(mPolicy.mFileSeconds));
-    mTimer.async_wait(boost::bind(&StreamingFileCreation::timeout, 
-				  this,
-				  boost::asio::placeholders::error));
+    // mTimer.async_wait(boost::bind(&StreamingFileCreation::timeout, 
+    //     			  this,
+    //     			  boost::asio::placeholders::error));
+    mTimer.async_wait([this](const boost::system::error_code & err) {
+      this->timeout(err);
+    });
   }
 
   return mCurrentFile;
@@ -1097,8 +1102,8 @@ void RuntimeHdfsWriteOperator::start()
   }
   // Start a thread that will write
   // mWriterThread = 
-  //   new boost::thread(boost::bind(&AsyncWriter<RuntimeHdfsWriteOperator>::run, 
-  // 				  boost::ref(mWriter)));
+  //   new std::thread(std::bind(&AsyncWriter<RuntimeHdfsWriteOperator>::run, 
+  // 				  std::ref(mWriter)));
   mState = START;
   onEvent(NULL);
 }

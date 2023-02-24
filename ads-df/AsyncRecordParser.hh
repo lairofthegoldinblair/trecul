@@ -1373,9 +1373,9 @@ private:
 
   // The list of files from which I read; retrieved
   // by calling my operator type.
-  std::vector<boost::shared_ptr<FileChunk> > mFiles;
+  std::vector<std::shared_ptr<FileChunk> > mFiles;
   // The file am I working on
-  std::vector<boost::shared_ptr<FileChunk> >::const_iterator mFileIt;
+  std::vector<std::shared_ptr<FileChunk> >::const_iterator mFileIt;
   // File Service for async IO
   FileService * mFileService;
   // File handle that is currently open

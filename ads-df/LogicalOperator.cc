@@ -32,12 +32,12 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <mutex>
 #include <stdexcept>
 #include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
 #include <boost/property_map/property_map.hpp>
 #include <boost/regex.hpp>
-#include <boost/thread.hpp>
 
 #include "LogicalOperator.hh"
 
@@ -470,13 +470,13 @@ void LogicalPlan::check()
   }
 }
 
-static boost::mutex sLogicalOperatorFactoryGuard;
+static std::mutex sLogicalOperatorFactoryGuard;
 
 LogicalOperatorFactory::LogicalOperatorFactory()
   :
   mGuard(NULL)
 {
-  mGuard = new boost::mutex();
+  mGuard = new std::mutex();
 }
 
 LogicalOperatorFactory::~LogicalOperatorFactory()
@@ -488,7 +488,7 @@ LogicalOperatorFactory& LogicalOperatorFactory::get()
 {
   // TODO: Manage lifetime here...
   static LogicalOperatorFactory * factory = NULL;
-  boost::unique_lock<boost::mutex> lock(sLogicalOperatorFactoryGuard);
+  std::unique_lock<std::mutex> lock(sLogicalOperatorFactoryGuard);
   if (NULL == factory) {
     factory = new LogicalOperatorFactory();
   }
@@ -498,7 +498,7 @@ LogicalOperatorFactory& LogicalOperatorFactory::get()
 void LogicalOperatorFactory::registerCreator(const std::string& opType, 
 					CreateLogicalOperatorFn creator)
 {
-  boost::unique_lock<boost::mutex> lock(*mGuard);
+  std::unique_lock<std::mutex> lock(*mGuard);
   std::string ciOpType = boost::algorithm::to_lower_copy(opType);
   if (mCreators.find(ciOpType) != mCreators.end()) {
     throw std::runtime_error((boost::format("Error: attempt to register "
@@ -511,7 +511,7 @@ void LogicalOperatorFactory::registerCreator(const std::string& opType,
 
 LogicalOperator * LogicalOperatorFactory::create(const std::string& opType)
 {
-  boost::unique_lock<boost::mutex> lock(*mGuard);
+  std::unique_lock<std::mutex> lock(*mGuard);
   std::string ciOpType = boost::algorithm::to_lower_copy(opType);
   std::map<std::string, CreateLogicalOperatorFn>::const_iterator it = 
     mCreators.find(ciOpType);

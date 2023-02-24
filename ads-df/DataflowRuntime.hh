@@ -35,12 +35,12 @@
 #if !defined(__DATAFLOW_RUNTIME_HH)
 #define __DATAFLOW_RUNTIME_HH
 
+#include <mutex>
 #include <vector>
 #include <list>
 
 #include <boost/asio/io_service.hpp>
 #include <boost/intrusive/list.hpp>
-#include <boost/thread/mutex.hpp>
 
 #include "RuntimePort.hh"
 #include "RuntimePlan.hh"
@@ -142,7 +142,7 @@ private:
    * Lock that protects mQueue.  This lock must be taken before taking any locks
    * on scheduler queues.
    */
-  boost::mutex mLock;
+  std::mutex mLock;
   /**
    * The actual fifo itself.
    */
@@ -254,7 +254,7 @@ private:
    * Lock that protects mQueue.  This lock must be taken before taking any locks
    * on scheduler queues.
    */
-  boost::mutex mLock;
+  std::mutex mLock;
   /**
    * The actual fifo itself.
    */
@@ -473,7 +473,7 @@ private:
    * Lock that protects the internal scheduler queues. Using Boost threads/pthreads for now.
    * Will evaluate performance of this vs. user defined spin locks.
    */
-  boost::mutex mLock;
+  std::mutex mLock;
 
   /**
    * These are the operators I am scheduling.

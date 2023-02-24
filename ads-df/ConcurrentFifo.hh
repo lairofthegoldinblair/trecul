@@ -35,8 +35,10 @@
 #ifndef __CONCURRENT_FIFO_HH__
 #define __CONCURRENT_FIFO_HH__
 
+#include <condition_variable>
+#include <mutex>
 #include <queue>
-#include <boost/thread.hpp>
+#include <thread>
 
 /**
  * This class is not meant to be compatible with
@@ -53,9 +55,9 @@ class ConcurrentBlockingFifo
 private:
   // Queue of read requests
   std::queue<_Ty> mRequests;
-  boost::mutex mGuard;
-  boost::condition_variable mEmptyCondVar;
-  boost::condition_variable mFullCondVar;
+  std::mutex mGuard;
+  std::condition_variable mEmptyCondVar;
+  std::condition_variable mFullCondVar;
   std::size_t mMaxSize;
 public:
   ConcurrentBlockingFifo(std::size_t maxSize=std::numeric_limits<std::size_t>::max())
@@ -68,7 +70,7 @@ public:
   }
   _Ty pop() 
   {
-    boost::unique_lock<boost::mutex> lock(mGuard);
+    std::unique_lock<std::mutex> lock(mGuard);
     while(mRequests.empty()) {
       mEmptyCondVar.wait(lock);
     }
@@ -79,7 +81,7 @@ public:
   }
   void push(_Ty t)
   {
-    boost::unique_lock<boost::mutex> lock(mGuard);
+    std::unique_lock<std::mutex> lock(mGuard);
     while(mRequests.size() >= mMaxSize) {
       mFullCondVar.wait(lock);
     }
@@ -88,7 +90,7 @@ public:
   }
   std::size_t size() 
   {
-    boost::unique_lock<boost::mutex> lock(mGuard);
+    std::unique_lock<std::mutex> lock(mGuard);
     return mRequests.size();
   }
 };

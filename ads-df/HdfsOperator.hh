@@ -35,10 +35,10 @@
 #ifndef __HDFSOPERATOR_H
 #define __HDFSOPERATOR_H
 
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
-#include <boost/shared_ptr.hpp>
 #include <boost/serialization/set.hpp>
 #include "FileSystem.hh"
 #include "RuntimeOperator.hh"
@@ -66,7 +66,7 @@ class HdfsFileSystem : public FileSystem
   friend class HdfsWritableFileFactory;
 private:
   // Use pimpl idiom to hide HDFS interface.
-  boost::shared_ptr<class HdfsFileSystemImpl> mImpl;
+  std::shared_ptr<class HdfsFileSystemImpl> mImpl;
   PathPtr mUri;
 public:
   HdfsFileSystem(const std::string& uri);
@@ -79,7 +79,7 @@ public:
    */
   void expand(std::string pattern,
 	      int32_t numPartitions,
-	      std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files);
+	      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files);
 
   /**
    * Get the root of the file system.
@@ -90,7 +90,7 @@ public:
   /**
    * Get information about a path.
    */
-  virtual boost::shared_ptr<FileStatus> getStatus(PathPtr p);
+  virtual std::shared_ptr<FileStatus> getStatus(PathPtr p);
 
   /**
    * Does a path exists?
@@ -111,7 +111,7 @@ public:
    * Get a directory listing of a path that isDirectory.
    */
   virtual void list(PathPtr p,
-		    std::vector<boost::shared_ptr<FileStatus> >& result);
+		    std::vector<std::shared_ptr<FileStatus> >& result);
 
   /**
    * Read the contents of a file into a std::string.
@@ -132,7 +132,7 @@ public:
   // Split into desired number of partitions.
   static void expand(std::string pattern, 
 		     int32_t numPartitions,
-		     std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files);
+		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files);
   static file_type open_for_read(const char * filename, uint64_t beginOffset, uint64_t endOffset);
   static void close(file_type f);
   static int32_t read(file_type f, uint8_t * buf, int32_t bufSize);

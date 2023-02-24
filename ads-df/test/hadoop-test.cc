@@ -80,7 +80,7 @@ public:
 //   std::cout << "testHadoopListNotExists" << std::endl;
 //   HadoopTest ht;
 //   FileSystem * fs = FileSystem::get(UriPtr(new URI("hdfs://default:0/")));
-//   std::vector<boost::shared_ptr<FileStatus> > ret;
+//   std::vector<std::shared_ptr<FileStatus> > ret;
 //   try {
 //     fs->list(Path::get("hdfs://default:0/idontexist9999999"), ret);
 //     BOOST_CHECK(false);

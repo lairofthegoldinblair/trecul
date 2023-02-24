@@ -35,7 +35,6 @@
 #include <iostream>
 #include <boost/asio/io_service.hpp>
 #include <boost/assert.hpp>
-#include <boost/thread.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include "DataflowRuntime.hh"
 #include "RuntimeOperator.hh"
@@ -173,7 +172,7 @@ void DataflowScheduler::writeAndSync(RuntimePort * port, RecordBuffer buf)
 void DataflowScheduler::internalRequestIO(RuntimePort * ports)
 {
   // TODO: Add assertions
-  boost::mutex::scoped_lock sl(mLock);
+  std::lock_guard<std::mutex> sl(mLock);
   RuntimePort * it = ports;
   do {
     RuntimePort &  port (*it);
@@ -201,7 +200,7 @@ void DataflowScheduler::internalRequestIO(RuntimePort * ports)
 void DataflowScheduler::internalRequestFlush(RuntimePort * ports)
 {
   // TODO: Add assertions
-  boost::mutex::scoped_lock sl(mLock);
+  std::lock_guard<std::mutex> sl(mLock);
   RuntimePort * it = ports;
   do {
     RuntimePort &  port (*it);
@@ -568,7 +567,7 @@ void InProcessFifo::sync(InProcessPort<InProcessFifo> & port)
 uint64_t InProcessFifo::flush(InProcessPort<InProcessFifo> & port)
 {
   if (&port == mSource) {
-    boost::mutex::scoped_lock channelGuard(mLock);
+    std::lock_guard<std::mutex> channelGuard(mLock);
     // Only flush if the channel queue is empty.
     if(0 != mQueue.getSize()) {
       return 0;
@@ -594,7 +593,7 @@ void InProcessFifo::writeSomeToPort()
   // TODO: Update statistics on RecordsRead
   // TODO: Eliminate the call to reprioritze (and the corresponding lock)
   // if the priority hasn't changed.
-  boost::mutex::scoped_lock channelGuard(mLock);
+  std::lock_guard<std::mutex> channelGuard(mLock);
   TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
   mQueue.popAndPushSomeTo(mTarget->getLocalBuffer());
   mTargetScheduler.readComplete(*mTarget);
@@ -609,7 +608,7 @@ void InProcessFifo::readAllFromPort()
   // TODO: Update statistics on RecordsRead
   // TODO: Eliminate the call to reprioritze (and the corresponding lock)
   // if the priority hasn't changed.
-  boost::mutex::scoped_lock channelGuard(mLock);
+  std::lock_guard<std::mutex> channelGuard(mLock);
   TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
   mSource->getLocalBuffer().popAndPushAllTo(mQueue);
   mSourceScheduler.writeComplete(*mSource);
@@ -669,7 +668,7 @@ void RemoteReceiveFifo::sync(InProcessPort<RemoteReceiveFifo> & port)
 
 void RemoteReceiveFifo::sync(uint64_t available)
 {
-  boost::mutex::scoped_lock channelGuard(mLock);
+  std::lock_guard<std::mutex> channelGuard(mLock);
   TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
   mDataAvailable += available;
   mSourceScheduler.writeComplete(*mAvailableSource);
@@ -684,7 +683,7 @@ void RemoteReceiveFifo::writeSomeToPort()
   // TODO: Update statistics on RecordsRead
   // TODO: Eliminate the call to reprioritze (and the corresponding lock)
   // if the priority hasn't changed.
-  boost::mutex::scoped_lock channelGuard(mLock);
+  std::lock_guard<std::mutex> channelGuard(mLock);
   TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
   uint64_t before = mQueue.getSize();
   mQueue.popAndPushSomeTo(mTarget->getLocalBuffer());
@@ -701,7 +700,7 @@ void RemoteReceiveFifo::readAllFromPort()
   // TODO: Update statistics on RecordsRead
   // TODO: Eliminate the call to reprioritze (and the corresponding lock)
   // if the priority hasn't changed.
-  boost::mutex::scoped_lock channelGuard(mLock);
+  std::lock_guard<std::mutex> channelGuard(mLock);
   TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
   mDataSource->getLocalBuffer().popAndPushAllTo(mQueue);
   mSourceScheduler.writeComplete(*mDataSource);

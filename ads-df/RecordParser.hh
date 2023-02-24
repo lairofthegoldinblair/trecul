@@ -35,10 +35,10 @@
 #ifndef __RECORDPARSER_HH
 #define __RECORDPARSER_HH
 
+#include <memory>
 #include <string>
 #include <vector>
 #include <iostream>
-#include <boost/shared_ptr.hpp>
 #include <boost/assert.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/serialization/shared_ptr.hpp>
@@ -152,7 +152,7 @@ public:
   // Split into desired number of partitions.
   static void expand(std::string pattern, 
 		     int32_t numPartitions,
-		     std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files)
+		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
   {
     file_system_type::expand(pattern, numPartitions, files);
   }
@@ -193,7 +193,7 @@ public:
   // Split into desired number of partitions.
   static void expand(std::string pattern, 
 		     int32_t numPartitions,
-		     std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files);
+		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files);
   static file_type open_for_read(const char * filename, uint64_t beginOffset, uint64_t endOffset);
   static file_type open_for_write(const char * filename);
   static void close(file_type f);
@@ -222,7 +222,7 @@ public:
   // Split into desired number of partitions.
   static void expand(std::string pattern, 
 		     int32_t numPartitions,
-		     std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files);
+		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files);
 
   static file_type open_for_read(const char * filename)
   {
@@ -1384,7 +1384,7 @@ public:
   typedef class DataBlock * 
   (*CreateDataBlockFn) (const char *, int32_t, uint64_t, uint64_t);
 private:
-  boost::mutex * mGuard;
+  std::mutex * mGuard;
   std::map<std::string, CreateDataBlockFn> mCreators;
   DataBlockFactory();
   ~DataBlockFactory();
@@ -1497,8 +1497,8 @@ class MemoryMappedFileBuffer : public DataBlock
 public:
   typedef stdio_file_traits file_system_type;
 private:
-  boost::shared_ptr<boost::interprocess::file_mapping> mMapping;
-  boost::shared_ptr<boost::interprocess::mapped_region> mRegion;
+  std::shared_ptr<boost::interprocess::file_mapping> mMapping;
+  std::shared_ptr<boost::interprocess::mapped_region> mRegion;
   // Block size for mapping regions
   std::size_t mBlockSize;
   // File size
@@ -1533,7 +1533,7 @@ public:
   typedef std::string file_input;
 private:
   // What file(s) am I parsing?
-  std::vector<std::vector<boost::shared_ptr<FileChunk> > > mFile;
+  std::vector<std::vector<std::shared_ptr<FileChunk> > > mFile;
 
   // Serialization
   friend class boost::serialization::access;
@@ -1551,7 +1551,7 @@ public:
 	      int32_t numPartitions);
 
   void getFilesForPartition(int32_t partition,
-			    std::vector<boost::shared_ptr<FileChunk> >& files) const;
+			    std::vector<std::shared_ptr<FileChunk> >& files) const;
 };
 
 class SerialChunkStrategy
@@ -1578,7 +1578,7 @@ public:
 	      int32_t numPartitions);
 
   void getFilesForPartition(int32_t partition,
-			    std::vector<boost::shared_ptr<FileChunk> >& files) const;
+			    std::vector<std::shared_ptr<FileChunk> >& files) const;
 };
 
 template<class _OpType>
@@ -1593,9 +1593,9 @@ private:
 
   // The list of files from which I read; retrieved
   // by calling my operator type.
-  std::vector<boost::shared_ptr<FileChunk> > mFiles;
+  std::vector<std::shared_ptr<FileChunk> > mFiles;
   // Which file am I working on?
-  std::vector<boost::shared_ptr<FileChunk> >::const_iterator mFileIt;
+  std::vector<std::shared_ptr<FileChunk> >::const_iterator mFileIt;
   // Input buffer for the file.
   DataBlock * mInputBuffer;
   // Record buffer I am importing into

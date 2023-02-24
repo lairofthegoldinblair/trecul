@@ -37,6 +37,8 @@
 #include <fcntl.h>
 #include <fstream>
 #include <iomanip>
+#include <memory>
+#include <mutex>
 #include <sstream>
 
 #include <boost/algorithm/string/predicate.hpp>
@@ -44,8 +46,6 @@
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/make_shared.hpp>
-#include <boost/thread/mutex.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include "uriparser/Uri.h"
@@ -59,7 +59,7 @@
 
 UriPtr URI::get(const char * filename)
 {
-  return boost::make_shared<URI>(filename);
+  return std::make_shared<URI>(filename);
 }
 
 URI::URI(const char * filename) 
@@ -199,7 +199,7 @@ std::ostream& operator<<(std::ostream& str, const URI& val)
 
 Path::Path(const std::string& str)
   :
-  mUri(boost::make_shared<URI>(str.c_str()))
+  mUri(std::make_shared<URI>(str.c_str()))
 {
 }
 
@@ -211,18 +211,18 @@ Path::Path(UriPtr uri)
 
 Path::Path(PathPtr parent, PathPtr child, bool isResolve)
   :
-  mUri(boost::make_shared<URI>(*parent->mUri.get(), *child->mUri.get(), isResolve))
+  mUri(std::make_shared<URI>(*parent->mUri.get(), *child->mUri.get(), isResolve))
 {
 }
 
 PathPtr Path::get(const std::string& p)
 {
-  return boost::shared_ptr<Path>(new Path(p));
+  return std::shared_ptr<Path>(new Path(p));
 }
 
 PathPtr Path::get(UriPtr p)
 {
-  return boost::shared_ptr<Path>(new Path(p));
+  return std::shared_ptr<Path>(new Path(p));
 }
 
 PathPtr Path::get(PathPtr parent, PathPtr child)
@@ -244,12 +244,12 @@ PathPtr Path::get(const std::string& parent,
 
 PathPtr Path::resolveReference(PathPtr parent, PathPtr child)
 {
-  return boost::shared_ptr<Path>(new Path(parent, child, true));
+  return std::shared_ptr<Path>(new Path(parent, child, true));
 }
 
 PathPtr Path::createReference(PathPtr parent, PathPtr child)
 {
-  return boost::shared_ptr<Path>(new Path(parent, child, false));
+  return std::shared_ptr<Path>(new Path(parent, child, false));
 }
 
 const std::string& Path::toString() const
@@ -263,13 +263,13 @@ std::ostream& operator<<(std::ostream& str, const Path& val)
   return str;
 }
 
-static boost::mutex sFileSystemFactoryGuard;
+static std::mutex sFileSystemFactoryGuard;
 
 FileSystemFactory::FileSystemFactory()
   :
   mGuard(NULL)
 {
-  mGuard = new boost::mutex();
+  mGuard = new std::mutex();
 }
 
 FileSystemFactory::~FileSystemFactory()
@@ -281,7 +281,7 @@ FileSystemFactory& FileSystemFactory::get()
 {
   // TODO: Manage lifetime here...
   static FileSystemFactory * factory = NULL;
-  boost::unique_lock<boost::mutex> lock(sFileSystemFactoryGuard);
+  std::unique_lock<std::mutex> lock(sFileSystemFactoryGuard);
   if (NULL == factory) {
     factory = new FileSystemFactory();
   }
@@ -291,7 +291,7 @@ FileSystemFactory& FileSystemFactory::get()
 void FileSystemFactory::registerCreator(const std::string& uriScheme, 
 					CreateFileSystemFn creator)
 {
-  boost::unique_lock<boost::mutex> lock(*mGuard);
+  std::unique_lock<std::mutex> lock(*mGuard);
   std::string ciScheme = boost::algorithm::to_lower_copy(uriScheme);
   if (mCreators.find(ciScheme) != mCreators.end()) {
     throw std::runtime_error((boost::format("Error: attempt to register "
@@ -304,7 +304,7 @@ void FileSystemFactory::registerCreator(const std::string& uriScheme,
 
 FileSystem * FileSystemFactory::create(UriPtr uri)
 {
-  boost::unique_lock<boost::mutex> lock(*mGuard);
+  std::unique_lock<std::mutex> lock(*mGuard);
   std::string ciScheme = boost::algorithm::to_lower_copy(uri->getScheme());
   if (0 == ciScheme.size()) {
     // Default scheme
@@ -330,7 +330,7 @@ FileSystem * FileSystem::get(UriPtr uri)
 
 std::string FileSystem::readFile(const std::string& uri)
 {
-  return readFile(boost::make_shared<URI>(uri.c_str()));
+  return readFile(std::make_shared<URI>(uri.c_str()));
 }
 
 std::string FileSystem::readFile(UriPtr uri)
@@ -369,7 +369,7 @@ class LocalFileSystemImpl : public FileSystem
 {
 private:
   PathPtr mRoot;
-  boost::shared_ptr<FileStatus> createFileStatus(const boost::filesystem::path & fsPath);
+  std::shared_ptr<FileStatus> createFileStatus(const boost::filesystem::path & fsPath);
 
   void checkPath(PathPtr p);
 public:
@@ -380,7 +380,7 @@ public:
   
   void expand(std::string pattern,
 	      int32_t numPartitions,
-	      std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files);
+	      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files);
 
   /**
    * Get the root of the file system.
@@ -391,7 +391,7 @@ public:
   /**
    * Get information about a path.
    */
-  boost::shared_ptr<FileStatus> getStatus(PathPtr p);
+  std::shared_ptr<FileStatus> getStatus(PathPtr p);
 
   /**
    * Does this path exist in the file system?
@@ -412,7 +412,7 @@ public:
    * Get a directory listing of a path that isDirectory.
    */
   void list(PathPtr p,
-	    std::vector<boost::shared_ptr<FileStatus> >& result);
+	    std::vector<std::shared_ptr<FileStatus> >& result);
 
   /**
    * Read the contents of a file into a std::string.
@@ -465,7 +465,7 @@ void LocalFileSystemImpl::checkPath(PathPtr p)
 			      p->toString()).str());
 }
 
-boost::shared_ptr<FileStatus> LocalFileSystemImpl::createFileStatus(const boost::filesystem::path & fsPath)
+std::shared_ptr<FileStatus> LocalFileSystemImpl::createFileStatus(const boost::filesystem::path & fsPath)
 {
   boost::filesystem::file_status s = boost::filesystem::status(fsPath);
   std::string pathStr = fsPath.string();
@@ -473,7 +473,7 @@ boost::shared_ptr<FileStatus> LocalFileSystemImpl::createFileStatus(const boost:
      pathStr[pathStr.size()-1] != '/') 
     pathStr += std::string("/");
     
-  return boost::make_shared<FileStatus>(Path::get(getRoot(), pathStr),
+  return std::make_shared<FileStatus>(Path::get(getRoot(), pathStr),
 					boost::filesystem::is_regular_file(s), 
 					boost::filesystem::is_directory(s), 
 					boost::filesystem::is_regular_file(s) ?
@@ -481,7 +481,7 @@ boost::shared_ptr<FileStatus> LocalFileSystemImpl::createFileStatus(const boost:
 					0);
 }
 
-boost::shared_ptr<FileStatus> LocalFileSystemImpl::getStatus(PathPtr p)
+std::shared_ptr<FileStatus> LocalFileSystemImpl::getStatus(PathPtr p)
 {
   // Validate that this is a file URI.
   if (!boost::algorithm::iequals("file", p->getUri()->getScheme()))
@@ -513,7 +513,7 @@ bool LocalFileSystemImpl::remove(PathPtr p)
 }
 
 void LocalFileSystemImpl::list(PathPtr p,
-			  std::vector<boost::shared_ptr<FileStatus> >& result)
+			  std::vector<std::shared_ptr<FileStatus> >& result)
 {
   checkPath(p);
   boost::filesystem::path fsPath(p->getUri()->getPath());
@@ -580,7 +580,7 @@ public:
 
 void LocalFileSystemImpl::expand(std::string pattern,
 			      int32_t numPartitions,
-			      std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files)
+			      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
 {
   // Expand the pattern and then collect the size of each file.
   std::vector<std::string> fileNames;
@@ -646,7 +646,7 @@ void LocalFileSystemImpl::expand(std::string pattern,
       // the file is infinitely large if compressed otherwise it will confuse the code that
       // tries to limit reading to a subchunk of a file due to the difference
       // in size between compressed and uncompressed sizes.
-      boost::shared_ptr<FileChunk> chunk(new FileChunk(fileInfo[currentFile].mName,
+      std::shared_ptr<FileChunk> chunk(new FileChunk(fileInfo[currentFile].mName,
 						       currentFilePosition,
 						       splittable ?
 						       currentFilePosition+fileAllocation :
@@ -860,10 +860,10 @@ void SerialOrganizedTable::bindComponent(FileSystem * fs,
 					 std::size_t level,
 					 PathPtr p)
 {
-  std::vector<boost::shared_ptr<FileStatus> > ls;
+  std::vector<std::shared_ptr<FileStatus> > ls;
   fs->list(p, ls);
   if (level + 1 == mPathComponents.size()) {
-    for(std::vector<boost::shared_ptr<FileStatus> >::iterator pit = ls.begin();
+    for(std::vector<std::shared_ptr<FileStatus> >::iterator pit = ls.begin();
 	pit != ls.end();
 	++pit) {
       // Extract the path elements and evaluate predicate against them.
@@ -900,7 +900,7 @@ void SerialOrganizedTable::bindComponent(FileSystem * fs,
 							     Path::get(p, (*pit)->getPath())));
     }
   } else {
-    for(std::vector<boost::shared_ptr<FileStatus> >::iterator pit = ls.begin();
+    for(std::vector<std::shared_ptr<FileStatus> >::iterator pit = ls.begin();
 	pit != ls.end();
 	++pit) {
       // TODO: For predicates that don't reference all path components
@@ -917,7 +917,7 @@ void SerialOrganizedTable::bind(FileSystem * fs)
 {
   // First we locate a directory named /CommonVersion_*
   // Then we have the table root.
-  std::vector<boost::shared_ptr<FileStatus> > ls;
+  std::vector<std::shared_ptr<FileStatus> > ls;
   fs->list(fs->getRoot(), ls);
 
   // Find the pattern /CommonVersion, should not be more than one match.
@@ -925,7 +925,7 @@ void SerialOrganizedTable::bind(FileSystem * fs)
   std::string match = boost::lexical_cast<std::string>(mCommonVersion);
   match += "_"; 
   PathPtr rootPath;
-  for(std::vector<boost::shared_ptr<FileStatus> >::iterator it=ls.begin();
+  for(std::vector<std::shared_ptr<FileStatus> >::iterator it=ls.begin();
       it != ls.end();
       ++it) {
     boost::filesystem::path fsPath((*it)->getPath()->getUri()->getPath());
@@ -961,7 +961,7 @@ void SerialOrganizedTable::bind(FileSystem * fs)
 
 void SerialOrganizedTable::getSerialFiles(FileSystem * fs,
 					  int32_t serialNumber,
-					  std::vector<boost::shared_ptr<FileChunk> >& files) const
+					  std::vector<std::shared_ptr<FileChunk> >& files) const
 {
   std::ostringstream ss;
   ss << "serial_" << std::setw(5) << std::setfill('0') << serialNumber << ".gz";
@@ -969,7 +969,7 @@ void SerialOrganizedTable::getSerialFiles(FileSystem * fs,
   for(std::vector<SerialOrganizedTableFilePtr>::const_iterator it = getSerialPaths().begin();
       it != getSerialPaths().end();
       ++it) {
-    typedef std::vector<boost::shared_ptr<FileStatus> > fstats;
+    typedef std::vector<std::shared_ptr<FileStatus> > fstats;
     fstats ls;
     fs->list((*it)->getPath(), ls);
     for(fstats::iterator fit = ls.begin();
@@ -978,7 +978,7 @@ void SerialOrganizedTable::getSerialFiles(FileSystem * fs,
       const std::string& fname((*fit)->getPath()->toString());
       if (fname.size() >= sn.size() &&
 	  boost::algorithm::equals(sn, fname.substr(fname.size()-sn.size()))) {
-	files.push_back(boost::make_shared<FileChunk>(fname, 
+	files.push_back(std::make_shared<FileChunk>(fname, 
 						      0,
 						      std::numeric_limits<uint64_t>::max()));
       }

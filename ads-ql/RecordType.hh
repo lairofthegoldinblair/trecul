@@ -36,6 +36,7 @@
 #define __RECORDTYPE_HH
 
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 #include <map>
@@ -44,7 +45,6 @@
 #include <boost/asio/ip/address_v4.hpp>
 #include <boost/asio/ip/address_v6.hpp>
 #include <boost/format.hpp>
-#include <boost/shared_ptr.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 
 #include <boost/serialization/serialization.hpp>
@@ -2205,11 +2205,11 @@ private:
   std::size_t mAlignment = 0;
   std::size_t mAllocSize = 0;
 
-  boost::shared_ptr<RecordTypeMalloc> mMalloc;
-  boost::shared_ptr<RecordTypeFree> mFree;
-  boost::shared_ptr<RecordTypeSerialize> mSerialize;
-  boost::shared_ptr<RecordTypeDeserialize> mDeserialize;
-  boost::shared_ptr<RecordTypePrint> mPrint;
+  std::shared_ptr<RecordTypeMalloc> mMalloc;
+  std::shared_ptr<RecordTypeFree> mFree;
+  std::shared_ptr<RecordTypeSerialize> mSerialize;
+  std::shared_ptr<RecordTypeDeserialize> mDeserialize;
+  std::shared_ptr<RecordTypePrint> mPrint;
   std::vector<FieldAddress> mMemberOffsets;
   // Index to lookup up position of a field by its byte offset
   std::map<uint32_t, uint32_t> mByteOffsetToPosition;

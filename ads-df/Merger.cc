@@ -34,9 +34,9 @@
 
 #include <stdexcept>
 #include <fstream>
+#include <memory>
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/make_shared.hpp>
 #include <boost/tokenizer.hpp>
 #include "Merger.hh"
 #include "ConstantScan.hh"
@@ -654,7 +654,7 @@ void LogicalFileWrite::checkPath(PlanCheckContext& ctxt,
   // streaming case.
   if (isStreamingWrite()) return;
 
-  UriPtr uri = boost::make_shared<URI>(path.c_str());
+  UriPtr uri = std::make_shared<URI>(path.c_str());
   if (boost::algorithm::iequals(uri->getScheme(), "hdfs")) {
     FileSystem * fs = FileSystem::get(uri);
     if(fs->exists(Path::get(uri))) {
@@ -1350,9 +1350,9 @@ void RuntimeSortOperator::buildMergeGraph()
       it != mSortFiles.end();
       ++it) {
     chunk_type files(getPartition()+1);
-    files[getPartition()].push_back(boost::make_shared<FileChunk>(*it,
-								  0,
-								  std::numeric_limits<uint64_t>::max()));
+    files[getPartition()].push_back(std::make_shared<FileChunk>(*it,
+                                                                0,
+                                                                std::numeric_limits<uint64_t>::max()));
     op_type * readOpType = new op_type(getMyOperatorType().mDeserialize,
 				       getMyOperatorType().mMalloc,
 				       files,

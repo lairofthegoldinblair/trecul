@@ -172,7 +172,7 @@ RuntimeOperatorPlan::RuntimeOperatorPlan(int32_t numPartitions, bool isSinglePro
 
 RuntimeOperatorPlan::~RuntimeOperatorPlan()
 {
-  for(std::vector<boost::shared_ptr<AssignedOperatorType> >::iterator 
+  for(std::vector<std::shared_ptr<AssignedOperatorType> >::iterator 
 	it = mOperators.begin();
       it != mOperators.end();
       ++it) {
@@ -185,7 +185,7 @@ void RuntimeOperatorPlan::addOperatorType(RuntimeOperatorType * op)
   if (mOperatorIndex.find(op) != mOperatorIndex.end())
     throw std::runtime_error("Cannot add operator to plan multiple times");
 
-  boost::shared_ptr<AssignedOperatorType> ty(
+  std::shared_ptr<AssignedOperatorType> ty(
     op->getPartitionConstraint().isDefault() ?
     new AssignedOperatorType(*op) :
     new ConstrainedOperatorType(*op, mPartitions));

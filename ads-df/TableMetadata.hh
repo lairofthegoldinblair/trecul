@@ -36,16 +36,15 @@
 #define __TABLEMETATDATA_HH__
 
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
-#include <boost/shared_ptr.hpp>
-
 class DynamicRecordContext;
 class RecordType;
 
-typedef boost::shared_ptr<class SerialOrganizedTableFile> SerialOrganizedTableFilePtr;
+typedef std::shared_ptr<class SerialOrganizedTableFile> SerialOrganizedTableFilePtr;
 
 /**
  * Tables in Trecul 
@@ -252,7 +251,7 @@ public:
 class MetadataCatalog
 {
 public:
-  typedef boost::shared_ptr<const TableMetadata> ptr_type;
+  typedef std::shared_ptr<const TableMetadata> ptr_type;
   typedef std::map<std::string, ptr_type> map_type;
 private:
   map_type mCatalog;

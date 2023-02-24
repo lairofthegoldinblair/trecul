@@ -488,7 +488,7 @@ class InternalFileParserOperatorType : public RuntimeOperatorType
 {
   // Don't really know how to do friends between templates.
 public:
-  typedef std::vector<std::vector<boost::shared_ptr<FileChunk> > > chunk_type;
+  typedef std::vector<std::vector<std::shared_ptr<FileChunk> > > chunk_type;
   // What file(s) am I parsing?
   chunk_type mFile;
   // Importer instructions
@@ -582,7 +582,7 @@ private:
   filesystem_type mFileSystem;
   
   // Which file am I working on?
-  std::vector<boost::shared_ptr<FileChunk> >::const_iterator mFileIt;
+  std::vector<std::shared_ptr<FileChunk> >::const_iterator mFileIt;
   // Input buffer for the file.
   _InputBuffer * mInputBuffer;
   // The current window of the file
@@ -603,7 +603,7 @@ private:
   {
     if (mFileSystem) {
       std::set<std::string> files;
-      for(std::vector<boost::shared_ptr<FileChunk> >::const_iterator
+      for(std::vector<std::shared_ptr<FileChunk> >::const_iterator
 	    fileIt = getMyOperatorType().mFile[_ReaderContext::getPartition()].begin();
 	  fileIt != getMyOperatorType().mFile[_ReaderContext::getPartition()].end();
 	  ++fileIt) {	

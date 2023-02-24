@@ -35,6 +35,11 @@
 #ifndef __ASYNCHRONOUSFILESYSTEM_HH__
 #define __ASYNCHRONOUSFILESYSTEM_HH__
 
+#include <functional>
+#include <memory>
+
+#include <boost/assert.hpp>
+
 #include "ConcurrentFifo.hh"
 #include "FileSystem.hh"
 
@@ -173,14 +178,14 @@ private:
   ConcurrentBlockingFifo<Request *> mRequests;
 
   // Worker threads
-  std::vector<boost::shared_ptr<boost::thread> > mWorkers;
+  std::vector<std::shared_ptr<std::thread> > mWorkers;
 
   // Worker thread loop
   void run();
 
   static AsynchronousFileSystem * gFS;
   static int32_t gRefCount;
-  static boost::mutex gLock;
+  static std::mutex gLock;
 public:
   static AsynchronousFileSystem * get();
   static void release(AsynchronousFileSystem* fs);
@@ -209,12 +214,12 @@ template<class _FileTraits>
 int32_t AsynchronousFileSystem<_FileTraits>::gRefCount=0;
 
 template<class _FileTraits>
-boost::mutex AsynchronousFileSystem<_FileTraits>::gLock;
+std::mutex AsynchronousFileSystem<_FileTraits>::gLock;
 
 template<class _FileTraits>
 AsynchronousFileSystem<_FileTraits> * AsynchronousFileSystem<_FileTraits>::get()
 {
-  boost::unique_lock<boost::mutex> guard(gLock);
+  std::unique_lock<std::mutex> guard(gLock);
   if (gRefCount == 0) {
     gFS = new AsynchronousFileSystem<_FileTraits>(2);
   }
@@ -225,7 +230,7 @@ AsynchronousFileSystem<_FileTraits> * AsynchronousFileSystem<_FileTraits>::get()
 template<class _FileTraits>
 void AsynchronousFileSystem<_FileTraits>::release(AsynchronousFileSystem<_FileTraits> *  fs)
 {
-  boost::unique_lock<boost::mutex> guard(gLock);
+  std::unique_lock<std::mutex> guard(gLock);
   BOOST_ASSERT(fs == gFS);
   if (fs == gFS) {
     gRefCount -= 1;
@@ -240,10 +245,10 @@ AsynchronousFileSystem<_FileTraits>::AsynchronousFileSystem(int32_t numberOfThre
   mShutdown(false)
 {
   for(int32_t i=0; i<numberOfThreads; i++) {
-    boost::thread * t = 
-      new boost::thread(boost::bind(&AsynchronousFileSystem::run, 
-				    this));
-    mWorkers.push_back(boost::shared_ptr<boost::thread>(t));
+    std::thread * t = 
+      new std::thread(std::bind(&AsynchronousFileSystem::run, 
+                                this));
+    mWorkers.push_back(std::shared_ptr<std::thread>(t));
   }
 }
 
@@ -251,12 +256,12 @@ template<class _FileTraits>
 AsynchronousFileSystem<_FileTraits>::~AsynchronousFileSystem()
 {
   mShutdown = true; 
-  for(std::vector<boost::shared_ptr<boost::thread> >::iterator it = mWorkers.begin();
+  for(std::vector<std::shared_ptr<std::thread> >::iterator it = mWorkers.begin();
       it != mWorkers.end();
       ++it) {
     mRequests.push(NULL);
   }
-  for(std::vector<boost::shared_ptr<boost::thread> >::iterator it = mWorkers.begin();
+  for(std::vector<std::shared_ptr<std::thread> >::iterator it = mWorkers.begin();
       it != mWorkers.end();
       ++it) {
     (*it)->join();
@@ -331,7 +336,7 @@ public:
   // Split into desired number of partitions.
   static void expand(std::string pattern, 
 		     int32_t numPartitions,
-		     std::vector<std::vector<boost::shared_ptr<FileChunk> > >& files) {
+		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files) {
     _FileTraits::expand(pattern, numPartitions, files);
   }
   static void requestOpen(filesystem_type fs,

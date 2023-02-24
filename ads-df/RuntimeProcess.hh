@@ -35,13 +35,15 @@
 #ifndef __RUNTIMEPROCESS_H
 #define __RUNTIMEPROCESS_H
 
+#include <memory>
 #include <vector>
 #include <string>
+#include <mutex>
+#include <thread>
 #include <map>
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/shared_ptr.hpp>
 
 #include "DataflowRuntime.hh"
 
@@ -64,10 +66,6 @@ class RuntimeMessageSendOperatorType;
 class RemoteReceiveFifo;
 class RuntimeProcess;
 
-namespace boost {
-  class thread;
-}
-
 /**
  * The following methods are implemented for a remoting strategy.
  * Default implementation is to throw an exception
@@ -83,7 +81,7 @@ public:
   virtual void addTarget(const InterProcessFifoSpec& spec, 
 			 int32_t targetPartition, 
 			 int32_t targetPartitionConstraintIndex);
-  virtual void runRemote(std::vector<boost::shared_ptr<boost::thread> >& threads) {}
+  virtual void runRemote(std::vector<std::shared_ptr<std::thread> >& threads) {}
 };
 
 /**
@@ -105,7 +103,7 @@ private:
    * Lock that protects mQueue.  This lock must be taken before taking any locks
    * on scheduler queues.
    */
-  boost::mutex mLock;
+  std::mutex mLock;
   /**
    * The actual fifo itself.
    */
@@ -245,7 +243,7 @@ private:
   // Channels connecting operators that both live in this process
   std::vector<InProcessFifo *> mChannels;
   // State for remote execution
-  boost::shared_ptr<ProcessRemoting> mRemoteExecution;
+  std::shared_ptr<ProcessRemoting> mRemoteExecution;
   // Service Completion Channels
   std::vector<class ServiceCompletionFifo *> mServiceChannels;
 

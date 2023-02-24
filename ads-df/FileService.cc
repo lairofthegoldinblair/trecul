@@ -1,4 +1,4 @@
-#include <boost/thread/mutex.hpp>
+#include <mutex>
 
 #include "FileService.hh"
 #include "AsynchronousFileSystem.hh"
@@ -151,11 +151,11 @@ void FileService::requestRead(FileServiceFile * file,
 
 static FileService * gFS=NULL;
 static int32_t gRefCount=0;
-static boost::mutex gLock;
+static std::mutex gLock;
 
 FileService * FileService::get()
 {
-  boost::unique_lock<boost::mutex> guard(gLock);
+  std::unique_lock<std::mutex> guard(gLock);
   if (gRefCount == 0) {
     gFS = new FileService(2);
   }
@@ -165,7 +165,7 @@ FileService * FileService::get()
 
 void FileService::release(FileService * fs)
 {
-  boost::unique_lock<boost::mutex> guard(gLock);
+  std::unique_lock<std::mutex> guard(gLock);
   BOOST_ASSERT(fs == gFS);
   if (fs == gFS) {
     gRefCount -= 1;

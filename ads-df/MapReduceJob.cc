@@ -35,13 +35,14 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include <memory>
+
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/make_shared.hpp>
 
 #include "md5.h"
 #include "FileSystem.hh"
@@ -137,16 +138,16 @@ void HadoopSetup::setEnvironment()
   // If Hadoop home exists then grab environment variables set
   // up by conf scripts.
   PosixProcessFactory p;
-  std::vector<boost::shared_ptr<PosixProcessInitializer> > v;
-  v.push_back(boost::shared_ptr<PosixProcessInitializer>(new PosixPath("/bin/bash")));
-  v.push_back(boost::shared_ptr<PosixProcessInitializer>(new PosixArgument("-c")));
-  v.push_back(boost::shared_ptr<PosixProcessInitializer>(new PosixArgument("source " + myHadoopEnv + ";\n"
+  std::vector<std::shared_ptr<PosixProcessInitializer> > v;
+  v.push_back(std::shared_ptr<PosixProcessInitializer>(new PosixPath("/bin/bash")));
+  v.push_back(std::shared_ptr<PosixProcessInitializer>(new PosixArgument("-c")));
+  v.push_back(std::shared_ptr<PosixProcessInitializer>(new PosixArgument("source " + myHadoopEnv + ";\n"
 									   "source " + myHadoopConfig + ";\n"
 									   "echo \"CLASSPATH=$CLASSPATH\"")));
-  v.push_back(boost::shared_ptr<PosixProcessInitializer>(new PosixParentEnvironment()));
+  v.push_back(std::shared_ptr<PosixProcessInitializer>(new PosixParentEnvironment()));
 
   ProcessPipe stdOutPipe;
-  v.push_back(boost::shared_ptr<PosixProcessInitializer>(new StandardOutTo(stdOutPipe)));
+  v.push_back(std::shared_ptr<PosixProcessInitializer>(new StandardOutTo(stdOutPipe)));
   p.create(v);
   boost::iostreams::stream<ProcessPipe::source_type> fromChild(stdOutPipe.mSource);
 
@@ -476,7 +477,7 @@ int32_t AdsPipesJobConf::copyFromLocal(const std::string& localPath,
 				       const std::string& remotePath)
 {
   // Just shell out to hadoop to upload file
-  typedef boost::shared_ptr<PosixProcessInitializer> ppiptr;
+  typedef std::shared_ptr<PosixProcessInitializer> ppiptr;
   PosixProcessFactory hadoopJob;
   std::vector<ppiptr> v;
   v.push_back(ppiptr(new PosixPath(HadoopSetup::hadoopHome() + "/bin/hadoop")));     
@@ -582,7 +583,7 @@ void MapReducePlanRunner::createSerialized64MapPlan(const std::string& f,
   PlanCheckContext ctxt;
   DataflowGraphBuilder gb(ctxt);
   gb.buildGraph(f);  
-  boost::shared_ptr<RuntimeOperatorPlan> plan = gb.create(partitions);
+  std::shared_ptr<RuntimeOperatorPlan> plan = gb.create(partitions);
   p = PlanGenerator::serialize64(plan);
   // Now that plan is checked we can scrape up the output
   // format of any emit operator so that it can be fed to
@@ -615,7 +616,7 @@ void MapReducePlanRunner::createSerialized64ReducePlan(const std::string& f,
       reduceOp[0]->setStringFormat(defaultReduceFormat);
     }
   }
-  boost::shared_ptr<RuntimeOperatorPlan> plan = gb.create(partitions);
+  std::shared_ptr<RuntimeOperatorPlan> plan = gb.create(partitions);
   p = PlanGenerator::serialize64(plan);
 }
 
@@ -659,12 +660,12 @@ int MapReducePlanRunner::runMapReduceJob(const std::string& mapProgram,
 					 int32_t timeout)
 {
   // Create a temporary work space for this job
-  boost::shared_ptr<HdfsDelete> cleanup;
+  std::shared_ptr<HdfsDelete> cleanup;
   std::string jobDir = FileSystem::getTempFileName();
   jobDir = "/tmp/ads_df/" + jobDir;
   std::string uri("hdfs://default:0");
   uri += jobDir;
-  cleanup = boost::make_shared<HdfsDelete>(uri);
+  cleanup = std::make_shared<HdfsDelete>(uri);
   
   std::string inputDir;
   if (inputDirArg.size() == 0) {
@@ -705,7 +706,7 @@ int MapReducePlanRunner::runMapReduceJob(const std::string& mapProgram,
 
   // Create the job configuration temp file and run Hadoop against it.
   TempFile jobConfFile(jobConf.get());
-  typedef boost::shared_ptr<PosixProcessInitializer> ppiptr;
+  typedef std::shared_ptr<PosixProcessInitializer> ppiptr;
   PosixProcessFactory hadoopJob;
   std::vector<ppiptr> v;
   if (!useHp) {

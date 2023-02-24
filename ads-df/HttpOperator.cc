@@ -834,8 +834,8 @@ public:
   void waitForShutdown()
   {
     mShutdownSignal.async_wait(boost::bind(&HttpReadOperator::handleShutdown, this, 
-					   boost::asio::placeholders::error, 
-					   boost::asio::placeholders::signal_number));
+                                           boost::asio::placeholders::error, 
+                                           boost::asio::placeholders::signal_number));
     onReadWriteRequest();
   }
 
@@ -850,9 +850,9 @@ public:
 					      getMyOperatorType().mRequestType);
       mAcceptor->async_accept(session->socket(),
 			      boost::bind(&HttpReadOperator::handleAccept, 
-					  this,
-					  getServiceCompletionFifo(),
-					  boost::asio::placeholders::error));
+                                          this,
+                                          getServiceCompletionFifo(),
+                                          boost::asio::placeholders::error));
       onReadWriteRequest();
       mAcceptingSession = session;
     } else {

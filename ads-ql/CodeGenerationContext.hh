@@ -36,11 +36,11 @@
 #define __CODEGENERATIONCONTEXT_HH
 
 #include <map>
+#include <memory>
 #include <stack>
 #include <string>
 
 #include <boost/dynamic_bitset.hpp>
-#include <boost/shared_ptr.hpp>
 
 #include "llvm/IR/IRBuilder.h"
 
@@ -1547,7 +1547,7 @@ public:
 class AggregateFunction
 {
 public:
-  static boost::shared_ptr<AggregateFunction> get(const char * fn);
+  static std::shared_ptr<AggregateFunction> get(const char * fn);
   virtual ~AggregateFunction() {}
   virtual void update(CodeGenerationContext * ctxt,
 		      const std::string& old,

@@ -264,7 +264,7 @@ std::string base64_decode(std::string const& encoded_string) {
   return ret;
 }
 
-std::string PlanGenerator::serialize(boost::shared_ptr<RuntimeOperatorPlan> plan)
+std::string PlanGenerator::serialize(std::shared_ptr<RuntimeOperatorPlan> plan)
 {
   std::ostringstream s(std::ios_base::binary | std::ios_base::out);
   boost::archive::binary_oarchive oa(s);      
@@ -274,16 +274,16 @@ std::string PlanGenerator::serialize(boost::shared_ptr<RuntimeOperatorPlan> plan
   return s.str();
 }
 
-boost::shared_ptr<RuntimeOperatorPlan> PlanGenerator::deserialize(const char * buf, std::size_t sz)
+std::shared_ptr<RuntimeOperatorPlan> PlanGenerator::deserialize(const char * buf, std::size_t sz)
 {
   boost::iostreams::stream<boost::iostreams::array_source> archiveStream(boost::iostreams::array_source(buf,sz));
   boost::archive::binary_iarchive ia(archiveStream);
   RuntimeOperatorPlan * tmp=NULL;
   ia >> BOOST_SERIALIZATION_NVP(tmp);
-  return boost::shared_ptr<RuntimeOperatorPlan>(tmp);
+  return std::shared_ptr<RuntimeOperatorPlan>(tmp);
 }
 
-std::string PlanGenerator::serialize64(boost::shared_ptr<RuntimeOperatorPlan> plan)
+std::string PlanGenerator::serialize64(std::shared_ptr<RuntimeOperatorPlan> plan)
 {
   namespace io = boost::iostreams;
 
@@ -304,7 +304,7 @@ std::string PlanGenerator::serialize64(boost::shared_ptr<RuntimeOperatorPlan> pl
 		       compressedBuf.size());
 }
 
-boost::shared_ptr<RuntimeOperatorPlan> PlanGenerator::deserialize64(const char * buf, 
+std::shared_ptr<RuntimeOperatorPlan> PlanGenerator::deserialize64(const char * buf, 
 								    std::size_t sz)
 {
   namespace io = boost::iostreams;
@@ -317,7 +317,7 @@ boost::shared_ptr<RuntimeOperatorPlan> PlanGenerator::deserialize64(const char *
   boost::archive::binary_iarchive ia(in);
   RuntimeOperatorPlan * tmp=NULL;
   ia >> BOOST_SERIALIZATION_NVP(tmp);
-  return boost::shared_ptr<RuntimeOperatorPlan>(tmp);
+  return std::shared_ptr<RuntimeOperatorPlan>(tmp);
 }
 
 DataflowGraphBuilder::DataflowGraphBuilder(PlanCheckContext & ctxt)
@@ -479,7 +479,7 @@ void DataflowGraphBuilder::edgeBuild(const char * from,
 		 mOps.find(to)->second);
 }
 
-boost::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(int32_t numPartitions)
+std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(int32_t numPartitions)
 {
   mPlan->check();
 
@@ -492,8 +492,7 @@ boost::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(int32_t numP
     (*it)->create(bld);
   }
   
-  boost::shared_ptr<RuntimeOperatorPlan> plan =  
-    boost::make_shared<RuntimeOperatorPlan>(numPartitions, true); 
+  auto plan = std::make_shared<RuntimeOperatorPlan>(numPartitions, true); 
   // Stitch together the generated operators into
   // the final graph.  Add all operator types and
   // then for each logical edge, connect the corresponding
