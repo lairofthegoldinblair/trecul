@@ -3190,9 +3190,10 @@ void IQLParserStuff::initParse(const std::string& transfer)
   cleanup();
   // Parse the transfer spec and generate the program to perform the operations.
   // Feed from an in place stream
-  mInput = antlr3NewAsciiStringInPlaceStream((pANTLR3_UINT8) transfer.c_str(),
-					     transfer.size(), 
-					     (pANTLR3_UINT8) (boost::format("My Program %1%") % (streamID++)).str().c_str());
+  mInput = antlr3StringStreamNew((pANTLR3_UINT8) transfer.c_str(),
+                                 ANTLR3_ENC_UTF8,
+                                 transfer.size(),
+                                 (pANTLR3_UINT8) (boost::format("My Program %1%") % (streamID++)).str().c_str());
   if (!mInput)
     throw std::runtime_error("Antlr out of memory");
 
@@ -3512,9 +3513,10 @@ RecordTypeTransfer2::RecordTypeTransfer2(DynamicRecordContext& recCtxt,
 {
   // Parse the transfer spec and generate the program to perform the operations.
   // Feed from an in place stream
-  ANTLR3AutoPtr<ANTLR3_INPUT_STREAM> input(antlr3NewAsciiStringInPlaceStream((pANTLR3_UINT8) mTransfer.c_str(),
-									     mTransfer.size(), 
-									     (pANTLR3_UINT8) "My Program"));
+  ANTLR3AutoPtr<ANTLR3_INPUT_STREAM> input(antlr3StringStreamNew((pANTLR3_UINT8) mTransfer.c_str(),
+                                                                 ANTLR3_ENC_UTF8,
+                                                                 mTransfer.size(),
+                                                                 (pANTLR3_UINT8) "My Program"));
   if (!input)
     throw std::runtime_error("Antlr out of memory");
   
@@ -3987,9 +3989,10 @@ void RecordTypeFunction::init(DynamicRecordContext& recCtxt)
     throw std::runtime_error("RecordTypeFunction requires 2 source record types (the second may be empty)");
 
   // Feed from an in place stream
-  ANTLR3AutoPtr<ANTLR3_INPUT_STREAM> input(antlr3NewAsciiStringInPlaceStream((pANTLR3_UINT8) mStatements.c_str(),
-									     mStatements.size(), 
-									     (pANTLR3_UINT8) "My Program"));
+  ANTLR3AutoPtr<ANTLR3_INPUT_STREAM> input(antlr3StringStreamNew((pANTLR3_UINT8) mStatements.c_str(),
+                                                                 ANTLR3_ENC_UTF8,
+                                                                 mStatements.size(),
+                                                                 (pANTLR3_UINT8) "My Program"));
   if (!input)
     throw std::runtime_error("Antlr out of memory");
   
@@ -4089,10 +4092,11 @@ void IQLGraphBuilder::buildGraph(const std::string& graphSpec, bool isFile)
   // Parse the transfer spec and generate the program to perform the operations.
   // Feed from an in place stream
   ANTLR3AutoPtr<ANTLR3_INPUT_STREAM> input(isFile ?
-					   antlr3AsciiFileStreamNew((pANTLR3_UINT8) graphSpec.c_str()) :
-					   antlr3NewAsciiStringInPlaceStream((pANTLR3_UINT8) graphSpec.c_str(),
-									     graphSpec.size(), 
-									     (pANTLR3_UINT8) "My Program"));
+                                           antlr3FileStreamNew((pANTLR3_UINT8) graphSpec.c_str(), ANTLR3_ENC_UTF8) :
+                                           antlr3StringStreamNew((pANTLR3_UINT8) graphSpec.c_str(),
+                                                                 ANTLR3_ENC_UTF8,
+                                                                 graphSpec.size(),
+                                                                 (pANTLR3_UINT8) "My Program"));
   if (!input)
     throw std::runtime_error("Antlr out of memory");
   
@@ -4130,10 +4134,11 @@ IQLRecordTypeBuilder::IQLRecordTypeBuilder(DynamicRecordContext& ctxt,
   // Parse the transfer spec and generate the program to perform the operations.
   // Feed from an in place stream
   ANTLR3AutoPtr<ANTLR3_INPUT_STREAM> input(isFile ?
-					   antlr3AsciiFileStreamNew((pANTLR3_UINT8) spec.c_str()) :
-					   antlr3NewAsciiStringInPlaceStream((pANTLR3_UINT8) spec.c_str(),
-									     spec.size(), 
-									     (pANTLR3_UINT8) "RecordTypeParser"));
+                                           antlr3FileStreamNew((pANTLR3_UINT8) spec.c_str(), ANTLR3_ENC_UTF8) :
+                                           antlr3StringStreamNew((pANTLR3_UINT8) spec.c_str(),
+                                                                 ANTLR3_ENC_UTF8,
+                                                                 spec.size(),
+                                                                 (pANTLR3_UINT8) "RecordTypeParser"));
   if (!input)
     throw std::runtime_error("Antlr out of memory");
   
