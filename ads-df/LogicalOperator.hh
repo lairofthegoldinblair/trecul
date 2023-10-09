@@ -35,6 +35,7 @@
 #ifndef __LOGICAL_OPERATOR_HH
 #define __LOGICAL_OPERATOR_HH
 
+#include <mutex>
 #include <string>
 #include <vector>
 #include <boost/utility.hpp>
