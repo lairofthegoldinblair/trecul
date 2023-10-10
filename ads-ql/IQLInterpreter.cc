@@ -701,7 +701,7 @@ extern "C" void InternalDecimalFromDouble(double arg,
 					  InterpreterContext * ctxt) 
 {
   char buf[32];
-  sprintf(buf, "%.15e", arg);
+  snprintf(buf, 32, "%.15e", arg);
   ::decimal128FromString(ret, buf, ctxt->getDecimalContext());
 }
 
@@ -1114,12 +1114,12 @@ extern "C" void InternalVarcharFromInt32(int32_t val,
 {
   // 10 digits + trailing EOS + optional - 
   if (11 < Varchar::MIN_LARGE_STRING_SIZE) {
-    sprintf(&result->Small.Data[0], "%d", val);
+    snprintf(&result->Small.Data[0], sizeof(result->Small.Data), "%d", val);
     result->Small.Size = strlen(&result->Small.Data[0]);
     result->Small.Large = 0;
   } else {
     char buf[12];
-    sprintf(buf, "%d", val);
+    snprintf(buf, 12, "%d", val);
     copyFromString(&buf[0], result, ctxt);
   }
 }
@@ -1145,7 +1145,7 @@ extern "C" void InternalVarcharFromInt64(int64_t val,
   // 20 digits + trailing EOS + optional - 
   char buf[22];
   // Cast to hush warnings from gcc
-  sprintf(buf, "%lld", (long long int) val);
+  snprintf(buf, 22, "%lld", (long long int) val);
   copyFromString(&buf[0], result, ctxt);
 }
 
@@ -1163,7 +1163,7 @@ extern "C" void InternalVarcharFromDouble(double val,
 					  InterpreterContext * ctxt) 
 {
   char buf[64];
-  sprintf(buf, "%.15g", val);
+  snprintf(buf, 64, "%.15g", val);
   copyFromString(&buf[0], result, ctxt);
 }
 
@@ -1178,17 +1178,16 @@ extern "C" void InternalVarcharFromDate(boost::gregorian::date d,
 					Varchar * result,
 					InterpreterContext * ctxt) 
 {
-  if (10 < Varchar::MIN_LARGE_STRING_SIZE) {
+  boost::gregorian::greg_year_month_day parts = d.year_month_day();
+  if (10 < Varchar::MIN_LARGE_STRING_SIZE && parts.year <= 9999U) {
     char * buf = &result->Small.Data[0];
-    boost::gregorian::greg_year_month_day parts = d.year_month_day();
-    sprintf(buf, "%04d-%02d-%02d", (int32_t) parts.year, 
+    snprintf(buf, sizeof(result->Small.Data), "%04d-%02d-%02d", (int32_t) parts.year, 
 	    (int32_t) parts.month, (int32_t) parts.day);
     result->Small.Size = 10;
     result->Small.Large = 0;
   } else {
-    char buf[11];
-    boost::gregorian::greg_year_month_day parts = d.year_month_day();
-    sprintf(buf, "%04d-%02d-%02d", (int32_t) parts.year, 
+    char buf[64];
+    snprintf(buf, 64, "%04d-%02d-%02d", (int32_t) parts.year, 
 	    (int32_t) parts.month, (int32_t) parts.day);
     copyFromString(&buf[0], result, ctxt);
   }
@@ -1198,10 +1197,11 @@ extern "C" void InternalVarcharFromDatetime(boost::posix_time::ptime t,
 					    Varchar * result,
 					    InterpreterContext * ctxt) 
 {
-  char buf[20];
+  // We should only use 20 bytes here but some compilers warn about truncation
+  char buf[128];
   boost::gregorian::greg_year_month_day parts = t.date().year_month_day();
   boost::posix_time::time_duration dur = t.time_of_day();
-  sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d", (int32_t) parts.year, (int32_t) parts.month,
+  snprintf(buf, 128, "%04d-%02d-%02d %02d:%02d:%02d", (int32_t) parts.year, (int32_t) parts.month,
 	  (int32_t) parts.day, (int32_t) dur.hours(), (int32_t) dur.minutes(), (int32_t) dur.seconds());
   copyFromString(&buf[0], result, ctxt);
 }

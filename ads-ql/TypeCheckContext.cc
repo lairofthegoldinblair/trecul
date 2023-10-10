@@ -1016,16 +1016,23 @@ const FieldType * TypeCheckContext::buildLike(const FieldType * lhs,
 const FieldType * TypeCheckContext::buildNetworkSubnet(const FieldType * lhs, 
                                                        const FieldType * rhs)
 {
-  // Both sides should be convertible to CIDRV6
-  auto cidrV6Ty = buildCIDRv6Type();
-  if (nullptr == castTo(lhs, cidrV6Ty)) {
-    throw std::runtime_error("Expected IPV4, IPV6, CIDR4 or CIDRV6 expression for left hand side of subnet operator");
-  }
-  if (nullptr == castTo(rhs, cidrV6Ty)) {
-    throw std::runtime_error("Expected IPV4, IPV6, CIDR4 or CIDRV6 expression for right hand side of subnet operator");
-  }
   const bool isNullable = lhs->isNullable() || rhs->isNullable();
-  return buildBooleanType(isNullable);
+  if (lhs->isIntegral() || rhs->isIntegral()) {
+    if (!rhs->isIntegral() || !lhs->isIntegral()) {
+      throw std::runtime_error("Arithmetic shift operands must be integral type");
+    }
+    return lhs->GetEnum() == FieldType::INT64 ? buildInt64Type(isNullable) : buildInt32Type(isNullable);
+  } else {
+    // Both sides should be convertible to CIDRV6
+    auto cidrV6Ty = buildCIDRv6Type();
+    if (nullptr == castTo(lhs, cidrV6Ty)) {
+      throw std::runtime_error("Expected IPV4, IPV6, CIDR4 or CIDRV6 expression for left hand side of subnet operator");
+    }
+    if (nullptr == castTo(rhs, cidrV6Ty)) {
+      throw std::runtime_error("Expected IPV4, IPV6, CIDR4 or CIDRV6 expression for right hand side of subnet operator");
+    }
+    return buildBooleanType(isNullable);
+  }
 }
 
 const FieldType * TypeCheckContext::buildFamily(std::vector<const FieldType *> & args)

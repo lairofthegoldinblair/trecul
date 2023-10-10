@@ -3420,6 +3420,230 @@ BOOST_AUTO_TEST_CASE(testMasklen)
   recTy.GetFree()->free(inputBuf);
 }
 
+BOOST_AUTO_TEST_CASE(testArithmeticShiftOperators)
+{
+  bool isNullable = false;
+  DynamicRecordContext ctxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", Int8Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("b", Int16Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("d", Int64Type::Get(ctxt)));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  // dummy field to make sure that the offsets of fields we are comparing
+  // are different.
+  rhsMembers.push_back(RecordMember("dummy", Int32Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("e", Int8Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("f", Int16Type::Get(ctxt)));
+  rhsMembers.push_back(RecordMember("g", Int32Type::Get(ctxt, isNullable)));
+  rhsMembers.push_back(RecordMember("h", Int64Type::Get(ctxt, isNullable)));
+  RecordType rhsTy(ctxt, rhsMembers);
+
+  int8_t a = 0x0f;
+  int16_t b = 0x0fff;
+  int32_t c = 0x0fffffff;
+  int64_t d = 0x0fffffffffffffff;
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setInt8("a", a, lhs);
+  recTy.setInt16("b", b, lhs);
+  recTy.setInt32("c", c, lhs);
+  recTy.setInt64("d", d, lhs);
+
+  int8_t e = 1;
+  int16_t f = 2;
+  int32_t g = 3;
+  int64_t h = 4;
+  RecordBuffer rhs1 = rhsTy.GetMalloc()->malloc();
+  rhsTy.setInt32("dummy", 0, rhs1);
+  rhsTy.setInt8("e", e, rhs1);
+  rhsTy.setInt16("f", f, rhs1);
+  rhsTy.setInt32("g", g, rhs1);
+  rhsTy.setInt64("h", h, rhs1);
+
+  std::vector<AliasedRecordType> types;
+  types.push_back(AliasedRecordType("table", &recTy));
+  types.push_back(AliasedRecordType("probe", &rhsTy));
+  RecordTypeTransfer2 t1(ctxt, "xfer1", types,
+			 "a << e AS ael"
+                         ", a << f AS afl"
+                         ", (a << g) AS agl"
+                         ", a << h AS ahl"
+			 ", b << e AS bel"
+                         ", b << f AS bfl"
+                         ", (b << g) AS bgl"
+                         ", b << h AS bhl"
+			 ", c << e AS cel"
+                         ", c << f AS cfl"
+                         ", (c << g) AS cgl"
+                         ", c << h AS chl"
+			 ", d << e AS del"
+                         ", d << f AS dfl"
+                         ", (d << g) AS dgl"
+                         ", d << h AS dhl"
+			 ", a >> e AS aer"
+                         ", a >> f AS afr"
+                         ", (a >> g) AS agr"
+                         ", a >> h AS ahr"
+			 ", b >> e AS ber"
+                         ", b >> f AS bfr"
+                         ", (b >> g) AS bgr"
+                         ", b >> h AS bhr"
+			 ", c >> e AS cer"
+                         ", c >> f AS cfr"
+                         ", (c >> g) AS cgr"
+                         ", c >> h AS chr"
+			 ", d >> e AS der"
+                         ", d >> f AS dfr"
+                         ", (d >> g) AS dgr"
+                         ", d >> h AS dhr"
+                         );
+
+  RecordBuffer outputBuf;
+  InterpreterContext runtimeCtxt;
+  t1.execute(lhs, rhs1, outputBuf, &runtimeCtxt, false, false);
+
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("ael").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("ael").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("ael", outputBuf), a << e);
+  static_assert( std::is_same<std::int32_t, decltype(a << e)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("afl").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("afl").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("afl", outputBuf), a << f);
+  static_assert( std::is_same<std::int32_t, decltype(a << f)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("agl").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("agl").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("agl", outputBuf), a << g);
+  static_assert( std::is_same<std::int32_t, decltype(a << g)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("ahl").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("ahl").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("ahl", outputBuf), a << h);
+  static_assert( std::is_same<std::int32_t, decltype(a << h)>::value == true );
+
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bel").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bel").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("bel", outputBuf), b << e);
+  static_assert( std::is_same<std::int32_t, decltype(b << e)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bfl").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bfl").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("bfl", outputBuf), b << f);
+  static_assert( std::is_same<std::int32_t, decltype(b << f)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bgl").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bgl").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("bgl", outputBuf), b << g);
+  static_assert( std::is_same<std::int32_t, decltype(b << g)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bhl").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bhl").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("bhl", outputBuf), b << h);
+  static_assert( std::is_same<std::int32_t, decltype(b << h)>::value == true );
+
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cel").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cel").GetType()->isNullable(), false);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("cel", outputBuf), c << e);
+  static_assert( std::is_same<std::int32_t, decltype(c << e)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cfl").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cfl").GetType()->isNullable(), false);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("cfl", outputBuf), c << f);
+  static_assert( std::is_same<std::int32_t, decltype(c << f)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cgl").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cgl").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("cgl", outputBuf), c << g);
+  static_assert( std::is_same<std::int32_t, decltype(c << g)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("chl").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("chl").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("chl", outputBuf), c << h);
+  static_assert( std::is_same<std::int32_t, decltype(c << h)>::value == true );
+
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("del").GetType()->GetEnum(), FieldType::INT64);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("del").GetType()->isNullable(), false);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt64("del", outputBuf), d << e);
+  static_assert( std::is_same<std::int64_t, decltype(d << e)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dfl").GetType()->GetEnum(), FieldType::INT64);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dfl").GetType()->isNullable(), false);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt64("dfl", outputBuf), d << f);
+  static_assert( std::is_same<std::int64_t, decltype(d << f)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dgl").GetType()->GetEnum(), FieldType::INT64);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dgl").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt64("dgl", outputBuf), d << g);
+  static_assert( std::is_same<std::int64_t, decltype(d << g)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dhl").GetType()->GetEnum(), FieldType::INT64);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dhl").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt64("dhl", outputBuf), d << h);
+  static_assert( std::is_same<std::int64_t, decltype(d << h)>::value == true );
+
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("aer").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("aer").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("aer", outputBuf), a >> e);
+  static_assert( std::is_same<std::int32_t, decltype(a >> e)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("afr").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("afr").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("afr", outputBuf), a >> f);
+  static_assert( std::is_same<std::int32_t, decltype(a >> f)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("agr").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("agr").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("agr", outputBuf), a >> g);
+  static_assert( std::is_same<std::int32_t, decltype(a >> g)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("ahr").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("ahr").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("ahr", outputBuf), a >> h);
+  static_assert( std::is_same<std::int32_t, decltype(a >> h)>::value == true );
+
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("ber").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("ber").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("ber", outputBuf), b >> e);
+  static_assert( std::is_same<std::int32_t, decltype(b >> e)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bfr").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bfr").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("bfr", outputBuf), b >> f);
+  static_assert( std::is_same<std::int32_t, decltype(b >> f)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bgr").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bgr").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("bgr", outputBuf), b >> g);
+  static_assert( std::is_same<std::int32_t, decltype(b >> g)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bhr").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("bhr").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("bhr", outputBuf), b >> h);
+  static_assert( std::is_same<std::int32_t, decltype(b >> h)>::value == true );
+
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cer").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cer").GetType()->isNullable(), false);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("cer", outputBuf), c >> e);
+  static_assert( std::is_same<std::int32_t, decltype(c >> e)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cfr").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cfr").GetType()->isNullable(), false);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("cfr", outputBuf), c >> f);
+  static_assert( std::is_same<std::int32_t, decltype(c >> f)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cgr").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("cgr").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("cgr", outputBuf), c >> g);
+  static_assert( std::is_same<std::int32_t, decltype(c >> g)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("chr").GetType()->GetEnum(), FieldType::INT32);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("chr").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt32("chr", outputBuf), c >> h);
+  static_assert( std::is_same<std::int32_t, decltype(c >> h)>::value == true );
+
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("der").GetType()->GetEnum(), FieldType::INT64);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("der").GetType()->isNullable(), false);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt64("der", outputBuf), d >> e);
+  static_assert( std::is_same<std::int64_t, decltype(d >> e)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dfr").GetType()->GetEnum(), FieldType::INT64);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dfr").GetType()->isNullable(), false);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt64("dfr", outputBuf), d >> f);
+  static_assert( std::is_same<std::int64_t, decltype(d >> f)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dgr").GetType()->GetEnum(), FieldType::INT64);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dgr").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt64("dgr", outputBuf), d >> g);
+  static_assert( std::is_same<std::int64_t, decltype(d >> g)>::value == true );
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dhr").GetType()->GetEnum(), FieldType::INT64);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getMember("dhr").GetType()->isNullable(), isNullable);
+  BOOST_CHECK_EQUAL(t1.getTarget()->getInt64("dhr", outputBuf), d >> h);
+  static_assert( std::is_same<std::int64_t, decltype(d >> h)>::value == true );
+
+  recTy.GetFree()->free(lhs);
+  rhsTy.GetFree()->free(rhs1);
+  t1.getTarget()->getFree().free(outputBuf);
+}
+
 void testIQLStructFieldAccess(const char * prefix, const char * updatePrefix, std::size_t depth, bool isInt64Nullable, bool isInt64Null)
 {
   DynamicRecordContext ctxt;
@@ -7715,6 +7939,7 @@ void testInt32Cast(bool isNullable)
   members.push_back(RecordMember("h", DateType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("i", Int16Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("j", Int8Type::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("k", IPv4Type::Get(ctxt, isNullable)));
   RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
@@ -7734,6 +7959,7 @@ void testInt32Cast(bool isNullable)
   recTy.setDate("h", d, inputBuf);
   recTy.setInt16("i", -7231, inputBuf);
   recTy.setInt16("j", -71, inputBuf);
+  recTy.setIPv4("k", boost::asio::ip::make_address_v4("100.84.33.22"), inputBuf);
 
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
@@ -7747,6 +7973,7 @@ void testInt32Cast(bool isNullable)
 			  ", CAST(h AS INTEGER) AS h"
 			  ", CAST(i AS INTEGER) AS i"
 			  ", CAST(j AS INTEGER) AS j"
+			  ", CAST(k AS INTEGER) AS k"
 			  );
     for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
 	it != t1.getTarget()->end_members();
@@ -7767,6 +7994,7 @@ void testInt32Cast(bool isNullable)
     BOOST_CHECK_EQUAL(20110222, t1.getTarget()->getInt32("h", outputBuf));
     BOOST_CHECK_EQUAL(-7231, t1.getTarget()->getInt32("i", outputBuf));
     BOOST_CHECK_EQUAL(-71, t1.getTarget()->getInt32("j", outputBuf));
+    BOOST_CHECK_EQUAL(0x64542116, t1.getTarget()->getInt32("k", outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
   recTy.getFree().free(inputBuf);
@@ -8384,6 +8612,7 @@ void testIPv4Cast(bool isNullable)
   members.push_back(RecordMember("c", IPv6Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("d", CIDRv6Type::Get(ctxt, isNullable)));
   members.push_back(RecordMember("e", FixedArrayType::Get(ctxt, 4, Int32Type::Get(ctxt, isNullable), isNullable)));
+  members.push_back(RecordMember("f", Int32Type::Get(ctxt, isNullable)));
   RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
@@ -8395,6 +8624,7 @@ void testIPv4Cast(bool isNullable)
   recTy.setArrayInt32("e", 1, 66, inputBuf);
   recTy.setArrayInt32("e", 2, 100, inputBuf);
   recTy.setArrayInt32("e", 3, 3, inputBuf);
+  recTy.setInt32("f", 0x01020304, inputBuf);
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
                           "CAST(a AS IPV4) AS a"
@@ -8402,6 +8632,7 @@ void testIPv4Cast(bool isNullable)
                           ", CAST(c AS IPV4) AS c"
                           ", CAST(d AS IPV4) AS d"
                           ", CAST(e AS IPV4) AS e"
+                          ", CAST(f AS IPV4) AS f"
                           );
     for(RecordType::const_member_iterator it = t1.getTarget()->begin_members();
 	it != t1.getTarget()->end_members();
@@ -8422,6 +8653,8 @@ void testIPv4Cast(bool isNullable)
                       t1.getTarget()->getIPv4("d", outputBuf));
     BOOST_CHECK(boost::asio::ip::make_address_v4("23.66.100.3") == 
                       t1.getTarget()->getIPv4("e", outputBuf));
+    BOOST_TEST(boost::asio::ip::make_address_v4("1.2.3.4") == 
+                      t1.getTarget()->getIPv4("f", outputBuf));
     
     t1.getTarget()->getFree().free(outputBuf);
   }

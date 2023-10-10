@@ -1363,6 +1363,12 @@ public:
                                                    const IQLToLLVMValue * rhs, 
                                                    const FieldType * rhsType,
                                                    const FieldType * resultType);
+  IQLToLLVMValue::ValueType buildSubnetContainedBy(const IQLToLLVMValue * lhs, 
+                                                   const FieldType * lhsType, 
+                                                   const IQLToLLVMValue * rhs, 
+                                                   const FieldType * rhsType,
+                                                   llvm::Value * ret,
+                                                   const FieldType * retType);
   const IQLToLLVMValue * buildSubnetContainedBy(const IQLToLLVMValue * lhs, 
                                                 const FieldType * lhsType, 
                                                 const IQLToLLVMValue * rhs, 

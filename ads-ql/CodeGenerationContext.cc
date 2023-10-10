@@ -2024,6 +2024,16 @@ CodeGenerationContext::buildCastInt32(const IQLToLLVMValue * e,
     {
       return buildCall("InternalInt32FromDatetime", args, ret, retType);
     }
+  case FieldType::IPV4:
+    {
+      auto in = e->getValue(this);
+      auto out = b->CreateOr(b->CreateOr(b->CreateOr(b->CreateShl(b->CreateAnd(in, b->getInt32(0xff)), 24),
+                                                     b->CreateShl(b->CreateAnd(in, b->getInt32(0xff00)), 8)),
+                                         b->CreateLShr(b->CreateAnd(in, b->getInt32(0xff0000)), 8)),
+                             b->CreateLShr(b->CreateAnd(in, b->getInt32(0xff000000)), 24));
+      b->CreateStore(out, ret);
+      return IQLToLLVMValue::eLocal;
+    }
   default:
     throw std::runtime_error ((boost::format("Cast to INTEGER from %1% not "
 					     "implemented.") % 
@@ -2987,6 +2997,16 @@ CodeGenerationContext::buildCastIPv4(const IQLToLLVMValue * e,
   llvm::IRBuilder<> * b = LLVMBuilder;
 
   switch(argType->GetEnum()) {
+  case FieldType::INT32:
+    {
+      auto in = e->getValue(this);
+      auto out = b->CreateOr(b->CreateOr(b->CreateOr(b->CreateShl(b->CreateAnd(in, b->getInt32(0xff)), 24),
+                                                     b->CreateShl(b->CreateAnd(in, b->getInt32(0xff00)), 8)),
+                                         b->CreateLShr(b->CreateAnd(in, b->getInt32(0xff0000)), 8)),
+                             b->CreateLShr(b->CreateAnd(in, b->getInt32(0xff000000)), 24));
+      b->CreateStore(out, ret);
+      return IQLToLLVMValue::eLocal;
+    }
   case FieldType::IPV4:
     b->CreateStore(e->getValue(this), ret);
     return IQLToLLVMValue::eLocal;
@@ -5706,16 +5726,24 @@ IQLToLLVMValue::ValueType CodeGenerationContext::buildSubnetContains(const IQLTo
                                                                   llvm::Value * ret,
                                                                   const FieldType * retType)
 {
-  auto lhsCidrV6Type = CIDRv6Type::Get(lhsType->getContext(), lhsType->isNullable());
-  auto rhsCidrV6Type = CIDRv6Type::Get(lhsType->getContext(), rhsType->isNullable());
-  lhs = buildCast(lhs, lhsType, lhsCidrV6Type);
-  rhs = buildCast(rhs, rhsType, rhsCidrV6Type);
-  lhsType = lhsCidrV6Type;
-  rhsType = rhsCidrV6Type;
-  std::vector<IQLToLLVMTypedValue> args;
-  args.emplace_back(lhs, lhsCidrV6Type);
-  args.emplace_back(rhs, rhsCidrV6Type);
-  return buildCall("InternalIPAddressAddrBlockMatch", args, ret, retType);
+  if (lhsType->isIntegral()) {
+    lhs = buildCast(lhs, lhsType, retType);
+    rhs = buildCast(rhs, rhsType, retType);
+    llvm::IRBuilder<> * b = LLVMBuilder;
+    b->CreateStore(b->CreateAShr(lhs->getValue(this), rhs->getValue(this)), ret);
+    return IQLToLLVMValue::eLocal;
+  } else {
+    auto lhsCidrV6Type = CIDRv6Type::Get(lhsType->getContext(), lhsType->isNullable());
+    auto rhsCidrV6Type = CIDRv6Type::Get(lhsType->getContext(), rhsType->isNullable());
+    lhs = buildCast(lhs, lhsType, lhsCidrV6Type);
+    rhs = buildCast(rhs, rhsType, rhsCidrV6Type);
+    lhsType = lhsCidrV6Type;
+    rhsType = rhsCidrV6Type;
+    std::vector<IQLToLLVMTypedValue> args;
+    args.emplace_back(lhs, lhsCidrV6Type);
+    args.emplace_back(rhs, rhsCidrV6Type);
+    return buildCall("InternalIPAddressAddrBlockMatch", args, ret, retType);
+  }
 }
 
 const IQLToLLVMValue * CodeGenerationContext::buildSubnetContains(const IQLToLLVMValue * lhs, 
@@ -5744,13 +5772,31 @@ const IQLToLLVMValue * CodeGenerationContext::buildSubnetContainsEquals(const IQ
   return buildOr(buildSubnetContains(lhs, lhsType, rhs, rhsType, resultType), resultType, resultType);
 }
 
+IQLToLLVMValue::ValueType CodeGenerationContext::buildSubnetContainedBy(const IQLToLLVMValue * lhs, 
+                                                                        const FieldType * lhsType, 
+                                                                        const IQLToLLVMValue * rhs, 
+                                                                        const FieldType * rhsType,
+                                                                        llvm::Value * ret,
+                                                                        const FieldType * retType)
+{
+  if (lhsType->isIntegral()) {
+    lhs = buildCast(lhs, lhsType, retType);
+    rhs = buildCast(rhs, rhsType, retType);
+    llvm::IRBuilder<> * b = LLVMBuilder;
+    b->CreateStore(b->CreateShl(lhs->getValue(this), rhs->getValue(this)), ret);
+    return IQLToLLVMValue::eLocal;
+  } else {
+    return buildSubnetContains(rhs, rhsType, lhs, lhsType, ret, retType);
+  }
+}
+
 const IQLToLLVMValue * CodeGenerationContext::buildSubnetContainedBy(const IQLToLLVMValue * lhs, 
                                                                         const FieldType * lhsType, 
                                                                         const IQLToLLVMValue * rhs, 
                                                                         const FieldType * rhsType,
                                                                         const FieldType * resultType)
 {
-  return buildSubnetContains(rhs, rhsType, lhs, lhsType, resultType);
+  return buildNullableBinaryOp(lhs, lhsType, rhs, rhsType, resultType, &CodeGenerationContext::buildSubnetContainedBy);
 }
 
 const IQLToLLVMValue * CodeGenerationContext::buildSubnetContainedByEquals(const IQLToLLVMValue * lhs, 
