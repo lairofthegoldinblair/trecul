@@ -34,6 +34,7 @@
 
 #include <sys/types.h>
 #include <fcntl.h>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -41,7 +42,6 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
-#include <boost/filesystem.hpp>
 
 #include "FileSystem.hh"
 #include "FileWriteOperator.hh"
@@ -158,13 +158,13 @@ void RuntimeWriteOperator::start()
     mFile = STDOUT_FILENO;
   } else {
     // Are we compressing?
-    boost::filesystem::path p (getWriteType().mFile);
-    if (boost::algorithm::iequals(".gz", boost::filesystem::extension(p))) {
+    std::filesystem::path p (getWriteType().mFile);
+    if (boost::algorithm::iequals(".gz", p.extension().string())) {
       mCompressor = new ZLibCompress();
     }
     // Create directories if necessary before opening file.
     if (!p.parent_path().empty()) {
-      boost::filesystem::create_directories(p.parent_path());
+      std::filesystem::create_directories(p.parent_path());
     }
     mFile = ::open(getWriteType().mFile.c_str(),
 		   O_WRONLY|O_CREAT|O_TRUNC,
@@ -248,7 +248,7 @@ void RuntimeWriteOperator::onEvent(RuntimePort * port)
   case START:
     if(getWriteType().mHeader.size() && 
        getWriteType().mHeaderFile.size()) {
-      boost::filesystem::path p (getWriteType().mHeaderFile);
+      std::filesystem::path p (getWriteType().mHeaderFile);
       if (boost::algorithm::iequals(".gz", p.extension().string())) {
 	// TODO: Support compressed header file.
 	throw std::runtime_error("Writing compressed header file not supported yet");

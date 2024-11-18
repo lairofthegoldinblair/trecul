@@ -529,7 +529,7 @@ BOOST_AUTO_TEST_CASE(testConcurrentFifo)
 
 struct test_gz
 {
-  boost::filesystem::path filename;
+  std::filesystem::path filename;
   test_gz()
     :
     filename("test.gz")
@@ -551,8 +551,8 @@ struct test_gz
 
   ~test_gz()
   {
-    boost::system::error_code ec;
-    boost::filesystem::remove(filename, ec);
+    std::error_code ec;
+    std::filesystem::remove(filename, ec);
   }
 };
 
@@ -666,7 +666,7 @@ BOOST_AUTO_TEST_CASE(testPortRequestList)
 
 struct gzipped_test_file
 {
-  boost::filesystem::path p;
+  std::filesystem::path p;
   gzipped_test_file()
   {
     auto b = Executable::getPath().parent_path() / "parser-test";
@@ -678,8 +678,8 @@ struct gzipped_test_file
 
   ~gzipped_test_file()
   {
-    boost::system::error_code ec;
-    boost::filesystem::remove(p, ec);
+    std::error_code ec;
+    std::filesystem::remove(p, ec);
   }
 };
 

@@ -33,6 +33,7 @@
  */
 
 #include <condition_variable>
+#include <filesystem>
 #include <iomanip>
 #include <memory>
 #include <mutex>
@@ -42,7 +43,6 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/bind/bind.hpp>
-#include <boost/filesystem.hpp>
 #include <boost/interprocess/file_mapping.hpp>
 #include <boost/interprocess/mapped_region.hpp>
 
@@ -451,7 +451,7 @@ MemoryMappedFileBuffer::MemoryMappedFileBuffer(const char * file,
   mPrefetcher(NULL)
 {
   // We need to know the file size so we don't read too far.
-  mFileSize = boost::filesystem::file_size(file);
+  mFileSize = std::filesystem::file_size(file);
   // We shouldn't read too far past this (to a record boundary if necessary).
   mStreamEnd = std::min(mFileSize, (uintmax_t) mStreamEnd);
 

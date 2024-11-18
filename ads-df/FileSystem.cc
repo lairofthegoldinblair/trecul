@@ -35,6 +35,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <memory>
@@ -43,7 +44,6 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
-#include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid.hpp>
@@ -369,7 +369,7 @@ class LocalFileSystemImpl : public FileSystem
 {
 private:
   PathPtr mRoot;
-  std::shared_ptr<FileStatus> createFileStatus(const boost::filesystem::path & fsPath);
+  std::shared_ptr<FileStatus> createFileStatus(const std::filesystem::path & fsPath);
 
   void checkPath(PathPtr p);
 public:
@@ -465,19 +465,19 @@ void LocalFileSystemImpl::checkPath(PathPtr p)
 			      p->toString()).str());
 }
 
-std::shared_ptr<FileStatus> LocalFileSystemImpl::createFileStatus(const boost::filesystem::path & fsPath)
+std::shared_ptr<FileStatus> LocalFileSystemImpl::createFileStatus(const std::filesystem::path & fsPath)
 {
-  boost::filesystem::file_status s = boost::filesystem::status(fsPath);
+  std::filesystem::file_status s = std::filesystem::status(fsPath);
   std::string pathStr = fsPath.string();
-  if(boost::filesystem::is_directory(s) &&
+  if(std::filesystem::is_directory(s) &&
      pathStr[pathStr.size()-1] != '/') 
     pathStr += std::string("/");
     
   return std::make_shared<FileStatus>(Path::get(getRoot(), pathStr),
-					boost::filesystem::is_regular_file(s), 
-					boost::filesystem::is_directory(s), 
-					boost::filesystem::is_regular_file(s) ?
-					boost::filesystem::file_size(fsPath) :
+					std::filesystem::is_regular_file(s), 
+					std::filesystem::is_directory(s), 
+					std::filesystem::is_regular_file(s) ?
+					std::filesystem::file_size(fsPath) :
 					0);
 }
 
@@ -487,38 +487,38 @@ std::shared_ptr<FileStatus> LocalFileSystemImpl::getStatus(PathPtr p)
   if (!boost::algorithm::iequals("file", p->getUri()->getScheme()))
     throw std::runtime_error((boost::format("Invalid URI used with local file system: %1%") %
 			      p->toString()).str());
-  boost::filesystem::path fsPath(p->getUri()->getPath());
+  std::filesystem::path fsPath(p->getUri()->getPath());
   return createFileStatus(fsPath);
 }
 
 bool LocalFileSystemImpl::exists(PathPtr p)
 {
   checkPath(p);
-  boost::filesystem::path fsPath(p->getUri()->getPath());
-  return boost::filesystem::exists(fsPath);
+  std::filesystem::path fsPath(p->getUri()->getPath());
+  return std::filesystem::exists(fsPath);
 }
 
 bool LocalFileSystemImpl::removeAll(PathPtr p)
 {
   checkPath(p);
-  boost::filesystem::path fsPath(p->getUri()->getPath());
-  return boost::filesystem::remove_all(fsPath);
+  std::filesystem::path fsPath(p->getUri()->getPath());
+  return std::filesystem::remove_all(fsPath);
 }
 
 bool LocalFileSystemImpl::remove(PathPtr p)
 {
   checkPath(p);
-  boost::filesystem::path fsPath(p->getUri()->getPath());
-  return boost::filesystem::remove(fsPath);
+  std::filesystem::path fsPath(p->getUri()->getPath());
+  return std::filesystem::remove(fsPath);
 }
 
 void LocalFileSystemImpl::list(PathPtr p,
 			  std::vector<std::shared_ptr<FileStatus> >& result)
 {
   checkPath(p);
-  boost::filesystem::path fsPath(p->getUri()->getPath());
-  boost::filesystem::directory_iterator end;
-  for(boost::filesystem::directory_iterator it(fsPath);
+  std::filesystem::path fsPath(p->getUri()->getPath());
+  std::filesystem::directory_iterator end;
+  for(std::filesystem::directory_iterator it(fsPath);
       it != end;
       ++it) {
     result.push_back(createFileStatus(it->path()));
@@ -539,23 +539,23 @@ bool LocalFileSystemImpl::rename(PathPtr from, PathPtr to)
 {
   checkPath(from);
   checkPath(to);
-  boost::filesystem::path fromPath(from->getUri()->getPath());
-  boost::filesystem::path toPath(to->getUri()->getPath());
-  if (boost::filesystem::exists(toPath)) {
+  std::filesystem::path fromPath(from->getUri()->getPath());
+  std::filesystem::path toPath(to->getUri()->getPath());
+  if (std::filesystem::exists(toPath)) {
     // TODO: Resolve race condition since we are trying to
     // implement semantics consistent with HDFS over a Posix file
     // system that deletes a target if it exists.
     return false;
   }
-  boost::filesystem::rename(fromPath, toPath);
+  std::filesystem::rename(fromPath, toPath);
   return true;
 }
 
 bool LocalFileSystemImpl::mkdir(PathPtr p)
 {
   checkPath(p);
-  boost::filesystem::path fromPath(p->getUri()->getPath());
-  return boost::filesystem::create_directory(fromPath);
+  std::filesystem::path fromPath(p->getUri()->getPath());
+  return std::filesystem::create_directory(fromPath);
 }
 
 static bool canBeSplit(const std::string& file)
@@ -594,7 +594,7 @@ void LocalFileSystemImpl::expand(std::string pattern,
   for(std::vector<std::string>::const_iterator it = fileNames.begin();
       it != fileNames.end();
       ++it) {
-    fileInfo.push_back(FileInfo(*it, boost::filesystem::file_size(*it)));
+    fileInfo.push_back(FileInfo(*it, std::filesystem::file_size(*it)));
   }
   int numEntries = (int) fileNames.size();
 
@@ -868,13 +868,13 @@ void SerialOrganizedTable::bindComponent(FileSystem * fs,
 	++pit) {
       // Extract the path elements and evaluate predicate against them.
       // TODO: Support more that VARCHAR data type.
-      boost::filesystem::path fsPath((*pit)->getPath()->getUri()->getPath());
+      std::filesystem::path fsPath((*pit)->getPath()->getUri()->getPath());
       if (std::size_t(std::distance(fsPath.begin(), fsPath.end())) < 
 	  mPathComponents.size()) {
 	throw std::runtime_error("Invalid table path.  Too short to evaluate predicate");
       }
       // Set the last path components into the fields in reverse order.
-      boost::filesystem::path::iterator comp = fsPath.end();
+      std::filesystem::path::iterator comp = fsPath.end();
       --comp;
       // We expect to have a trailing slash in the URI hence a trailing dot in
       // the Boost filesystem path.  Skip it if it is there.
@@ -885,7 +885,7 @@ void SerialOrganizedTable::bindComponent(FileSystem * fs,
       for(std::vector<FieldAddress>::const_reverse_iterator field = mFields.rbegin();
 	  field != mFields.rend();
 	  ++field) {
-	boost::filesystem::path tmp = *comp;
+	std::filesystem::path tmp = *comp;
 	field->SetVariableLengthString(buf, comp->string().c_str(), comp->string().size());
 	--comp;
       }
@@ -928,10 +928,10 @@ void SerialOrganizedTable::bind(FileSystem * fs)
   for(std::vector<std::shared_ptr<FileStatus> >::iterator it=ls.begin();
       it != ls.end();
       ++it) {
-    boost::filesystem::path fsPath((*it)->getPath()->getUri()->getPath());
+    std::filesystem::path fsPath((*it)->getPath()->getUri()->getPath());
     // Get the last component of the fsPath. Skip a dot (standing for trailing
     // slash) if present.
-    boost::filesystem::path::iterator comp = fsPath.end();
+    std::filesystem::path::iterator comp = fsPath.end();
     --comp;
     if (boost::algorithm::equals(comp->string(), ".")) {
       --comp;
@@ -994,22 +994,22 @@ void Glob::expand(std::string pattern, std::vector<std::string>& files)
   // if (pattern[0] == '~')
   //   pattern = std::string(getenv("HOME")) + pattern.substr(1);
   // // Can we apply this to the glob?
-  // boost::filesystem::path fullPath = boost::filesystem::system_complete(pattern);
+  // std::filesystem::path fullPath = std::filesystem::system_complete(pattern);
   // // Break off the file from the directory.
   // std::string filename = fullPath.filename();
-  // boost::filesystem::path dir = fullPath.parent_path();
+  // std::filesystem::path dir = fullPath.parent_path();
   // // Make the glob into a regex
   // std::string rexStr = ::glob_to_regex(filename);
   // boost::regex rex (rexStr);
   // // Iterate over current directory looking for matches
-  // boost::filesystem::directory_iterator end_iter;
-  // for (boost::filesystem::directory_iterator dir_itr( dir );
+  // std::filesystem::directory_iterator end_iter;
+  // for (std::filesystem::directory_iterator dir_itr( dir );
   //      dir_itr != end_iter;
   //      ++dir_itr ) {
-  //   boost::filesystem::path tmpPath = dir_itr->path();
+  //   std::filesystem::path tmpPath = dir_itr->path();
   //   std::string tmpFileName = tmpPath.filename();
 
-  //   if(boost::filesystem::is_regular_file(dir_itr->status()) &&
+  //   if(std::filesystem::is_regular_file(dir_itr->status()) &&
   //      boost::regex_match(tmpPath.filename(), rex)) {
   //     files.push_back(tmpPath.file_string());
   //   }

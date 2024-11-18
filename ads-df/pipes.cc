@@ -32,10 +32,10 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
-#include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/tokenizer.hpp>
 #include "Pipes.hh"
@@ -179,7 +179,7 @@ void DataflowMapReducer::getEncodedPlan(const std::string& planFileName,
   // symlinking the distributed cache and it doesn't seem to
   // put the directory in the job configuration anywhere.
   std::string planFile((boost::format("file://%1%/%2%") %
-			boost::filesystem::current_path().string() 
+			std::filesystem::current_path().string() 
 			% planFileName).str());
   PathPtr planPath = Path::get(planFile);
   AutoFileSystem fs(planPath->getUri());
@@ -354,7 +354,7 @@ public:
       // TODO: Encapsulate serial structure in to a class.
       std::cout << "Processing file: " << filename.c_str() << std::endl;
       URI serialFile(filename.c_str());
-      boost::filesystem::path fsPath(serialFile.getPath());
+      std::filesystem::path fsPath(serialFile.getPath());
       typedef boost::tokenizer<boost::char_separator<char> > tokenizer;
       boost::char_separator<char> sep("_");
       tokenizer tok(fsPath.filename().string(), sep);

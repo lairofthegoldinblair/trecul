@@ -57,7 +57,7 @@ set(Boost_USE_MULTITHREADED ON)
 #
 # Boost
 #
-find_package( Boost 1.74 COMPONENTS date_time filesystem iostreams program_options regex serialization system timer unit_test_framework REQUIRED )
+find_package( Boost 1.74 COMPONENTS date_time iostreams program_options regex serialization system timer unit_test_framework REQUIRED )
 include_directories ( ${Boost_INCLUDE_DIR} )
 
 #
@@ -90,7 +90,7 @@ endif (HADOOP_FOUND)
 #
 find_package(LLVM REQUIRED)
 
-# What version of LLVM?  We only support LLVM 13.0
+# What version of LLVM?  We only support LLVM 15.0.7
 execute_process(
 COMMAND ${LLVM_CONFIG} --version
 OUTPUT_VARIABLE LLVM_VERSION
@@ -141,14 +141,14 @@ find_library(LIB_NCURSES ncurses)
 find_library(LIB_TINFO tinfo)
 
 #
-# Setup CXX14 flag
+# Setup CXX17 flag
 #
 include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-std=c++14" COMPILER_SUPPORTS_CXX14)
-if(COMPILER_SUPPORTS_CXX14)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+CHECK_CXX_COMPILER_FLAG("-std=c++17" COMPILER_SUPPORTS_CXX17)
+if(COMPILER_SUPPORTS_CXX17)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 else()
-        message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++14 support. Please use a different C++ compiler.")
+        message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++17 support. Please use a different C++ compiler.")
 endif()
 
 ######################################################

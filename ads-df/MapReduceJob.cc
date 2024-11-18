@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include <filesystem>
 #include <memory>
 
 #include <boost/algorithm/string/case_conv.hpp>
@@ -42,7 +43,6 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/trim.hpp>
-#include <boost/filesystem.hpp>
 
 #include "md5.h"
 #include "FileSystem.hh"
@@ -56,7 +56,7 @@
 class TempFile
 {
 private:
-  boost::filesystem::path mFileName;
+  std::filesystem::path mFileName;
 public:
   TempFile(const std::string& contents);
   ~TempFile();
@@ -65,16 +65,16 @@ public:
 
 TempFile::TempFile(const std::string& contents)
 {
-  boost::filesystem::path tmpDir((boost::format("/ghostcache/hadoop/temp/%1%")
+  std::filesystem::path tmpDir((boost::format("/ghostcache/hadoop/temp/%1%")
 				  % ::getenv("USER")).str());
   // For backward compatibility try this if we don't have ghostcache set up
-  if (!boost::filesystem::exists(tmpDir))
-    tmpDir = boost::filesystem::path("/usr/local/akamai/tmp");
+  if (!std::filesystem::exists(tmpDir))
+    tmpDir = std::filesystem::path("/usr/local/akamai/tmp");
 
   // Retry in case we get a file name that collides
   for(int32_t i=0;i<2;i++) {
-    boost::filesystem::path tmpStr(FileSystem::getTempFileName());
-    boost::filesystem::path tmpPath(tmpDir / tmpStr);
+    std::filesystem::path tmpStr(FileSystem::getTempFileName());
+    std::filesystem::path tmpPath(tmpDir / tmpStr);
     int fd = ::open(tmpPath.string().c_str(), 
 		    O_CREAT | O_EXCL | O_WRONLY,
 		    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
@@ -101,7 +101,7 @@ TempFile::TempFile(const std::string& contents)
 TempFile::~TempFile()
 {
   if (!mFileName.empty()) {
-    boost::filesystem::remove(mFileName);
+    std::filesystem::remove(mFileName);
   }
 }
 
@@ -127,12 +127,12 @@ void HadoopSetup::setEnvironment()
 
   // Don't do anything if we don't have a valid Hadoop
   // install
-  if (!boost::filesystem::exists(myHome) ||
-      !boost::filesystem::is_directory(myHome) ||
-      !boost::filesystem::exists(myHadoopEnv) ||
-      !boost::filesystem::is_regular_file(myHadoopEnv) ||
-      !boost::filesystem::exists(myHadoopConfig) ||
-      !boost::filesystem::is_regular_file(myHadoopConfig))
+  if (!std::filesystem::exists(myHome) ||
+      !std::filesystem::is_directory(myHome) ||
+      !std::filesystem::exists(myHadoopEnv) ||
+      !std::filesystem::is_regular_file(myHadoopEnv) ||
+      !std::filesystem::exists(myHadoopConfig) ||
+      !std::filesystem::is_regular_file(myHadoopConfig))
     return;
 
   // If Hadoop home exists then grab environment variables set
@@ -253,8 +253,8 @@ AdsPipesJobConf::AdsPipesJobConf(const std::string& jobDir)
   // We assume that ads-df-pipes is in the same directory
   // as this exe
   mLocalPipesPath =
-    Executable::getPath().parent_path()/boost::filesystem::path("ads-df-pipes");
-  if (!boost::filesystem::exists(mLocalPipesPath))
+    Executable::getPath().parent_path()/std::filesystem::path("ads-df-pipes");
+  if (!std::filesystem::exists(mLocalPipesPath))
     throw std::runtime_error((boost::format("Couldn't find ads-df-pipes "
 					    "executable: %1%.  "
 					    "Check installation") % mLocalPipesPath.string()).str());
@@ -545,7 +545,7 @@ void AdsPipesJobConf::copyFilesToHDFS()
   }
 }
 
-std::string AdsPipesJobConf::getPipesExecutableChecksum(const boost::filesystem::path & p)
+std::string AdsPipesJobConf::getPipesExecutableChecksum(const std::filesystem::path & p)
 {
   static const int32_t bufSz(4096);
   static const int32_t digestSz(16);

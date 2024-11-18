@@ -33,10 +33,10 @@
  */
 
 #include <stdexcept>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <boost/algorithm/string.hpp>
-#include <boost/filesystem.hpp>
 #include <boost/tokenizer.hpp>
 #include "Merger.hh"
 #include "ConstantScan.hh"
@@ -1289,12 +1289,12 @@ void RuntimeSortOperator::writeSortRun(SortRun & sortRuns)
   if(tmpDir.size() == 0) {
     tmpDir = (boost::format("/ghostcache/hadoop/temp/%1%") %
 	      ::getenv("USER")).str();
-    if (!boost::filesystem::exists(tmpDir))
+    if (!std::filesystem::exists(tmpDir))
       tmpDir = "/usr/local/akamai/tmp";
-    if (!boost::filesystem::exists(tmpDir))
+    if (!std::filesystem::exists(tmpDir))
       tmpDir = "/tmp";
   } else {
-    if (!boost::filesystem::exists(tmpDir))
+    if (!std::filesystem::exists(tmpDir))
       throw std::runtime_error((boost::format("Temp directory doesn't exists: %1%") %
 				tmpDir).str());
   }

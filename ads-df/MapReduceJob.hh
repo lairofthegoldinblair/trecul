@@ -35,8 +35,8 @@
 #ifndef __MAPREDUCEJOB_H
 #define __MAPREDUCEJOB_H
 
+#include <filesystem>
 #include <string>
-#include <boost/filesystem/path.hpp>
 
 /**
  * Interface into the Hadoop installation.
@@ -80,7 +80,7 @@ private:
   std::string mJobQueue;
   int32_t mNumReducers;
   bool mJvmReuse;
-  boost::filesystem::path mLocalPipesPath;
+  std::filesystem::path mLocalPipesPath;
   std::string mLocalPipesChecksum;
   AdsDfSpeculativeExecution mSpeculative;
   int32_t mTaskTimeout;
@@ -115,7 +115,7 @@ private:
   /**
    * MD5 checksum of ads-df-pipes executable on local disk.
    */
-  static std::string getPipesExecutableChecksum(const boost::filesystem::path & p);
+  static std::string getPipesExecutableChecksum(const std::filesystem::path & p);
 
 public:
   AdsPipesJobConf(const std::string& jobDir);

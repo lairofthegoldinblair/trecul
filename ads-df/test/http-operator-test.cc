@@ -33,12 +33,11 @@
  */
 
 #include <chrono>
+#include <filesystem>
 #include <iostream>
 #include <thread>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio.hpp>
-#include <boost/filesystem.hpp>
-#include <boost/filesystem/fstream.hpp>
 #include <boost/process.hpp>
 #define BOOST_TEST_MODULE MyTest
 #include <boost/test/unit_test.hpp>
@@ -80,7 +79,7 @@ void read404Response(tcp::socket & s)
 void checkOutput(const std::string& expected)
 {
   std::stringstream ostr;
-  boost::filesystem::fstream istr("output.txt", std::ios_base::in);
+  std::fstream istr("output.txt", std::ios_base::in);
   std::copy(std::istreambuf_iterator<char>(istr),
 	    std::istreambuf_iterator<char>(),
 	    std::ostreambuf_iterator<char>(ostr));
@@ -89,13 +88,13 @@ void checkOutput(const std::string& expected)
     std::cout << "Got: " << ostr.str().c_str();
     BOOST_CHECK(false);
   }
-  boost::filesystem::remove("output.txt");
+  std::filesystem::remove("output.txt");
 }
 
 class TestFile
 {
 private:
-  boost::filesystem::path mPath;
+  std::filesystem::path mPath;
 public:
   TestFile(const std::string& contents);
   ~TestFile();
@@ -106,14 +105,14 @@ TestFile::TestFile(const std::string& contents)
   :
   mPath(FileSystem::getTempFileName())
 {
-  boost::filesystem::fstream ostr(mPath, std::ios_base::out);
+  std::fstream ostr(mPath, std::ios_base::out);
   ostr << contents.c_str();
   ostr.close();
 }
 
 TestFile::~TestFile()
 {
-  boost::filesystem::remove(mPath);
+  std::filesystem::remove(mPath);
 }
 
 std::string TestFile::getName() const
@@ -136,9 +135,9 @@ HttpOperatorProcess::HttpOperatorProcess(const std::string& program)
   :
   mTestFile(program)
 {
-  boost::filesystem::path exe =
-    Executable::getPath().parent_path().parent_path()/boost::filesystem::path("ads-df");
-  if (!boost::filesystem::exists(exe))
+  std::filesystem::path exe =
+    Executable::getPath().parent_path().parent_path()/std::filesystem::path("ads-df");
+  if (!std::filesystem::exists(exe))
     throw std::runtime_error((boost::format("Couldn't find ads-df "
 					    "executable: %1%.  "
 					    "Check installation") % exe.string()).str());

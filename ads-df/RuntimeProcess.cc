@@ -68,12 +68,12 @@ namespace po = boost::program_options;
 
 static void checkRegularFileExists(const std::string& filename)
 {
-  boost::filesystem::path p (filename);
-  if (!boost::filesystem::exists(p)) {
+  std::filesystem::path p (filename);
+  if (!std::filesystem::exists(p)) {
     throw std::runtime_error((boost::format("%1% does not exist") %
 			      filename).str());
   }
-  if (!boost::filesystem::is_regular_file(p)) {
+  if (!std::filesystem::is_regular_file(p)) {
     throw std::runtime_error((boost::format("%1% is not a regular file") %
 			      filename).str());
   }  
@@ -91,7 +91,7 @@ static void readInputFile(const std::string& filename,
   contents = ostr.str();
 }
 
-boost::filesystem::path Executable::getPath()
+std::filesystem::path Executable::getPath()
 {
 #if defined(linux) || defined(__linux) || defined(__linux__)
   // Linux we may query /proc
@@ -704,7 +704,7 @@ int PlanRunner::run(int argc, char ** argv)
     if (vm.count("partitions")) {
       partitions = vm["partitions"].as<int32_t>();
     }
-    std::size_t sz = boost::filesystem::file_size(inputFile);
+    std::size_t sz = std::filesystem::file_size(inputFile);
     std::ifstream istr(inputFile.c_str());
     std::vector<char> encoded(sz);
     istr.read(&encoded[0], sz);

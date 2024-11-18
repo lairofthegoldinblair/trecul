@@ -35,6 +35,7 @@
 #ifndef __RUNTIMEPROCESS_H
 #define __RUNTIMEPROCESS_H
 
+#include <filesystem>
 #include <memory>
 #include <vector>
 #include <string>
@@ -43,7 +44,6 @@
 #include <map>
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
-#include <boost/filesystem.hpp>
 
 #include "DataflowRuntime.hh"
 
@@ -383,7 +383,7 @@ public:
   /**
    * Get full path to the executable that is running.
    */
-  static boost::filesystem::path getPath();
+  static std::filesystem::path getPath();
 };
 
 #endif
