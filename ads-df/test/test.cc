@@ -32,6 +32,8 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define BOOST_PROCESS_USE_STD_FS
+
 #include <cmath>
 #include <fstream>
 #include <iostream>
