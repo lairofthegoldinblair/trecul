@@ -876,9 +876,9 @@ void SerialOrganizedTable::bindComponent(FileSystem * fs,
       // Set the last path components into the fields in reverse order.
       std::filesystem::path::iterator comp = fsPath.end();
       --comp;
-      // We expect to have a trailing slash in the URI hence a trailing dot in
-      // the Boost filesystem path.  Skip it if it is there.
-      if (*comp == ".") {
+      // We expect to have a trailing slash in the URI hence a trailing empty component in
+      // the std::filesystem path.  Skip it if it is there.
+      if (comp->empty()) {
 	--comp;
       }
       RecordBuffer buf = mRecordType->getMalloc().malloc();
@@ -929,11 +929,11 @@ void SerialOrganizedTable::bind(FileSystem * fs)
       it != ls.end();
       ++it) {
     std::filesystem::path fsPath((*it)->getPath()->getUri()->getPath());
-    // Get the last component of the fsPath. Skip a dot (standing for trailing
+    // Get the last component of the fsPath. Skip an empty path component (standing for trailing
     // slash) if present.
     std::filesystem::path::iterator comp = fsPath.end();
     --comp;
-    if (boost::algorithm::equals(comp->string(), ".")) {
+    if (comp->string().empty()) {
       --comp;
     }
     std::string tmp = comp->string();

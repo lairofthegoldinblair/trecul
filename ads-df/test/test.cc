@@ -532,9 +532,9 @@ BOOST_AUTO_TEST_CASE(testConcurrentFifo)
 struct test_gz
 {
   std::filesystem::path filename;
-  test_gz()
+  test_gz(const char * _filename)
     :
-    filename("test.gz")
+    filename(_filename)
   {
     std::string testdata = "aaaaaaaaaabbbbbbbbbccccccccccccccccccccccccccccccdddddddd";
     namespace io = boost::iostreams;
@@ -550,7 +550,12 @@ struct test_gz
     }  
   }
   
-
+  test_gz()
+    :
+    test_gz("test.gz")
+  {
+  }
+  
   ~test_gz()
   {
     std::error_code ec;
@@ -2757,4 +2762,57 @@ BOOST_AUTO_TEST_CASE(testSort)
   p.run();
 }
 
+struct SerialOrganizedTableTestFixture
+{
+  std::vector<std::unique_ptr<test_gz>> files_;
+  SerialOrganizedTableTestFixture()
+  {
+    std::filesystem::create_directory("./data", ".");
+    std::filesystem::create_directory("./data/1_1", ".");
+    std::filesystem::create_directory("./data/1_1/mytable", ".");
+    std::filesystem::create_directory("./data/1_1/mytable/1", ".");
+    std::filesystem::create_directory("./data/1_1/mytable/1/1", ".");
+    std::filesystem::create_directory("./data/1_1/mytable/1/1/2024-01-01", ".");
+    std::filesystem::create_directory("./data/1_1/mytable/1/1/2024-01-01/7C4D89943F62499A9AF57475FB5057D5", ".");
+    std::filesystem::create_directory("./data/1_1/mytable/1/1/2024-01-01/13ACC820567845EB9ACB0C764F460546", ".");
+    std::filesystem::create_directory("./data/1_1/mytable/1/1/2024-01-02", ".");
+    std::filesystem::create_directory("./data/1_1/mytable/1/1/2024-01-02/13ACC820567845EB9ACB0C764F460546", ".");
+    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-01/7C4D89943F62499A9AF57475FB5057D5/serial_00000.gz"));
+    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-01/13ACC820567845EB9ACB0C764F460546/serial_00000.gz"));
+    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-02/13ACC820567845EB9ACB0C764F460546/serial_00000.gz"));
+  }
 
+  ~SerialOrganizedTableTestFixture()
+  {
+    std::filesystem::remove_all("./data");
+  }
+};
+
+BOOST_FIXTURE_TEST_CASE(testBind, SerialOrganizedTableTestFixture)
+{
+  SerialOrganizedTable t(1, 1, "mytable");
+  std::string p = (boost::format("file://%1%") % std::filesystem::absolute(std::filesystem::path(".") / "data").generic_string()).str();
+  FileSystem * fs = FileSystem::get(URI::get(p.c_str()));
+  t.bind(fs);
+  BOOST_REQUIRE_EQUAL(3U, t.getSerialPaths().size());
+  for(auto f : t.getSerialPaths()) {
+    BOOST_CHECK_EQUAL(1, f->getMinorVersion());
+    BOOST_CHECK(boost::algorithm::equals("2024-01-01", f->getDate()) ||
+                boost::algorithm::equals("2024-01-02", f->getDate()));
+  }
+  FileSystem::release(fs);
+}
+
+BOOST_FIXTURE_TEST_CASE(testBindWithPredicate, SerialOrganizedTableTestFixture)
+{
+  SerialOrganizedTable t(1, 1, "mytable","Date = '2024-01-01'");
+  std::string p = (boost::format("file://%1%") % std::filesystem::absolute(std::filesystem::path(".") / "data").generic_string()).str();
+  FileSystem * fs = FileSystem::get(URI::get(p.c_str()));
+  t.bind(fs);
+  BOOST_REQUIRE_EQUAL(2U, t.getSerialPaths().size());
+  for(auto f : t.getSerialPaths()) {
+    BOOST_CHECK_EQUAL(1, f->getMinorVersion());
+    BOOST_CHECK(boost::algorithm::equals("2024-01-01", f->getDate()));
+  }
+  FileSystem::release(fs);
+}
