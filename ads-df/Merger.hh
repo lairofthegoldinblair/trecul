@@ -736,7 +736,6 @@ private:
   void buildHeader(bool isFormatHeader);
   void checkPath(PlanCheckContext& ctxt, const std::string& path);
   bool isStreamingWrite() const;
-  class FileCreationPolicy * getCreationPolicy(UriPtr uri) const;
   class WritableFileFactory * getFileFactory(UriPtr uri) const;
 public:
   LogicalFileWrite();

@@ -46,6 +46,7 @@
 #include <boost/iostreams/device/array.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
+#include <boost/iostreams/filter/zstd.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/asio/ip/host_name.hpp>
@@ -65,6 +66,9 @@
 #include "AsynchronousFileSystem.hh"
 #include "Merger.hh"
 #include "GraphBuilder.hh"
+#include "ZLib.hh"
+#include "Zstd.hh"
+#include "FileWriteOperator.hh"
 
 #define BOOST_TEST_MODULE MyTest
 #include <boost/test/unit_test.hpp>
@@ -563,6 +567,135 @@ struct test_gz
   }
 };
 
+struct test_zstd
+{
+  std::filesystem::path filename;
+  static const std::string & testdata()
+  {
+    static std::string ret("aaaaaaaaaabbbbbbbbbccccccccccccccccccccccccccccccdddddddd\n");
+    return ret;
+  }
+  test_zstd(const char * _filename)
+    :
+    filename(_filename)
+  {
+    namespace io = boost::iostreams;
+    {
+      // put ostream in a scope so its d'tor
+      // is executed; that flushes everything
+      // through the zlib filter.
+      std::ofstream f(filename.c_str());
+      io::filtering_ostream out;
+      out.push(io::zstd_compressor());
+      out.push(f);
+      out << testdata();
+    }  
+  }
+  
+  test_zstd()
+    :
+    test_zstd("test.zst")
+  {
+  }
+  
+  ~test_zstd()
+  {
+    std::error_code ec;
+    std::filesystem::remove(filename, ec);
+  }
+};
+
+template<typename _Compressor>
+struct IoStreamsDecompressor
+{
+  typedef boost::iostreams::zstd_decompressor type;
+};
+
+template<>
+struct IoStreamsDecompressor<ZLibCompress>
+{
+  typedef boost::iostreams::gzip_decompressor type;
+};
+
+typedef boost::mpl::list<ZstdCompress,ZLibCompress> test_types;
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(testCompressorOneShot, compressor_type, test_types)
+{
+  std::string testdata("aaaaaaaaaabbbbbbbbbccccccccccccccccccccccccccccccdddddddd");
+  std::stringstream actual;
+  compressor_type compressor;
+  compressor.put(reinterpret_cast<const uint8_t *>(testdata.data()), testdata.size(), true);
+  BOOST_CHECK(compressor.run());
+  uint8_t * buf;
+  std::size_t bufLen;
+  compressor.consumeOutput(buf, bufLen);
+  BOOST_CHECK(bufLen > 0);
+  actual.write(reinterpret_cast<const char *>(buf), bufLen);
+  compressor.run();
+  compressor.consumeOutput(buf, bufLen);
+  BOOST_CHECK_EQUAL(bufLen, 0U);
+  boost::iostreams::filtering_istream decompress;
+  decompress.push(typename IoStreamsDecompressor<compressor_type>::type());
+  decompress.push(actual);
+  std::string decompressed;
+  decompress >> decompressed;
+  BOOST_CHECK_EQUAL(decompressed, testdata);
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(testCompressorSmallOutputBuffer, compressor_type, test_types)
+{
+  std::string testdata("aaaaaaaaaabbbbbbbbbccccccccccccccccccccccccccccccdddddddd");
+  std::stringstream actual;
+  compressor_type compressor(3);
+  compressor.put(reinterpret_cast<const uint8_t *>(testdata.data()), testdata.size(), true);
+  while(true) {
+    compressor.run();
+    uint8_t * buf;
+    std::size_t bufLen;
+    compressor.consumeOutput(buf, bufLen);
+    BOOST_CHECK(bufLen <= 3U);
+    if (bufLen > 0) {
+      actual.write(reinterpret_cast<const char *>(buf), bufLen);
+    } else {
+      break;
+    }
+  }
+  boost::iostreams::filtering_istream decompress;
+  decompress.push(typename IoStreamsDecompressor<compressor_type>::type());
+  decompress.push(actual);
+  std::string decompressed;
+  decompress >> decompressed;
+  BOOST_CHECK_EQUAL(decompressed, testdata);
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(testCompressorTrickleInput, compressor_type, test_types)
+{
+  std::string testdata("aaaaaaaaaabbbbbbbbbccccccccccccccccccccccccccccccdddddddd");
+  std::stringstream actual;
+  compressor_type compressor;
+  for(std::size_t i=0; i<testdata.size(); ++i) {
+    compressor.put(reinterpret_cast<const uint8_t *>(testdata.data()+i), 1, false);
+    BOOST_CHECK(compressor.run());
+    // Plenty of room in default output bufffer, so wait till the final flush to get it.
+  }
+  compressor.put(nullptr, 0, true);
+  BOOST_CHECK(compressor.run());
+  uint8_t * buf;
+  std::size_t bufLen;
+  compressor.consumeOutput(buf, bufLen);
+  BOOST_CHECK(bufLen > 0);
+  actual.write(reinterpret_cast<const char *>(buf), bufLen);
+  compressor.run();
+  compressor.consumeOutput(buf, bufLen);
+  BOOST_CHECK_EQUAL(bufLen, 0U);  
+  boost::iostreams::filtering_istream decompress;
+  decompress.push(typename IoStreamsDecompressor<compressor_type>::type());
+  decompress.push(actual);
+  std::string decompressed;
+  decompress >> decompressed;
+  BOOST_CHECK_EQUAL(decompressed, testdata);
+}
+
 // DBTODO
 typedef AsyncFileTraits<gzip_file_traits> AsyncGzip;
 typedef AsyncDoubleBufferStream<AsyncGzip> AsyncGzipStream;
@@ -624,6 +757,138 @@ BOOST_AUTO_TEST_CASE(testAsyncFileSystemOneShot)
   stream.consume(57);
   BOOST_CHECK(stream.isEOF());
   AsyncGzipStream::file_system_type::closeFileSystem(fs);
+}
+
+struct WriteWithRetryTestFixture
+{
+  std::map<int, std::vector<std::pair<const uint8_t *, std::size_t>>> write_calls_;
+  std::vector<ssize_t> ret_ ;
+  std::vector<int> errno_;
+  
+  WriteWithRetryTestFixture()
+  {
+  }
+
+  ~WriteWithRetryTestFixture()
+  {
+  }
+
+  ssize_t operator()(int fd, const uint8_t * buf, std::size_t count)
+  {
+    write_calls_[fd].push_back(std::make_pair(buf, count));
+    errno = errno_.size() > 0 ? errno_[(write_calls_[fd].size()-1) % errno_.size()] : 0;
+    return errno != 0 ? -1 : std::min(ret_[(write_calls_[fd].size()-1) % ret_.size()], (ssize_t) count);
+  }
+};
+
+BOOST_FIXTURE_TEST_CASE(testWriteWithRetrySuccess, WriteWithRetryTestFixture)
+{
+  uint8_t buf [] = { 0x01, 0x02, 0x03, 0x04, 0x05 };
+  ret_.push_back(5);
+  writeWithRetry(3, buf, 5, *this);
+  BOOST_CHECK_EQUAL(1U, write_calls_.size());
+  BOOST_REQUIRE_EQUAL(1U, write_calls_.at(3).size());
+  BOOST_CHECK_EQUAL(&buf[0], write_calls_.at(3).at(0).first);
+  BOOST_CHECK_EQUAL(5U, write_calls_.at(3).at(0).second);
+}
+
+BOOST_FIXTURE_TEST_CASE(testWriteWithRetryEINTR, WriteWithRetryTestFixture)
+{
+  uint8_t buf [] = { 0x01, 0x02, 0x03, 0x04, 0x05 };
+  ret_.push_back(5);
+  errno_.push_back(EINTR);
+  errno_.push_back(0);
+  writeWithRetry(3, buf, 5, *this);
+  BOOST_CHECK_EQUAL(1U, write_calls_.size());
+  BOOST_REQUIRE_EQUAL(2U, write_calls_.at(3).size());
+  BOOST_CHECK_EQUAL(&buf[0], write_calls_.at(3).at(0).first);
+  BOOST_CHECK_EQUAL(5U, write_calls_.at(3).at(0).second);
+  BOOST_CHECK_EQUAL(&buf[0], write_calls_.at(3).at(1).first);
+  BOOST_CHECK_EQUAL(5U, write_calls_.at(3).at(1).second);
+}
+
+BOOST_FIXTURE_TEST_CASE(testWriteWithRetryTwoEINTR, WriteWithRetryTestFixture)
+{
+  uint8_t buf [] = { 0x01, 0x02, 0x03, 0x04, 0x05 };
+  ret_.push_back(5);
+  errno_.push_back(EINTR);
+  errno_.push_back(EINTR);
+  try {
+    writeWithRetry(3, buf, 5, *this);
+    BOOST_CHECK(false);
+  } catch (std::runtime_error & ex) {
+  }
+  BOOST_CHECK_EQUAL(1U, write_calls_.size());
+  BOOST_REQUIRE_EQUAL(2U, write_calls_.at(3).size());
+  BOOST_CHECK_EQUAL(&buf[0], write_calls_.at(3).at(0).first);
+  BOOST_CHECK_EQUAL(5U, write_calls_.at(3).at(0).second);
+  BOOST_CHECK_EQUAL(&buf[0], write_calls_.at(3).at(1).first);
+  BOOST_CHECK_EQUAL(5U, write_calls_.at(3).at(1).second);
+}
+
+BOOST_FIXTURE_TEST_CASE(testWriteWithRetryEPERM, WriteWithRetryTestFixture)
+{
+  uint8_t buf [] = { 0x01, 0x02, 0x03, 0x04, 0x05 };
+  ret_.push_back(5);
+  errno_.push_back(EPERM);
+  try {
+    writeWithRetry(3, buf, 5, *this);
+    BOOST_CHECK(false);
+  } catch (std::runtime_error & ex) {
+  }
+  BOOST_CHECK_EQUAL(1U, write_calls_.size());
+  BOOST_REQUIRE_EQUAL(1U, write_calls_.at(3).size());
+  BOOST_CHECK_EQUAL(&buf[0], write_calls_.at(3).at(0).first);
+  BOOST_CHECK_EQUAL(5U, write_calls_.at(3).at(0).second);
+}
+
+BOOST_FIXTURE_TEST_CASE(testWriteWithRetryShortWrite, WriteWithRetryTestFixture)
+{
+  uint8_t buf [] = { 0x01, 0x02, 0x03, 0x04, 0x05 };
+  ret_.push_back(2);
+  try {
+    writeWithRetry(3, buf, 5, *this);
+    BOOST_CHECK(false);
+  } catch (std::runtime_error & ex) {
+  }
+  BOOST_CHECK_EQUAL(1U, write_calls_.size());
+  BOOST_REQUIRE_EQUAL(2U, write_calls_.at(3).size());
+  BOOST_CHECK_EQUAL(&buf[0], write_calls_.at(3).at(0).first);
+  BOOST_CHECK_EQUAL(5U, write_calls_.at(3).at(0).second);
+  BOOST_CHECK_EQUAL(&buf[2], write_calls_.at(3).at(1).first);
+  BOOST_CHECK_EQUAL(3U, write_calls_.at(3).at(1).second);
+}
+
+BOOST_FIXTURE_TEST_CASE(testWriteWithRetryPartialWriteThenSucceed, WriteWithRetryTestFixture)
+{
+  uint8_t buf [] = { 0x01, 0x02, 0x03, 0x04, 0x05 };
+  ret_.push_back(3);
+  writeWithRetry(3, buf, 5, *this);
+  BOOST_CHECK_EQUAL(1U, write_calls_.size());
+  BOOST_REQUIRE_EQUAL(2U, write_calls_.at(3).size());
+  BOOST_CHECK_EQUAL(&buf[0], write_calls_.at(3).at(0).first);
+  BOOST_CHECK_EQUAL(5U, write_calls_.at(3).at(0).second);
+  BOOST_CHECK_EQUAL(&buf[3], write_calls_.at(3).at(1).first);
+  BOOST_CHECK_EQUAL(2U, write_calls_.at(3).at(1).second);
+}
+
+BOOST_FIXTURE_TEST_CASE(testWriteWithRetryENOSPC, WriteWithRetryTestFixture)
+{
+  uint8_t buf [] = { 0x01, 0x02, 0x03, 0x04, 0x05 };
+  ret_.push_back(3);
+  errno_.push_back(0);
+  errno_.push_back(ENOSPC);
+  try {
+    writeWithRetry(3, buf, 5, *this);
+    BOOST_CHECK(false);
+  } catch (std::runtime_error & ex) {
+  }
+  BOOST_CHECK_EQUAL(1U, write_calls_.size());
+  BOOST_REQUIRE_EQUAL(2U, write_calls_.at(3).size());
+  BOOST_CHECK_EQUAL(&buf[0], write_calls_.at(3).at(0).first);
+  BOOST_CHECK_EQUAL(5U, write_calls_.at(3).at(0).second);
+  BOOST_CHECK_EQUAL(&buf[3], write_calls_.at(3).at(1).first);
+  BOOST_CHECK_EQUAL(2U, write_calls_.at(3).at(1).second);
 }
 
 BOOST_AUTO_TEST_CASE(testPortRequestList)

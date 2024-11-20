@@ -4,7 +4,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/make_shared.hpp>
 
-#include "RuntimeProcess.hh"
+#include "ServiceCompletionPort.hh"
 #include "TcpOperator.hh"
 
 class TcpReadOperator : public RuntimeOperatorBase<TcpReadOperatorType>

@@ -47,6 +47,8 @@
 #include <boost/interprocess/mapped_region.hpp>
 
 #include "RecordParser.hh"
+#include "ZLib.hh"
+#include "Zstd.hh"
 
 void stdio_file_traits::expand(std::string pattern, 
 		     int32_t numPartitions,
@@ -320,13 +322,16 @@ DataBlock * StdioDataBlockRegistrar::create(const char * filename,
 					    uint64_t end)
 {
   typedef BlockBufferStream<stdio_file_traits> file_block;
-  typedef BlockBufferStream<zlib_file_traits<file_block> > zlib_file_block;
+  typedef BlockBufferStream<compressed_file_traits<ZLibDecompress, file_block> > zlib_file_block;
+  typedef BlockBufferStream<compressed_file_traits<ZstdDecompress, file_block> > zstd_file_block;
   URI uri(filename);
-  bool compressed = uri.getPath().size() > 3 &&
-    boost::algorithm::iequals(".gz", 
-			      uri.getPath().substr(uri.getPath().size()-3));
-  if (compressed) {
+  bool zlib_compressed = boost::algorithm::ends_with(uri.getPath(), ZLibCompress::extension());
+  bool zstd_compressed = boost::algorithm::ends_with(uri.getPath(), ZstdCompress::extension());
+  if (zlib_compressed) {
     return new zlib_file_block(uri.getPath().c_str(), 
+			       targetBlockSize, begin, end);
+  } else if (zstd_compressed) {
+    return new zstd_file_block(uri.getPath().c_str(), 
 			       targetBlockSize, begin, end);
   } else {
     return new file_block(uri.getPath().c_str(), 
@@ -580,7 +585,7 @@ void SerialChunkStrategy::getFilesForPartition(int32_t partition,
 {
   // get file that matches the serial.
   std::ostringstream ss;
-  ss << "serial_" << std::setw(5) << std::setfill('0') << partition << ".gz";
+  ss << "serial_" << std::setw(5) << std::setfill('0') << partition << ZLibCompress::extension();
   std::string sn(ss.str());
   // Get the file system for the uri
   AutoFileSystem fs(mUri->getUri());

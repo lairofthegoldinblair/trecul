@@ -41,6 +41,7 @@
 #include "DataflowRuntime.hh"
 #include "SuperFastHash.h"
 #include "GraphBuilder.hh"
+#include "ServiceCompletionPort.hh"
 
 #if defined(TRECUL_HAS_HADOOP)
 #include "MapReduceJob.hh"
@@ -139,44 +140,6 @@ void ProcessRemoting::addTarget(const InterProcessFifoSpec& spec,
 				int32_t targetPartitionConstraintIndex)
 {
   throw std::runtime_error("Standard dataflow process does not support repartitioning/shuffle");
-}
-
-ServiceCompletionFifo::ServiceCompletionFifo(DataflowScheduler & targetScheduler)
-:
-  mRecordsRead(0),
-  mTarget(NULL),
-  mTargetScheduler(targetScheduler)
-{
-  mTarget = new ServiceCompletionPort(*this);
-}
-
-ServiceCompletionFifo::~ServiceCompletionFifo()
-{
-  delete mTarget;
-}
-
-void ServiceCompletionFifo::write(RecordBuffer buf)
-{
-  std::lock_guard<std::mutex> channelGuard(mLock);
-  DataflowSchedulerScopedLock schedGuard(mTargetScheduler);
-  mQueue.Push(buf);
-  mRecordsRead += 1;
-  mTargetScheduler.reprioritizeReadRequest(*mTarget);   
-}
-
-void ServiceCompletionFifo::sync(ServiceCompletionPort & port)
-{
-  writeSomeToPort();
-}
-
-void ServiceCompletionFifo::writeSomeToPort()
-{
-  // Move data into the target port.
-  // Signal target that read request is complete.
-  std::lock_guard<std::mutex> channelGuard(mLock);
-  DataflowSchedulerScopedLock schedGuard(mTargetScheduler);
-  mQueue.popAndPushSomeTo(mTarget->getLocalBuffer());
-  mTargetScheduler.readComplete(*mTarget);
 }
 
 RuntimeProcess::RuntimeProcess(int32_t partitionStart, 

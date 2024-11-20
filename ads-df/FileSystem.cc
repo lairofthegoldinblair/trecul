@@ -562,7 +562,8 @@ static bool canBeSplit(const std::string& file)
 {
   // Gzip compressed files cannot be split.  Others can.
   std::size_t len = file.size();
-  return  len < 3 || !boost::algorithm::iequals(".gz", &file[len-3]);
+  return  !(len >= 3 && !boost::algorithm::iequals(".gz", &file[len-3])) &&
+    !(len >= 4 && !boost::algorithm::iequals(".zst", &file[len-4]));
 }
 
 class FileInfo

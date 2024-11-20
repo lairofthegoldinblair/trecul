@@ -35,8 +35,6 @@
 #ifndef __FILEWRITEOPERATOR_HH__
 #define __FILEWRITEOPERATOR_HH__
 
-#include <zlib.h>
-
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
@@ -48,6 +46,7 @@
 #include "RuntimePort.hh"
 #include "RuntimePlan.hh"
 #include "RuntimeOperator.hh"
+#include "FileCreationPolicy.hh"
 
 // Threading to make async writes to HDFS
 template <class _Op>
@@ -152,23 +151,6 @@ void AsyncWriter<_Op>::getError(std::string& err)
   err = mError;
 }
 
-// TODO: Refactor this into an operator
-class ZLibCompress
-{
-private:
-  z_stream mStream;
-  uint8_t * mOutputStart;
-  uint8_t * mOutputEnd;
-  int mFlush;
-public:
-  ZLibCompress();
-  ~ZLibCompress();
-
-  void put(const uint8_t * buf_start, std::size_t len, bool isEOS);
-  bool run();
-  void consumeOutput(uint8_t * & output, std::size_t & len);
-};
-
 /**
  * A runtime printer manages a character buffer and 
  * print format for printing records.  It allows
@@ -210,7 +192,7 @@ public:
 
 class RuntimeWriteOperatorType : public RuntimeOperatorType
 {
-  friend class RuntimeWriteOperator;
+  template <typename _Compressor> friend class RuntimeWriteOperator;  
 private:
   RecordTypePrint mPrint;
   RecordTypeFree mFree;
@@ -250,111 +232,18 @@ public:
   RuntimeOperator * create(RuntimeOperator::Services& services) const;
 };
 
-class FileCreationPolicy
-{
-private:
-  // Serialization
-  friend class boost::serialization::access;
-  template <class Archive>
-  void serialize(Archive & ar, const unsigned int version)
-  {
-  }
-public:
-  virtual ~FileCreationPolicy() {}
-  virtual bool requiresServiceCompletionPort() const=0;
-  virtual class FileCreation * create(RuntimeOperator::Services& services) const=0;
-};
-
-class MultiFileCreationPolicy : public FileCreationPolicy
-{
-public:
-  friend class MultiFileCreation;
-private:
-  std::string mHdfsFile;
-  // Transfer to calculate any expressions in the
-  // file string.
-  IQLTransferModule * mTransfer;
-  RecordTypeFree * mTransferFree;
-  FieldAddress * mTransferOutput;
-
-  // Serialization
-  friend class boost::serialization::access;
-  template <class Archive>
-  void serialize(Archive & ar, const unsigned int version)
-  {
-    ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(FileCreationPolicy);
-    ar & BOOST_SERIALIZATION_NVP(mHdfsFile);
-    ar & BOOST_SERIALIZATION_NVP(mTransfer);
-    ar & BOOST_SERIALIZATION_NVP(mTransferFree);
-    ar & BOOST_SERIALIZATION_NVP(mTransferOutput);
-  }
-public:
-  MultiFileCreationPolicy();
-  MultiFileCreationPolicy(const std::string& hdfsFile,
-			  const RecordTypeTransfer * argTransfer);
-  ~MultiFileCreationPolicy();
-  bool requiresServiceCompletionPort() const { return false; }
-  class FileCreation * create(RuntimeOperator::Services& services) const;
-};
-
-/**
- * Controls the creation of write file(s).  
- * For example, do we create a single file for the entire
- * run of the operator or do we periodically cut files based on
- * time or record counts.
- */
-class StreamingFileCreationPolicy : public FileCreationPolicy
-{
-  friend class StreamingFileCreation;
-private:
-  /**
-   * Directory in which to create files.
-   */
-  std::string mBaseDir;
-
-  /**
-   * Max amount of time to write to a file in seconds.
-   * If this is 0 then there is no time limit.
-   */
-  std::size_t mFileSeconds;
-  
-  /**
-   * Max number of records to write to a file..
-   * If this is 0 then there is no record limit.
-   */
-  std::size_t mFileRecords;
-
-  // Serialization
-  friend class boost::serialization::access;
-  template <class Archive>
-  void serialize(Archive & ar, const unsigned int version)
-  {
-    ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(FileCreationPolicy);
-    ar & BOOST_SERIALIZATION_NVP(mBaseDir);
-    ar & BOOST_SERIALIZATION_NVP(mFileSeconds);
-    ar & BOOST_SERIALIZATION_NVP(mFileRecords);
-  }
-
-public:
-  StreamingFileCreationPolicy(const std::string& baseDir,
-			      std::size_t fileSeconds=0,
-			      std::size_t fileRecords=0);
-  ~StreamingFileCreationPolicy();
-  bool requiresServiceCompletionPort() const { return true; }
-  class FileCreation * create(RuntimeOperator::Services& services) const;
-};
-
 // TODO: No longer HDFS specific; should replace RuntimeWriteOperatorType
+template<typename _FileCreationPolicy>
 class RuntimeHdfsWriteOperatorType : public RuntimeOperatorType
 {
-  friend class RuntimeHdfsWriteOperator;
+  template <typename _Policy, typename _Compressor> friend class RuntimeHdfsWriteOperator;  
 private:
   RecordTypePrint mPrint;
   RecordTypeFree mFree;
   WritableFileFactory * mFileFactory;
   std::string mHeader;
   std::string mHeaderFile;
-  FileCreationPolicy * mCreationPolicy;
+  _FileCreationPolicy * mCreationPolicy;
   
   // Serialization
   friend class boost::serialization::access;
@@ -381,10 +270,67 @@ public:
 			       WritableFileFactory * fileFactory,
 			       const std::string& header,
 			       const std::string& headerFile,
-			       FileCreationPolicy * creationPolicy);
-  ~RuntimeHdfsWriteOperatorType();
-  int32_t numServiceCompletionPorts() const;
+			       _FileCreationPolicy * creationPolicy)
+    :
+    RuntimeOperatorType(opName.c_str()),
+    mPrint(ty->getPrint()),
+    mFree(ty->getFree()),
+    mFileFactory(fileFactory),
+    mHeader(header),
+    mHeaderFile(headerFile),
+    mCreationPolicy(creationPolicy)
+  {
+  }
+    
+  ~RuntimeHdfsWriteOperatorType()
+  {
+    delete mFileFactory;
+    delete mCreationPolicy;
+  }
+    
+  int32_t numServiceCompletionPorts() const
+  {
+    return mCreationPolicy->requiresServiceCompletionPort() ? 1 : 0;
+  }
+  
   RuntimeOperator * create(RuntimeOperator::Services& services) const;
 };
+
+// Some hackery to keep the RuntimeHdfsWriteOperator template implementation out of the header file
+struct HdfsWriteOperatorFactory
+{
+  static RuntimeOperator * create(RuntimeOperator::Services& services,
+                                  const RuntimeHdfsWriteOperatorType<MultiFileCreationPolicy> & opType);
+  static RuntimeOperator * create(RuntimeOperator::Services& services,
+                                  const RuntimeHdfsWriteOperatorType<StreamingFileCreationPolicy> & opType);
+};
+
+template<typename _FileCreationPolicy>
+inline RuntimeOperator * createHdfsWriteOperator(RuntimeOperator::Services& services,
+                                                 const RuntimeHdfsWriteOperatorType<_FileCreationPolicy> & opType)
+{
+  return nullptr;
+}
+
+template<>
+inline RuntimeOperator * createHdfsWriteOperator<MultiFileCreationPolicy>(RuntimeOperator::Services& services,
+                                                                          const RuntimeHdfsWriteOperatorType<MultiFileCreationPolicy> & opType)
+{
+  return HdfsWriteOperatorFactory::create(services, opType);
+}
+
+template<>
+inline RuntimeOperator * createHdfsWriteOperator<StreamingFileCreationPolicy>(RuntimeOperator::Services& services,
+                                                                              const RuntimeHdfsWriteOperatorType<StreamingFileCreationPolicy> & opType)
+{
+  return HdfsWriteOperatorFactory::create(services, opType);
+}
+
+template<typename _FileCreationPolicy>
+RuntimeOperator * RuntimeHdfsWriteOperatorType<_FileCreationPolicy>::create(RuntimeOperator::Services& services) const
+{
+  return createHdfsWriteOperator<_FileCreationPolicy>(services, *this);
+} 
+
 
 #endif

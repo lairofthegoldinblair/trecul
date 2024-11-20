@@ -669,16 +669,6 @@ bool LogicalFileWrite::isStreamingWrite() const
   return mMaxSeconds > 0 || mMaxRecords > 0;
 }
 
-FileCreationPolicy * LogicalFileWrite::getCreationPolicy(UriPtr uri) const
-{
-  if (isStreamingWrite()) {
-    return new StreamingFileCreationPolicy(uri->getPath(), (std::size_t) mMaxSeconds, (std::size_t) mMaxRecords);
-  } else {
-    return new MultiFileCreationPolicy(mConnect.size() ? "" : uri->getPath(),
-				       mFileNameExpr);
-  }
-}
-
 WritableFileFactory * LogicalFileWrite::getFileFactory(UriPtr uri) const
 {
   if (boost::algorithm::iequals(uri->getScheme(), "hdfs")) {
@@ -754,12 +744,24 @@ void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
   if (isStreamingWrite() ||
       boost::algorithm::iequals(uri->getScheme(), "hdfs") ||
       mConnect.size()) {
-    opType = new RuntimeHdfsWriteOperatorType("write",
-					      getInput(0)->getRecordType(),
-					      getFileFactory(uri),
-					      mHeader,
-					      mHeaderFile,
-					      getCreationPolicy(uri));
+    if (isStreamingWrite()) {
+      opType = new RuntimeHdfsWriteOperatorType<StreamingFileCreationPolicy>("write",
+                                                                             getInput(0)->getRecordType(),
+                                                                             getFileFactory(uri),
+                                                                             mHeader,
+                                                                             mHeaderFile,
+                                                                             new StreamingFileCreationPolicy(uri->getPath(),
+                                                                                                             (std::size_t) mMaxSeconds,
+                                                                                                             (std::size_t) mMaxRecords));
+    } else {
+      opType = new RuntimeHdfsWriteOperatorType<MultiFileCreationPolicy>("write",
+                                                                         getInput(0)->getRecordType(),
+                                                                         getFileFactory(uri),
+                                                                         mHeader,
+                                                                         mHeaderFile,
+                                                                         new MultiFileCreationPolicy(mConnect.size() ? "" : uri->getPath(),
+                                                                                                     mFileNameExpr));
+    }
   } else if (boost::algorithm::iequals("binary", mMode)) {
     opType = new InternalFileWriteOperatorType("write",
 					       getInput(0)->getRecordType(),

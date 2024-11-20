@@ -44,6 +44,8 @@
 #include "HdfsOperator.hh"
 #include "RecordParser.hh"
 #include "RuntimeProcess.hh"
+#include "ZLib.hh"
+#include "Zstd.hh"
 
 typedef std::shared_ptr<class HdfsFileSystem> HdfsFileSystemPtr;
 typedef std::shared_ptr<class HdfsFileSystemImpl> HdfsFileSystemImplPtr;
@@ -544,9 +546,9 @@ bool HdfsWritableFileFactory::mkdir(PathPtr p)
 
 static bool canBeSplit(std::shared_ptr<FileStatus> file)
 {
-  // Gzip compressed files cannot be split.  Others can.
-  return  !boost::algorithm::ends_with(file->getPath()->toString(), 
-				       ".gz");
+  // Compressed files cannot be split.  Others can.
+  return  !boost::algorithm::ends_with(file->getPath()->toString(), ".gz") &&
+    !boost::algorithm::ends_with(file->getPath()->toString(), ".zst");
 }
 
 class hdfs_file_handle
@@ -894,13 +896,19 @@ DataBlock * HdfsDataBlockRegistrar::create(const char * filename,
 					    uint64_t end)
 {
   typedef BlockBufferStream<hdfs_file_traits> hdfs_block;
-  typedef BlockBufferStream<zlib_file_traits<hdfs_block> > zlib_hdfs_block;
+  typedef BlockBufferStream<compressed_file_traits<ZLibDecompress, hdfs_block> > zlib_hdfs_block;
+  typedef BlockBufferStream<compressed_file_traits<ZstdDecompress, hdfs_block> > zstd_hdfs_block;
   URI uri(filename);
-  bool compressed = uri.getPath().size() > 3 &&
+  bool zlib_compressed = uri.getPath().size() > 3 &&
     boost::algorithm::iequals(".gz", 
 			      uri.getPath().substr(uri.getPath().size()-3));
-  if (compressed) {
+  bool zstd_compressed = uri.getPath().size() > 4 &&
+    boost::algorithm::iequals(".zst", 
+			      uri.getPath().substr(uri.getPath().size()-4));
+  if (zlib_compressed) {
     return new zlib_hdfs_block(filename, targetBlockSize, begin, end);
+  } else if (zstd_compressed) {
+    return new zstd_hdfs_block(filename, targetBlockSize, begin, end);
   } else {
     return new hdfs_block(filename, targetBlockSize, begin, end);
   }

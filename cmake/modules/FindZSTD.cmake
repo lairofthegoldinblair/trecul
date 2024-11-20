@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2012, Akamai Technologies
+# Copyright (c) 2024, Akamai Technologies
 # All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -32,55 +32,23 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-  set (EXTRA_LIBS ${EXTRA_LIBS} ${LIB_RT})
-endif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+# - Find zstd
+# Find the zstd include directory and libraries 
 
-if (HADOOP_FOUND) 
-   set (EXTRA_SOURCE ${EXTRA_SOURCE} HdfsOperator.cc MapReduceJob.cc)
-   set (EXTRA_LIBS ${EXTRA_LIBS} ${JAVA_JVM_LIBRARY} ${HADOOP_LIBRARIES})
-   add_definitions(-DTRECUL_HAS_HADOOP)
-endif (HADOOP_FOUND)
+FIND_PATH(ZSTD_INCLUDE_DIR NAMES zstd.h)
+MARK_AS_ADVANCED(ZSTD_INCLUDE_DIR)
 
-add_library(ads-df 
-http_parser.c
-AsyncRecordParser.cc 
-CompileTimeLogicalOperator.cc 
-ConstantScan.cc 
-DataflowRuntime.cc 
-FileService.cc 
-FileSystem.cc 
-FileWriteOperator.cc 
-GraphBuilder.cc 
-GzipOperator.cc 
-HttpOperator.cc 
-LogicalOperator.cc 
-Merger.cc 
-QueryStringOperator.cc 
-QueueImport.cc 
-RecordParser.cc 
-RuntimeOperator.cc 
-RuntimePlan.cc 
-RuntimeProcess.cc
-ServiceCompletionPort.cc
-StreamBufferBlock.cc
-TableMetadata.cc
-TableOperator.cc
-TcpOperator.cc
-ZLib.cc
-Zstd.cc
-${EXTRA_SOURCE}
-)
+FIND_LIBRARY(ZSTD_LIBRARY NAMES zstd)
+MARK_AS_ADVANCED(ZSTD_LIBRARY)
 
-target_link_libraries( ads-df ads-ql ${ZLIB_LIBRARIES} ${ZSTD_LIBRARIES} ${URIPARSER_LIBRARIES} ${Boost_IOSTREAMS_LIBRARY} ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${EXTRA_LIBS} )
+INCLUDE(FindPackageHandleStandardArgs)
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(ZSTD DEFAULT_MSG ZSTD_LIBRARY ZSTD_INCLUDE_DIR)
 
-add_executable( ads-df-exe ads-df.cc )
-set_target_properties( ads-df-exe PROPERTIES OUTPUT_NAME "ads-df")
-target_link_libraries( ads-df-exe ads-df )
-
-if (HADOOP_FOUND)
-   add_executable( ads-df-pipes pipes.cc )
-   target_link_libraries( ads-df-pipes ads-df )
-endif (HADOOP_FOUND)
-
+IF (ZSTD_FOUND)
+  SET(ZSTD_LIBRARIES ${ZSTD_LIBRARY})
+  SET(ZSTD_INCLUDE_DIRS ${ZSTD_INCLUDE_DIR})
+ELSE (ZSTD_FOUND)
+  SET(ZSTD_LIBRARIES)
+  SET(ZSTD_INCLUDE_DIRS)
+ENDIF (ZSTD_FOUND)
 

@@ -38,9 +38,12 @@
 #include <memory>
 #include <mutex>
 #include <stdint.h>
+#include <string.h>
 #include <string>
+#include <stdexcept>
 #include <vector>
 #include <map>
+#include <boost/format.hpp>
 #include <boost/utility.hpp>
 #include <boost/serialization/nvp.hpp>
 #include <boost/serialization/serialization.hpp>
@@ -541,5 +544,24 @@ class Glob
 public:
   static void expand(std::string pattern, std::vector<std::string>& files);
 };
+
+template<typename _Writer>
+void writeWithRetry(int fd, const uint8_t * buf, std::size_t count, _Writer && writer)
+{
+  for(std::size_t i=0; i<2; ++i) {
+    auto ret = writer(fd, buf, count);
+    if (ret >= 0) {
+      std::size_t uret = ret;
+      if(uret == count) {
+        return;
+      }
+      buf += uret;
+      count -= uret;
+    } else if (errno != EINTR) {
+      throw std::runtime_error((boost::format("[writeWithRetry] Failed to write to file: %1%") % strerror(errno)).str());
+    }
+  }
+  throw std::runtime_error("[writeWithRetry] short write to file after retry");
+}
 
 #endif

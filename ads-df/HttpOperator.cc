@@ -8,10 +8,10 @@
 #include <boost/make_shared.hpp>
 #include <boost/tokenizer.hpp>
 
-#include "RuntimeProcess.hh"
 #include "HttpOperator.hh"
 #include "QueryStringOperator.hh"
 #include "HttpParser.hh"
+#include "ServiceCompletionPort.hh"
 #include "http_parser.h"
 
 HttpRequestType::HttpRequestType()

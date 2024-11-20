@@ -132,6 +132,12 @@ find_package(ZLIB REQUIRED)
 include_directories ( ${ZLIB_INCLUDE_DIRS} )
 
 #
+# zstd
+#
+find_package(ZSTD REQUIRED)
+include_directories ( ${ZSTD_INCLUDE_DIRS} )
+
+#
 # Miscellaneous libraries builtin to Linux
 #
 find_library(LIB_DL dl)
