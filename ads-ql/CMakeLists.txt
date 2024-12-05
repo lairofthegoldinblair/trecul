@@ -43,6 +43,6 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 add_library(ads-ql CodeGenerationContext.cc GetVariablesPass.cc  IQLInterpreter.cc	LLVMGen.cc  RecordType.cc  TypeCheckContext.cc IQLAnalyze.c	IQLExpression.cc   IQLLexer.c	IQLToLLVM.c md5.c IQLGetVariables.c  IQLParser.c	IQLTypeCheck.c	SuperFastHash.c
 )
 
-target_link_libraries( ads-ql ${Boost_DATE_TIME_LIBRARY} ${Boost_REGEX_LIBRARY} ${Boost_SERIALIZATION_LIBRARY} ${LLVM_JIT_LIBS} ${ANTLR_LIBRARIES} ${LIB_PTHREAD} ${LIB_DL} ${ZLIB_LIBRARIES} ${EXTRA_LIBS} decNumber )
+target_link_libraries( ads-ql ${Boost_DATE_TIME_LIBRARY} ${Boost_REGEX_LIBRARY} ${Boost_SERIALIZATION_LIBRARY} ${LLVM_JIT_LIBS} ${ANTLR_LIBRARIES} ${LIB_PTHREAD} ${LIB_DL} ${ZLIB_LIBRARIES} ${ZSTD_LIBRARIES} ${EXTRA_LIBS} decNumber )
 
 

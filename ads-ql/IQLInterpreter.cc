@@ -1872,7 +1872,7 @@ void LLVMBase::InitializeLLVM()
   decContextMembers[7] = llvm::Type::getInt8Ty(*mContext->LLVMContext);
 #endif
   mContext->LLVMDecContextPtrType = llvm::PointerType::get(llvm::StructType::get(*mContext->LLVMContext,
-										 llvm::makeArrayRef(&decContextMembers[0], numDecContextMembers),
+										 llvm::ArrayRef(&decContextMembers[0], numDecContextMembers),
 										 0),
 							   0);
   // Don't quite understand LLVM behavior of what happens with you pass { [16 x i8] } by value on the call stack.
@@ -1882,7 +1882,7 @@ void LLVMBase::InitializeLLVM()
   for(unsigned int i=0; i<DECIMAL128_Bytes/sizeof(int32_t); ++i)
     decimal128Members[i]= llvm::Type::getInt32Ty(*mContext->LLVMContext);;
   mContext->LLVMDecimal128Type = llvm::StructType::get(*mContext->LLVMContext,
-						       llvm::makeArrayRef(&decimal128Members[0], DECIMAL128_Bytes/sizeof(int32_t)),
+						       llvm::ArrayRef(&decimal128Members[0], DECIMAL128_Bytes/sizeof(int32_t)),
 						       1);
 
   // Set up VARCHAR type
@@ -1891,7 +1891,7 @@ void LLVMBase::InitializeLLVM()
   varcharMembers[1] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   varcharMembers[2] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   mContext->LLVMVarcharType = llvm::StructType::get(*mContext->LLVMContext,
-						    llvm::makeArrayRef(&varcharMembers[0], 3),
+						    llvm::ArrayRef(&varcharMembers[0], 3),
 						    0);
   // DATETIME runtime type
   mContext->LLVMDatetimeType = llvm::Type::getInt64Ty(*mContext->LLVMContext);
@@ -1899,7 +1899,7 @@ void LLVMBase::InitializeLLVM()
   varcharMembers[0] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   varcharMembers[1] = llvm::Type::getInt8Ty(*mContext->LLVMContext);
   mContext->LLVMCidrV4Type = llvm::StructType::get(*mContext->LLVMContext,
-                                                   llvm::makeArrayRef(&varcharMembers[0], 2),
+                                                   llvm::ArrayRef(&varcharMembers[0], 2),
                                                    0);
 
   // Try to register the program as a source of symbols to resolve against.
@@ -1912,7 +1912,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  llvm::Type * funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  llvm::Type * funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   llvm::Value * libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalAdd", funTy);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalSub", funTy);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalMul", funTy);
@@ -1922,7 +1922,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalNeg", funTy);
 
   numArguments = 0;
@@ -1930,7 +1930,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromVarchar", funTy);
 
@@ -1939,7 +1939,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromChar", funTy);
 
@@ -1947,42 +1947,42 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromInt8", funTy);
 
   numArguments=0;
   argumentTypes[numArguments++] = llvm::Type::getInt16Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromInt16", funTy);
 
   numArguments=0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromInt32", funTy);
 
   numArguments=0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromInt64", funTy);
 
   numArguments=0;
   argumentTypes[numArguments++] = llvm::Type::getFloatTy(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromFloat", funTy);
 
   numArguments=0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromDouble", funTy);
 
   numArguments = 0;
@@ -1990,7 +1990,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromDate", funTy);
 
@@ -1999,7 +1999,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalFromDatetime", funTy);
 
@@ -2008,7 +2008,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDecimalCmp", funTy);
 
   numArguments=0;
@@ -2016,7 +2016,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   LoadAndValidateExternalFunction("round", "InternalDecimalRound", funTy);
 
   numArguments = 0;
@@ -2024,7 +2024,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharAdd", funTy);
 
   numArguments = 0;
@@ -2032,7 +2032,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharCopy", funTy);
 
   numArguments = 0;
@@ -2041,82 +2041,82 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharAllocate", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharErase", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharEquals", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharRLike", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharNE", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharLT", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharLE", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharGT", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharGE", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   funTy = llvm::FunctionType::get(mContext->LLVMDatetimeType, 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDatetimeFromVarchar", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   funTy = llvm::FunctionType::get(mContext->LLVMDatetimeType, 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDatetimeFromDate", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDateFromVarchar", funTy);
 
@@ -2125,13 +2125,13 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalCharFromVarchar", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "length", funTy);
 
   numArguments = 0;
@@ -2139,7 +2139,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromChar", funTy);
 
@@ -2148,7 +2148,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromInt8", funTy);
 
@@ -2157,7 +2157,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromInt16", funTy);
 
@@ -2166,7 +2166,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromInt32", funTy);
 
@@ -2175,7 +2175,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromInt64", funTy);
 
@@ -2184,7 +2184,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromDecimal", funTy);
 
@@ -2193,7 +2193,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromFloat", funTy);
 
@@ -2202,7 +2202,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromDouble", funTy);
 
@@ -2211,7 +2211,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromDate", funTy);
 
@@ -2220,7 +2220,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromDatetime", funTy);
 
@@ -2229,7 +2229,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromIPv4", funTy);
 
@@ -2238,7 +2238,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromCIDRv4", funTy);
 
@@ -2247,7 +2247,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromIPv6", funTy);
 
@@ -2256,7 +2256,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-				  llvm::makeArrayRef(&argumentTypes[0], numArguments),
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
 				  0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalVarcharFromCIDRv6", funTy);
 
@@ -2265,7 +2265,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt8FromVarchar", funTy);
 
@@ -2274,7 +2274,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt8FromChar", funTy);
 
@@ -2283,7 +2283,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt8FromDecimal", funTy);
 
@@ -2292,7 +2292,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt8FromDate", funTy);
 
@@ -2301,7 +2301,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt8FromDatetime", funTy);
 
@@ -2310,7 +2310,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt16FromVarchar", funTy);
 
@@ -2319,7 +2319,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt16FromChar", funTy);
 
@@ -2328,7 +2328,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt16FromDecimal", funTy);
 
@@ -2337,7 +2337,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt16FromDate", funTy);
 
@@ -2346,7 +2346,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt16FromDatetime", funTy);
 
@@ -2355,7 +2355,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt32FromVarchar", funTy);
 
@@ -2364,7 +2364,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt32FromChar", funTy);
 
@@ -2373,7 +2373,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt32FromDecimal", funTy);
 
@@ -2382,7 +2382,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt32FromDate", funTy);
 
@@ -2391,7 +2391,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt32FromDatetime", funTy);
 
@@ -2400,7 +2400,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt64FromVarchar", funTy);
 
@@ -2409,7 +2409,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt64FromChar", funTy);
 
@@ -2418,7 +2418,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt64FromDecimal", funTy);
 
@@ -2427,7 +2427,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt64FromDate", funTy);
 
@@ -2436,7 +2436,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalInt64FromDatetime", funTy);
 
@@ -2445,7 +2445,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDoubleFromVarchar", funTy);
 
@@ -2454,7 +2454,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDoubleFromChar", funTy);
 
@@ -2463,7 +2463,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDoubleFromDecimal", funTy);
 
@@ -2472,7 +2472,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDoubleFromDate", funTy);
 
@@ -2481,7 +2481,7 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), 
-			   llvm::makeArrayRef(&argumentTypes[0], numArguments), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
 			   0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalDoubleFromDatetime", funTy);
 
@@ -2489,14 +2489,14 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   LoadAndValidateExternalFunction("urldecode", "InternalVarcharUrlDecode", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   LoadAndValidateExternalFunction("urlencode", "InternalVarcharUrlEncode", funTy);
 
   numArguments = 0;
@@ -2505,13 +2505,13 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   LoadAndValidateExternalFunction("replace", "InternalVarcharReplace", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   LoadAndValidateExternalFunction("locate", "InternalVarcharLocate", funTy);
 
   numArguments = 0;
@@ -2520,183 +2520,183 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "substr", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "trim", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "ltrim", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "rtrim", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "lower", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "upper", funTy);
 
   // Date functions
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "date", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "dayofweek", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "dayofmonth", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "dayofyear", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "month", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "year", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "last_day", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "datediff", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "julian_day", funTy);
 
   // Datetime functions
   numArguments = 0;
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "utc_timestamp", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "unix_timestamp", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "from_unixtime", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "datetime_add_day", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "datetime_add_month", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "datetime_add_year", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "datetime_add_second", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "datetime_add_minute", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "datetime_add_hour", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "date_add_day", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "date_add_month", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "date_add_year", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "date_add_second", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "date_add_minute", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "date_add_hour", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "SuperFastHash", funTy);
 
   // Print Functions
@@ -2704,154 +2704,154 @@ void LLVMBase::InitializeLLVM()
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintVarchar", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintChar", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintCharRaw", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMDecimal128Type, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintDecimal", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintInt64", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintDouble", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintDatetime", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintDate", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintIPv4", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*mContext->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintCIDRv4", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintIPv6", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalPrintCIDRv6", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "ceil", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "floor", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "sqrt", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "log", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "exp", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "sin", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "cos", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "asin", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*mContext->LLVMContext);
-  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "acos", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "free", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   LoadAndValidateExternalFunction("ip_address", "InternalIPAddress", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(mContext->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   LoadAndValidateExternalFunction("parse_ip_address", "InternalParseIPAddress", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
   // argumentTypes[numArguments++] = mContext->LLVMDecContextPtrType;
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   ::LoadAndValidateExternalFunction(*this, "InternalIPAddressAddrBlockMatch", funTy);
 
   numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*mContext->LLVMContext), 0);
-  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   LoadAndValidateExternalFunction("is_v4_ip_address", "InternalIsV4IPAddress", funTy);
 
   numArguments = 0;
-  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::makeArrayRef(&argumentTypes[0], numArguments), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = ::LoadAndValidateExternalFunction(*this, "InternalArrayException", funTy);
 
   // LLVM intrinsics we want to use
@@ -2907,7 +2907,7 @@ void LLVMBase::ConstructFunction(const std::string& funName,
   argumentNames.push_back("__DecimalContext__");
   argumentTypes.push_back(mContext->LLVMDecContextPtrType);
   llvm::FunctionType * funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext),
-						       llvm::makeArrayRef(&argumentTypes[0], argumentTypes.size()),
+						       llvm::ArrayRef(&argumentTypes[0], argumentTypes.size()),
 						       0);
   mContext->LLVMFunction = llvm::Function::Create(funTy, llvm::GlobalValue::ExternalLinkage, funName.c_str(), mContext->LLVMModule);
   llvm::BasicBlock * entryBlock = llvm::BasicBlock::Create(*mContext->LLVMContext, "EntryBlock", mContext->LLVMFunction);
@@ -2929,7 +2929,7 @@ void LLVMBase::ConstructFunction(const std::string& funName,
                                  const std::vector<llvm::Type *> & argumentTypes)
 {
   llvm::FunctionType * funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*mContext->LLVMContext),
-						       llvm::makeArrayRef(&argumentTypes[0], argumentTypes.size()),
+						       llvm::ArrayRef(&argumentTypes[0], argumentTypes.size()),
 						       0);
   mContext->LLVMFunction = llvm::Function::Create(funTy, llvm::GlobalValue::ExternalLinkage, funName.c_str(), mContext->LLVMModule);
   llvm::BasicBlock * entryBlock = llvm::BasicBlock::Create(*mContext->LLVMContext, "EntryBlock", mContext->LLVMFunction);

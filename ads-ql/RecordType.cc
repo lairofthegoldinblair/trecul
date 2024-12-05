@@ -1324,12 +1324,12 @@ llvm::Type * FixedArrayType::LLVMGetType(CodeGenerationContext * ctxt) const
     fixedArrayMembers[0] = llvm::ArrayType::get(getElementType()->LLVMGetType(ctxt), (unsigned) GetSize());
     fixedArrayMembers[1] = llvm::ArrayType::get(ctxt->LLVMBuilder->getInt8Ty(), GetNullSize());
     llvm::StructType * structTy =  llvm::StructType::get(*ctxt->LLVMContext,
-                                                         llvm::makeArrayRef(&fixedArrayMembers[0], 2),
+                                                         llvm::ArrayRef(&fixedArrayMembers[0], 2),
                                                          0);
     if (auto JTMBOrErr = llvm::orc::JITTargetMachineBuilder::detectHost()) {
-      llvm::Optional<llvm::orc::JITTargetMachineBuilder> JTMB = std::move(*JTMBOrErr);
+      std::optional<llvm::orc::JITTargetMachineBuilder> JTMB = std::move(*JTMBOrErr);
       if (auto DLOrErr = JTMB->getDefaultDataLayoutForTarget()) {
-        llvm::Optional<llvm::DataLayout> DL = std::move(*DLOrErr);
+        std::optional<llvm::DataLayout> DL = std::move(*DLOrErr);
         const llvm::StructLayout * layout = DL->getStructLayout(structTy);
         BOOST_ASSERT(layout->getElementOffset(0) == GetDataOffset());
         BOOST_ASSERT(layout->getElementOffset(1) == GetNullOffset());
@@ -2288,7 +2288,7 @@ llvm::Value * RecordType::LLVMMemberGetPointer(const std::string& member,
   }
   llvm::Value * memberVal = ctxt->LLVMBuilder->CreateBitCast(mMemberOffsets[it->second].getPointer(member, 
 												   ctxt, 
-												   builder->CreateLoad(builder->getInt8PtrTy(), basePointer, "baseref")),
+												   builder->CreateLoad(builder->getPtrTy(), basePointer, "baseref")),
 							    llvm::PointerType::get(mMembers[it->second].GetType()->LLVMGetType(ctxt), 0),
 							    member.c_str());
   if (populateSymbolTable) {
@@ -2309,14 +2309,7 @@ bool RecordType::isMemberPointer(CodeGenerationContext * ctxt,
 {
   // Members are bitcast of a untyped pointer to an offset
   // from base:
-  // bitcast <i8*> getelementptr i8* load <i8**> $base $offset to <ty *>
-  if (!ctxt->LLVMContext->hasSetOpaquePointersValue()) {
-    if (llvm::BitCastInst * bcast = llvm::dyn_cast<llvm::BitCastInst>(val)) {
-      val = bcast->getOperand(0);
-    } else {
-      return false;
-    }
-  }
+  // getelementptr i8* load <i8**> $base $offset to <ty *>
   if(llvm::GetElementPtrInst * gep = 
      llvm::dyn_cast<llvm::GetElementPtrInst>(val)) {
     // OK.  Could be a winner, look more closely.
@@ -2332,8 +2325,7 @@ bool RecordType::isMemberPointer(CodeGenerationContext * ctxt,
             llvm::dyn_cast<llvm::ConstantInt>(*gep->idx_begin())) {
           // We have a winner!  
           // TODO: Extra sanity check that this is a valid
-          // offset and that the bitcast type convert is compatible
-          // with the type of the corresponding field.
+          // offset
           std::map<uint32_t,uint32_t>::const_iterator posIt =
             mByteOffsetToPosition.find(idx->getValue().getSExtValue());
           if (posIt != mByteOffsetToPosition.end()) {
@@ -2367,7 +2359,7 @@ llvm::Value * RecordType::LLVMMemberGetNull(const std::string& member, CodeGener
   }
   return mMemberOffsets[it->second].isNull(member, 
 					   ctxt, 
-					   b->CreateLoad(b->getInt8PtrTy(), basePointer, "baseref"));
+					   b->CreateLoad(b->getPtrTy(), basePointer, "baseref"));
 }
 
 void RecordType::LLVMMemberSetNull(const std::string& member, CodeGenerationContext * ctxt, llvm::Value * basePointer, bool isNull) const
@@ -2380,7 +2372,7 @@ void RecordType::LLVMMemberSetNull(const std::string& member, CodeGenerationCont
   }
   return mMemberOffsets[it->second].setNull(member, 
 					    ctxt, 
-					    b->CreateLoad(b->getInt8PtrTy(), basePointer, "baseref"),
+					    b->CreateLoad(b->getPtrTy(), basePointer, "baseref"),
 					    isNull);
 }
 
@@ -2391,7 +2383,7 @@ llvm::Value * RecordType::LLVMMemberGetPointer(std::size_t memberIdx,
   llvm::IRBuilder<> * builder = ctxt->LLVMBuilder;
   llvm::Value * memberVal = ctxt->LLVMBuilder->CreateBitCast(mMemberOffsets[memberIdx].getPointer(mMembers[memberIdx].GetName(), 
                                                                                                   ctxt, 
-                                                                                                  builder->CreateLoad(builder->getInt8PtrTy(), basePointer, "baseref")),
+                                                                                                  builder->CreateLoad(builder->getPtrTy(), basePointer, "baseref")),
                                                              llvm::PointerType::get(mMembers[memberIdx].GetType()->LLVMGetType(ctxt), 0),
                                                              mMembers[memberIdx].GetName().c_str());
   return memberVal;
@@ -2402,7 +2394,7 @@ llvm::Value * RecordType::LLVMMemberGetNull(std::size_t memberIdx, CodeGeneratio
   llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
   return mMemberOffsets[memberIdx].isNull(mMembers[memberIdx].GetName(), 
                                           ctxt, 
-                                          b->CreateLoad(b->getInt8PtrTy(), basePointer, "baseref"));
+                                          b->CreateLoad(b->getPtrTy(), basePointer, "baseref"));
 }
 
 void RecordType::LLVMMemberSetNull(std::size_t memberIdx, CodeGenerationContext * ctxt, llvm::Value * basePointer, bool isNull) const
@@ -2410,7 +2402,7 @@ void RecordType::LLVMMemberSetNull(std::size_t memberIdx, CodeGenerationContext 
   llvm::IRBuilder<> * b = ctxt->LLVMBuilder;
   return mMemberOffsets[memberIdx].setNull(mMembers[memberIdx].GetName(),
                                            ctxt, 
-                                           b->CreateLoad(b->getInt8PtrTy(), basePointer, "baseref"),
+                                           b->CreateLoad(b->getPtrTy(), basePointer, "baseref"),
                                            isNull);
 }
 
@@ -2497,7 +2489,7 @@ llvm::Type * RecordType::LLVMGetType(CodeGenerationContext * ctxt) const
     members.push_back(elt.getType()->LLVMGetType(ctxt));
   }
   return llvm::StructType::get(*ctxt->LLVMContext,
-                               llvm::makeArrayRef(&members[0], members.size()),
+                               llvm::ArrayRef(&members[0], members.size()),
                                0);
 }
 
