@@ -10,6 +10,7 @@ class LogicalGunzip : public LogicalOperator
 {
 private:
   const RecordType * mStreamBlock;
+  TreculFreeOperation * mFree;
   int32_t mBufferCapacity;
 public:
   LogicalGunzip();
@@ -23,7 +24,8 @@ class RuntimeGunzipOperatorType : public RuntimeOperatorType
   friend class RuntimeGunzipOperator;
 private:
   RecordTypeMalloc mMalloc;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   StreamBufferBlock mStreamBlock;
 
   // Serialization
@@ -33,15 +35,20 @@ private:
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mStreamBlock);    
   }
   RuntimeGunzipOperatorType()
   {
   }
 public:
-  RuntimeGunzipOperatorType(const RecordType * bufferTy);
+  RuntimeGunzipOperatorType(const RecordType * bufferTy,
+                            const TreculFreeOperation & freeFunctor);
   ~RuntimeGunzipOperatorType();
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }  
   RuntimeOperator * create(RuntimeOperator::Services & s) const;  
 };
 

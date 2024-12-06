@@ -1696,8 +1696,9 @@ public:
   field_importer_type mSkipImporter;
   // Create new records
   RecordTypeMalloc mMalloc;
-  RecordTypeFree mFree;
-  // What am I importing
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
+  // What am I importing/outputting
   const RecordType * mRecordType;
   // Is there a header to skip?
   bool mSkipHeader;
@@ -1713,7 +1714,7 @@ public:
     ar & BOOST_SERIALIZATION_NVP(mImporters);
     ar & BOOST_SERIALIZATION_NVP(mSkipImporter);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mSkipHeader);
     ar & BOOST_SERIALIZATION_NVP(mCommentLine);
   }
@@ -1727,17 +1728,18 @@ public:
 			    char recordSeparator,
 			    char escapeChar,
 			    const RecordType * recordType,
-			    const RecordType * baseRecordType=NULL,
+                            const TreculFreeOperation & freeFunctor,
+			    const RecordType * baseRecordType=nullptr,
 			    const char * commentLine = "")
     :
     RuntimeOperatorType("GenericParserOperatorType"),
     mFileInput(file),
+    mFreeRef(freeFunctor.getReference()),
     mRecordType(recordType),
     mSkipHeader(false),
     mCommentLine(commentLine)
   {
     mMalloc = mRecordType->getMalloc();
-    mFree = mRecordType->getFree();
 
     // Records have tab delimited fields and newline delimited records
     field_importer_type::createDefaultImport(recordType, 
@@ -1763,6 +1765,11 @@ public:
   {
     mSkipHeader = value;
   }
+
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }  
 
   RuntimeOperator * create(RuntimeOperator::Services & services) const;
 };

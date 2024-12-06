@@ -39,6 +39,7 @@
 #include <boost/property_map/property_map.hpp>
 #include <boost/regex.hpp>
 
+#include "CodeGenerationContext.hh"
 #include "LogicalOperator.hh"
 
 // Boost.Graph includes after LogicalOperator so that concepts
@@ -90,6 +91,17 @@ const std::string& SortKey::getName() const
 SortKey::Order SortKey::getOrder() const
 {
   return mOrder;
+}
+
+PlanCheckContext::PlanCheckContext()
+  :
+  mCodeGenerator(new CodeGenerationContext())
+{
+}
+
+PlanCheckContext::~PlanCheckContext()
+{
+  delete mCodeGenerator;
 }
 
 void PlanCheckContext::logError(const LogicalOperator& op,

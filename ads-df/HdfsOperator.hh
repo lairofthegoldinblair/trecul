@@ -194,9 +194,10 @@ public:
 class LogicalEmit : public LogicalOperator
 {
 private:
+  TreculFreeOperation * mFree;
   std::string mKey;
   // Optional partition function
-  class RecordTypeFunction * mPartitioner;
+  class TreculFunction * mPartitioner;
 public:
   LogicalEmit();
   ~LogicalEmit();
@@ -217,9 +218,11 @@ class RuntimeHadoopEmitOperatorType : public RuntimeOperatorType
   friend class RuntimeHadoopEmitOperator;
 private:
   RecordTypePrint mPrint;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   RecordTypePrint mKey;
-  IQLFunctionModule * mPartitioner;
+  TreculFunctionReference mPartitionerRef;
+  TreculRecordFreeRuntime mPartitioner;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
@@ -227,30 +230,36 @@ private:
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
     ar & BOOST_SERIALIZATION_NVP(mPrint);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mKey);    
-    ar & BOOST_SERIALIZATION_NVP(mPartitioner);
+    ar & BOOST_SERIALIZATION_NVP(mPartitionerRef);
   }
   RuntimeHadoopEmitOperatorType()
-    :
-    mPartitioner(NULL)
   {
   }
 public:
   RuntimeHadoopEmitOperatorType(const std::string& opName,
 				const RecordType * ty, 
+                                const TreculFreeOperation & freeFunctor,
 				const std::string& keyField,
-				const RecordTypeFunction * partitioner)
+				const TreculFunction * partitioner)
     :
     RuntimeOperatorType(opName.c_str()),
     mPrint(ty->getPrint()),
-    mFree(ty->getFree()),
+    mFreeRef(freeFunctor.getReference()),
     mKey(TaggedFieldAddress(ty->getFieldAddress(keyField),
 			    ty->getMember(keyField).GetType()->GetEnum())),
-    mPartitioner(partitioner != NULL ? partitioner->create() : NULL)
+    mPartitionerRef(partitioner != nullptr ? partitioner->getReference() : TreculFunctionReference())
   {
   }
   ~RuntimeHadoopEmitOperatorType();
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    if (!mPartitionerRef.empty()) {
+      mPartitioner = m.getFunction<TreculFunctionRuntime>(mPartitionerRef);
+    }
+  }
   RuntimeOperator * create(RuntimeOperator::Services& services) const;
 };
 

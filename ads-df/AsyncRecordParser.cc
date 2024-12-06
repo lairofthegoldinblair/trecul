@@ -174,16 +174,18 @@ ImportFixedLengthString::ImportFixedLengthString(const FieldAddress& targetOffse
 LogicalAsyncParser::LogicalAsyncParser()
   :
   LogicalOperator(1,1,1,1),
+  mInputStreamFree(nullptr),
+  mFormat(nullptr),
   mMode("text"),
   mSkipHeader(false),
   mFieldSeparator('\t'),
-  mRecordSeparator('\n'),
-  mFormat(NULL)
+  mRecordSeparator('\n')
 {
 }
 
 LogicalAsyncParser::~LogicalAsyncParser()
 {
+  delete mInputStreamFree;
 }
 
 void LogicalAsyncParser::check(PlanCheckContext& ctxt)
@@ -286,6 +288,8 @@ void LogicalAsyncParser::check(PlanCheckContext& ctxt)
       ctxt.logError(*this, *formatParam, ex.what());
     }
   }
+
+  mInputStreamFree = new TreculFreeOperation(ctxt.getCodeGenerator(), getInput(0)->getRecordType());
 }
 
 void LogicalAsyncParser::create(class RuntimePlanBuilder& plan)
@@ -298,6 +302,7 @@ void LogicalAsyncParser::create(class RuntimePlanBuilder& plan)
       new GenericAsyncParserOperatorType(mFieldSeparator,
 					 mRecordSeparator,
 					 getInput(0)->getRecordType(),
+                                         *mInputStreamFree,
 					 getOutput(0)->getRecordType(),
 					 mFormat,
 					 mCommentLine.c_str());
@@ -602,6 +607,7 @@ public:
 GenericAsyncParserOperatorType::GenericAsyncParserOperatorType(char fieldSeparator,
 							       char recordSeparator,
 							       const RecordType * inputStreamType,
+                                                               const TreculFreeOperation & inputStreamTypeFreeFunctor,
 							       const RecordType * recordType,
 							       const RecordType * baseRecordType,
 							       const char * commentLine)
@@ -610,12 +616,12 @@ GenericAsyncParserOperatorType::GenericAsyncParserOperatorType(char fieldSeparat
   mSkipImporter(NULL),
   mStreamBlock(inputStreamType),
   mStreamMalloc(inputStreamType->getMalloc()),
+  mFreeRef(inputStreamTypeFreeFunctor.getReference()),
   mRecordType(recordType),
   mSkipHeader(false),
   mCommentLine(commentLine)
 {
   mMalloc = mRecordType->getMalloc();
-  mFree = inputStreamType->getFree();
 
   // Records have tab delimited fields and newline delimited records
   ImporterSpec::createDefaultImport(recordType, 
@@ -645,7 +651,8 @@ RuntimeOperator * GenericAsyncParserOperatorType::create(RuntimeOperator::Servic
 LogicalBlockRead::LogicalBlockRead()
   :
   LogicalOperator(0,0,1,1),
-  mStreamBlock(NULL),
+  mStreamBlock(nullptr),
+  mStreamBlockFree(nullptr),
   mBufferCapacity(64*1024),
   mBucketed(false)
 {
@@ -653,6 +660,7 @@ LogicalBlockRead::LogicalBlockRead()
 
 LogicalBlockRead::~LogicalBlockRead()
 {
+  delete mStreamBlockFree;
 }
 
 void LogicalBlockRead::check(PlanCheckContext& ctxt)
@@ -682,6 +690,7 @@ void LogicalBlockRead::check(PlanCheckContext& ctxt)
   members.push_back(RecordMember("size", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("buffer", CharType::Get(ctxt, mBufferCapacity)));  
   mStreamBlock = RecordType::get(ctxt, members);
+  mStreamBlockFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mStreamBlock);
   getOutput(0)->setRecordType(mStreamBlock);
 }
 
@@ -704,11 +713,13 @@ void LogicalBlockRead::create(class RuntimePlanBuilder& plan)
     // 					      mCommentLine.c_str());
     // sot->setSkipHeader(mSkipHeader);
     serial_op_type * sot = new serial_op_type(p,
-    					      getOutput(0)->getRecordType());
+    					      getOutput(0)->getRecordType(),
+                                              *mStreamBlockFree);
     opType = sot;
   } else {
     text_op_type * tot = new text_op_type(mFile,
-					  getOutput(0)->getRecordType());
+					  getOutput(0)->getRecordType(),
+                                          *mStreamBlockFree);
     opType = tot;
   }
   plan.addOperatorType(opType);

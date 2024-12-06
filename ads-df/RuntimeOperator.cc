@@ -56,10 +56,10 @@ public:
   }
 };
 
-RecordTypeFunction * HashFunction::get(DynamicRecordContext & ctxt,
-				       const RecordType * inputType,
-				       const std::vector<std::string>& fields,
-				       const std::string& name)
+TreculFunction * HashFunction::get(PlanCheckContext & ctxt,
+                                   const RecordType * inputType,
+                                   const std::vector<std::string>& fields,
+                                   const std::string& name)
 {
   std::vector<const RecordType *> inputOnly;
   inputOnly.push_back(inputType);
@@ -71,18 +71,19 @@ RecordTypeFunction * HashFunction::get(DynamicRecordContext & ctxt,
     if (hashargs.size() > 0) hashargs += ",";
     hashargs += (boost::format("%1%") % fields[i]).str();
   }
-  return new RecordTypeFunction(ctxt, 
-				name, 
-				inputOnly, 
-				(boost::format("#(%1%)") % hashargs).str());
+  return new TreculFunction(ctxt,
+                            ctxt.getCodeGenerator(),
+                            name, 
+                            inputOnly, 
+                            (boost::format("#(%1%)") % hashargs).str());
 }
 
-RecordTypeFunction * EqualsFunction::get(DynamicRecordContext & ctxt,
-					 const RecordType * lhs,
-					 const RecordType * rhs,
-					 const std::vector<std::string>& fields,
-					 const std::string& name,
-					 bool areNullsEqual)
+TreculFunction * EqualsFunction::get(PlanCheckContext & ctxt,
+                                     const RecordType * lhs,
+                                     const RecordType * rhs,
+                                     const std::vector<std::string>& fields,
+                                     const std::string& name,
+                                     bool areNullsEqual)
 {
   std::vector<const RecordType *> eqTypes;
   eqTypes.push_back(lhs);
@@ -98,17 +99,17 @@ RecordTypeFunction * EqualsFunction::get(DynamicRecordContext & ctxt,
       eqPred += (boost::format("input1.%1% = input0.%1%") % fields[i]).str();
     }
   }
-  return new RecordTypeFunction(ctxt, name, 
-				eqTypes, 
-				eqPred);
+  return new TreculFunction(ctxt, ctxt.getCodeGenerator(), name, 
+                            eqTypes, 
+                            eqPred);
 }
 
-RecordTypeFunction * EqualsFunction::get(DynamicRecordContext & ctxt,
-					 const RecordType * lhs,
-					 const RecordType * rhs,
-					 const std::vector<SortKey>& fields,
-					 const std::string& name, 
-					 bool areNullsEqual)
+TreculFunction * EqualsFunction::get(PlanCheckContext & ctxt,
+                                     const RecordType * lhs,
+                                     const RecordType * rhs,
+                                     const std::vector<SortKey>& fields,
+                                     const std::string& name, 
+                                     bool areNullsEqual)
 {
   // Equality of sort keys is order independent
   std::vector<std::string> fieldNames;
@@ -119,10 +120,10 @@ RecordTypeFunction * EqualsFunction::get(DynamicRecordContext & ctxt,
   return get(ctxt, lhs, rhs, fieldNames, name, areNullsEqual);
 }
 
-RecordTypeFunction * KeyPrefixFunction::get(DynamicRecordContext & ctxt,
-					    const RecordType * inputType,
-					    const std::vector<std::string>& fields,
-					    const std::string& name)
+TreculFunction * KeyPrefixFunction::get(PlanCheckContext & ctxt,
+                                        const RecordType * inputType,
+                                        const std::vector<std::string>& fields,
+                                        const std::string& name)
 {
   std::vector<const RecordType *> inputOnly;
   inputOnly.push_back(inputType);
@@ -134,17 +135,18 @@ RecordTypeFunction * KeyPrefixFunction::get(DynamicRecordContext & ctxt,
     if (hashargs.size() > 0) hashargs += ",";
     hashargs += (boost::format("%1%") % fields[i]).str();
   }
-  return new RecordTypeFunction(ctxt, 
-				name, 
-				inputOnly, 
-				(boost::format("$(%1%)") % hashargs).str());
+  return new TreculFunction(ctxt,
+                            ctxt.getCodeGenerator(),
+                            name, 
+                            inputOnly, 
+                            (boost::format("$(%1%)") % hashargs).str());
 }
 
-RecordTypeFunction * LessThanFunction::get(DynamicRecordContext & ctxt,
-					   const RecordType * lhs,
-					   const RecordType * rhs,
-					   const std::vector<std::string>& fields,
-					   const std::string& name)
+TreculFunction * LessThanFunction::get(PlanCheckContext & ctxt,
+                                       const RecordType * lhs,
+                                       const RecordType * rhs,
+                                       const std::vector<std::string>& fields,
+                                       const std::string& name)
 {
   // Set up sort keys with ASC
   std::vector<SortKey> keys;
@@ -155,12 +157,12 @@ RecordTypeFunction * LessThanFunction::get(DynamicRecordContext & ctxt,
   return get(ctxt, lhs, rhs, keys, false, name);
 }
 
-RecordTypeFunction * LessThanFunction::get(DynamicRecordContext & ctxt,
-					   const RecordType * lhs,
-					   const RecordType * rhs,
-					   const std::vector<SortKey>& fields,
-					   bool sortNulls,
-					   const std::string& name)
+TreculFunction * LessThanFunction::get(PlanCheckContext & ctxt,
+                                       const RecordType * lhs,
+                                       const RecordType * rhs,
+                                       const std::vector<SortKey>& fields,
+                                       bool sortNulls,
+                                       const std::string& name)
 {
   // When we compare two records to each other,
   // we need to refer to one field from each record.  Since we do this
@@ -201,13 +203,15 @@ RecordTypeFunction * LessThanFunction::get(DynamicRecordContext & ctxt,
   for(std::size_t i=1; i<fields.size(); i++) {
     eqPred += "))";
   }
-  return new RecordTypeFunction(ctxt, name, 
-				eqTypes, 
-				eqPred);
+  return new TreculFunction(ctxt,
+                            ctxt.getCodeGenerator(),
+                            name, 
+                            eqTypes, 
+                            eqPred);
 }
 
-RecordTypeFunction * 
-CompareFunction::get(DynamicRecordContext & ctxt,
+TreculFunction * 
+CompareFunction::get(PlanCheckContext & ctxt,
 		     const RecordType * lhs,
 		     const RecordType * rhs,
 		     const std::vector<SortKey>& leftFields,
@@ -247,14 +251,16 @@ CompareFunction::get(DynamicRecordContext & ctxt,
     eqPred += " END END";
   }
 
-  return new RecordTypeFunction(ctxt, "xfer5eq", 
-				eqTypes, 
-				eqPred);
+  return new TreculFunction(ctxt,
+                            ctxt.getCodeGenerator(),
+                            "xfer5eq", 
+                            eqTypes, 
+                            eqPred);
 }
 
 
-RecordTypeFunction * 
-SortKeyPrefixFunction::get(DynamicRecordContext & ctxt,
+TreculFunction * 
+SortKeyPrefixFunction::get(PlanCheckContext & ctxt,
 			   const RecordType * input,
 			   const std::vector<SortKey>& fields,
 			   const std::string& name)
@@ -271,10 +277,11 @@ SortKeyPrefixFunction::get(DynamicRecordContext & ctxt,
     expr = (boost::format("%1% - %2%") % std::numeric_limits<int32_t>::max() %
 	    expr).str();
   }
-  return new RecordTypeFunction(ctxt, 
-				name,
-				tableOnly, 
-				expr);
+  return new TreculFunction(ctxt, 
+                            ctxt.getCodeGenerator(),
+                            name,
+                            tableOnly, 
+                            expr);
   
 }
 
@@ -321,13 +328,15 @@ RuntimeOperator::~RuntimeOperator()
 LogicalFilter::LogicalFilter()
   :
   LogicalOperator(1,1,1,1),
-  mPredicate(NULL),
+  mFree(nullptr),
+  mPredicate(nullptr),
   mLimit(std::numeric_limits<int64_t>::max())
 {
 }
 
 LogicalFilter::~LogicalFilter()
 {
+  delete mFree;
   delete mPredicate;
 }
 
@@ -355,12 +364,13 @@ void LogicalFilter::check(PlanCheckContext& log)
     std::vector<const RecordType *> inputs;
     inputs.push_back(getInput(0)->getRecordType());
     inputs.push_back(&emptyTy);
-    mPredicate = new RecordTypeFunction(log,
-					"filter",
-					inputs,
-					predicate);
+    mPredicate = new TreculFunction(log,
+                                    log.getCodeGenerator(),
+                                    "filter",
+                                    inputs,
+                                    predicate);
   }
-
+  mFree = new TreculFreeOperation(log.getCodeGenerator(), getInput(0)->getRecordType());
   getOutput(0)->setRecordType(getInput(0)->getRecordType());
 }
 
@@ -368,6 +378,7 @@ void LogicalFilter::create(class RuntimePlanBuilder& plan)
 {
   RuntimeOperatorType * opType = 
     new RuntimeFilterOperatorType(getInput(0)->getRecordType(),
+                                  *mFree,
 				  mPredicate,
 				  mLimit);
   
@@ -419,10 +430,10 @@ void RuntimeFilterOperator::onEvent(RuntimePort * port)
       if (RecordBuffer::isEOS(mInput)) 
 	break;
       
-      if ((NULL == getMyOperatorType().mPredicate ||
-	   0 != getMyOperatorType().mPredicate->execute(mInput, 
-							RecordBuffer(),
-							mRuntimeContext)) &&
+      if ((!getMyOperatorType().mPredicate ||
+	   0 != getMyOperatorType().mPredicate.execute(mInput, 
+                                                       RecordBuffer(),
+                                                       mRuntimeContext)) &&
 	  ++mNumRecords <= getMyOperatorType().mLimit) {
 	requestWrite(0);
 	mState = WRITE;
@@ -452,16 +463,18 @@ void RuntimeFilterOperator::shutdown()
 CopyOp::CopyOp()
   :
   LogicalOperator(1,1,1,std::numeric_limits<uint32_t>::max()),
-  mOpType(NULL)
+  mFree(nullptr),
+  mOpType(nullptr)
 {
 }
 
-CopyOp::CopyOp(DynamicRecordContext & ctxt,
+CopyOp::CopyOp(PlanCheckContext & ctxt,
 	       const RecordType * inputType,
 	       const std::vector<std::string>& transfers)
   :
   LogicalOperator(1,1,1,(uint32_t) transfers.size()),
-  mOpType(NULL)
+  mFree(nullptr),
+  mOpType(nullptr)
 {
   std::vector<bool> pics;
   pics.resize(transfers.size(), false);
@@ -470,7 +483,8 @@ CopyOp::CopyOp(DynamicRecordContext & ctxt,
 
 CopyOp::~CopyOp()
 {
-  for(std::vector<const RecordTypeTransfer*>::iterator it = mTransfers.begin();
+  delete mFree;
+  for(std::vector<const TreculTransfer*>::iterator it = mTransfers.begin();
       it != mTransfers.end();
       ++it) {
     delete (*it);
@@ -479,22 +493,24 @@ CopyOp::~CopyOp()
   // a plan.
 }
 
-void CopyOp::init(DynamicRecordContext & ctxt,
+void CopyOp::init(PlanCheckContext & ctxt,
 		  const RecordType * inputType,
 		  const std::vector<std::string>& transfers,
 		  const std::vector<bool>& pics)
 {
+  mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), inputType);
   for(std::vector<std::string>::const_iterator it = transfers.begin();
       it != transfers.end();
       ++it) {
-    RecordTypeTransfer * t = 
-      new RecordTypeTransfer(ctxt, 
-			     (boost::format("CopyOpXfer%1%") % (it-transfers.begin())).str(), 
-			     inputType, 
-			     *it);
+    TreculTransfer * t = 
+      new TreculTransfer(ctxt,
+                         ctxt.getCodeGenerator(),
+                         (boost::format("CopyOpXfer%1%") % (it-transfers.begin())).str(), 
+                         inputType, 
+                         *it);
     mTransfers.push_back(t);
   }
-  mOpType = new RuntimeCopyOperatorType(inputType->getFree(),
+  mOpType = new RuntimeCopyOperatorType(*mFree,
 					mTransfers,
 					pics);
 }
@@ -565,41 +581,36 @@ void CopyOp::create(class RuntimePlanBuilder& plan)
   }
 }
 
-RuntimeCopyOperatorType::RuntimeCopyOperatorType(const RecordTypeFree & freeFunctor,
-						 const std::vector<const class RecordTypeTransfer *>& transfers)
+RuntimeCopyOperatorType::RuntimeCopyOperatorType(const TreculFreeOperation & freeFunctor,
+						 const std::vector<const TreculTransfer *>& transfers)
   :
   RuntimeOperatorType("RuntimeCopyOperatorType"),
-  mFree(freeFunctor)
+  mFreeRef(freeFunctor.getReference())
 {
-  for(std::vector<const RecordTypeTransfer *>::const_iterator it = transfers.begin();
+  for(std::vector<const TreculTransfer *>::const_iterator it = transfers.begin();
       it != transfers.end();
       ++it) {
-    mTransfers.push_back((*it)->create());
+    mTransferRefs.push_back((*it)->getReference());
   }
 }
 
-RuntimeCopyOperatorType::RuntimeCopyOperatorType(const RecordTypeFree & freeFunctor,
-						 const std::vector<const class RecordTypeTransfer *>& transfers,
+RuntimeCopyOperatorType::RuntimeCopyOperatorType(const TreculFreeOperation & freeFunctor,
+						 const std::vector<const TreculTransfer *>& transfers,
 						 const std::vector<bool>& pics)
   :
   RuntimeOperatorType("RuntimeCopyOperatorType"),
-  mFree(freeFunctor)
+  mFreeRef(freeFunctor.getReference())
 {
-  for(std::vector<const RecordTypeTransfer *>::const_iterator it = transfers.begin();
+  for(std::vector<const TreculTransfer *>::const_iterator it = transfers.begin();
       it != transfers.end();
       ++it) {
     // mTransfers.push_back((*it)->create(pics[it - transfers.begin()]));
-    mTransfers.push_back((*it)->create());
+    mTransferRefs.push_back((*it)->getReference());
   }
 }
 
 RuntimeCopyOperatorType::~RuntimeCopyOperatorType()
 {
-  for(std::vector<IQLTransferModule *>::iterator it = mTransfers.begin();
-      it != mTransfers.end(); 
-      ++it) {
-    delete *it;
-  }
 }
 
 RuntimeOperator* RuntimeCopyOperatorType::create(RuntimeOperator::Services& s) const
@@ -661,10 +672,10 @@ void RuntimeCopyOperator::onEvent(RuntimePort * port)
 	  bool last = mOutputIt+1 == output_port_end();
 	  // TODO: The move semantics optimization seems buggy at this point.
 	  // Fix it and use move semantics when last is true.
-	  getCopyType().mTransfers[mOutputIt - output_port_begin()]->execute(mInput, 
-									     outputBuf, 
-									     mRuntimeContext, 
-									     false);
+	  getCopyType().mTransfers[mOutputIt - output_port_begin()].execute(mInput, 
+                                                                            outputBuf, 
+                                                                            mRuntimeContext, 
+                                                                            false);
 	  write(port, outputBuf, false);
 	  if (last) {
 	    getCopyType().mFree.free(mInput);
@@ -694,21 +705,24 @@ void RuntimeCopyOperator::shutdown()
 
 LogicalDevNull::LogicalDevNull()
   :
-  LogicalOperator(1,1,0,0)
+  LogicalOperator(1,1,0,0),
+  mFree(nullptr)
 {
 }
 
 LogicalDevNull::~LogicalDevNull()
 {
+  delete mFree;
 }
 
 void LogicalDevNull::check(PlanCheckContext& log)
 {
+  mFree = new TreculFreeOperation(log.getCodeGenerator(), getInput(0)->getRecordType());
 }
 
 void LogicalDevNull::create(class RuntimePlanBuilder& plan)
 {
-  RuntimeOperatorType * opType = new RuntimeDevNullOperatorType(getInput(0)->getRecordType());
+  RuntimeOperatorType * opType = new RuntimeDevNullOperatorType(*mFree);
   plan.addOperatorType(opType);
   plan.mapInputPort(this, 0, opType, 0);  
 }
@@ -760,15 +774,19 @@ LogicalPrint::LogicalPrint()
   LogicalOperator(1,1,1,1),
   mNumToPrint(5),
   mPrintFrequency(1),
-  mPredicate(NULL),
-  mTransfer(NULL)
+  mPrint(nullptr),
+  mPredicate(nullptr),
+  mTransfer(nullptr),
+  mFree(nullptr)
 {
 }
 
 LogicalPrint::~LogicalPrint()
 {
+  delete mPrint;
   delete mPredicate;
   delete mTransfer;
+  delete mFree;
 }
 
 void LogicalPrint::check(PlanCheckContext& log)
@@ -805,14 +823,19 @@ void LogicalPrint::check(PlanCheckContext& log)
     std::vector<const RecordType *> inputs;
     inputs.push_back(getInput(0)->getRecordType());
     inputs.push_back(&emptyTy);
-    mPredicate = new RecordTypeFunction(log,
-					"filter",
-					inputs,
-					predicate);
+    mPredicate = new TreculFunction(log,
+                                    log.getCodeGenerator(),
+                                    "filter",
+                                    inputs,
+                                    predicate);
   }
 
   if (output.size()) {
-    mTransfer = new RecordTypeTransfer(log, "output_to_print", getInput(0)->getRecordType(), output);
+    mTransfer = new TreculTransfer(log, log.getCodeGenerator(), "output_to_print", getInput(0)->getRecordType(), output);
+    mPrint = new TreculPrintOperation(log.getCodeGenerator(), mTransfer->getTarget());
+    mFree = new TreculFreeOperation(log.getCodeGenerator(), mTransfer->getTarget());
+  } else {
+    mPrint = new TreculPrintOperation(log.getCodeGenerator(), getInput(0)->getRecordType());
   }
 }
 
@@ -820,10 +843,12 @@ void LogicalPrint::create(class RuntimePlanBuilder& plan)
 {
   RuntimeOperatorType * opType = 
     new RuntimePrintOperatorType(getInput(0)->getRecordType(),
+                                 *mPrint,
 				 mNumToPrint,
 				 mPrintFrequency,
 				 mPredicate,
-				 mTransfer);
+				 mTransfer,
+                                 mFree);
   plan.addOperatorType(opType);
   plan.mapInputPort(this, 0, opType, 0);
   plan.mapOutputPort(this, 0, opType, 0);
@@ -886,14 +911,14 @@ void RuntimePrintOperator::onEvent(RuntimePort * port)
 	  if (mNumPrinted < mNumToPrint && 
 	      mNumProcessed % mPrintFrequency == 0 &&
 	      !isEOS &&
-	      (NULL == getPrintType().mPredicate ||
-	       0 != getPrintType().mPredicate->execute(mInput, 
-						       RecordBuffer(),
-						       mRuntimeContext))) {
+	      (!getPrintType().mPredicate ||
+	       0 != getPrintType().mPredicate.execute(mInput, 
+                                                      RecordBuffer(),
+                                                      mRuntimeContext))) {
 	    mNumPrinted += 1;
-	    if (nullptr != getPrintType().mToPrint) {
+	    if (!!getPrintType().mToPrint) {
 	      RecordBuffer tmp;
-	      getPrintType().mToPrint->execute(mInput, tmp, mRuntimeContext, false);
+	      getPrintType().mToPrint.execute(mInput, tmp, mRuntimeContext, false);
 	      getPrintType().mPrint.print(tmp, std::cout);
 	      getPrintType().mFree.free(tmp);
 	    } else {
@@ -921,15 +946,19 @@ void RuntimePrintOperator::shutdown()
 LogicalGenerate::LogicalGenerate()
   :
   LogicalOperator(0,1,1,1),
-  mInputType(NULL),
-  mStateType(NULL),
-  mNumRecords(NULL),
-  mTransfer(NULL)
+  mInputType(nullptr),
+  mInputFree(nullptr),
+  mStateType(nullptr),
+  mStateFree(nullptr),
+  mNumRecords(nullptr),
+  mTransfer(nullptr)
 {
 }
 
 LogicalGenerate::~LogicalGenerate()
 {
+  delete mInputFree;
+  delete mStateFree;
   delete mTransfer;
   delete mNumRecords;
 }
@@ -941,12 +970,13 @@ void LogicalGenerate::init(PlanCheckContext& ctxt,
 {
   // Validate that number of records type checks against input
   // taken to be empty if there is no input
-  if (input == NULL) {
+  if (input == nullptr) {
     std::vector<RecordMember> empty;
     mInputType = RecordType::get(ctxt, empty);
   } else {
     mInputType = input;
   }
+  mInputFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mInputType);
 
   // Create the state type here.
   std::vector<RecordMember> members;
@@ -955,14 +985,15 @@ void LogicalGenerate::init(PlanCheckContext& ctxt,
   members.push_back(RecordMember("PARTITIONCOUNT", Int32Type::Get(ctxt)));
   members.push_back(RecordMember("PARTITION", Int32Type::Get(ctxt)));
   mStateType = RecordType::get(ctxt, members);
+  mStateFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mStateType);
   std::vector<AliasedRecordType> inputAndState;
   inputAndState.push_back(AliasedRecordType("input", mInputType));
   inputAndState.push_back(AliasedRecordType("state", mStateType));
-  mTransfer = new RecordTypeTransfer2(ctxt, "myGenerate", inputAndState, output);
+  mTransfer = new TreculTransfer2(ctxt, ctxt.getCodeGenerator(), "myGenerate", inputAndState, output);
   std::vector<AliasedRecordType> inputOnly;
   inputOnly.push_back(AliasedRecordType("input", mInputType));
   inputOnly.push_back(AliasedRecordType("empty", emptyTy));
-  mNumRecords = new RecordTypeFunction(ctxt, "genLoopUpperBound", inputOnly, numRecords);
+  mNumRecords = new TreculFunction(ctxt, ctxt.getCodeGenerator(), "genLoopUpperBound", inputOnly, numRecords);
 }
 
 const RecordType * LogicalGenerate::getTarget()
@@ -1003,7 +1034,7 @@ void LogicalGenerate::check(PlanCheckContext& ctxt)
   }
 
   init(ctxt, output, numRecords, 
-       size_inputs() ? getInput(0)->getRecordType() : NULL);
+       size_inputs() ? getInput(0)->getRecordType() : nullptr);
 
   getOutput(0)->setRecordType(mTransfer->getTarget());
 }
@@ -1011,9 +1042,10 @@ void LogicalGenerate::check(PlanCheckContext& ctxt)
 RuntimeOperatorType * LogicalGenerate::create()
 {
    return new RuntimeGenerateOperatorType("generate",
-					  mInputType,
+                                          *mInputFree,
 					  mStateType,
-					  mTransfer,
+                                          *mStateFree,
+					  *mTransfer,
 					  mNumRecords);
 }
 
@@ -1028,69 +1060,26 @@ void LogicalGenerate::create(class RuntimePlanBuilder& plan)
 }
 
 RuntimeGenerateOperatorType::RuntimeGenerateOperatorType(const std::string& name,
-							 const RecordType * inputType,
+                                                         const TreculFreeOperation & inputFreeFunctor,
 							 const RecordType * stateType,
-							 RecordTypeTransfer2 * transfer,
-							 RecordTypeFunction * upperBound)
+                                                         const TreculFreeOperation & stateFreeFunctor,
+							 const TreculTransfer2 & transfer,
+							 TreculFunction * upperBound)
   :
   RuntimeOperatorType(name.c_str()),
   mRecordCount(stateType->getFieldAddress("RECORDCOUNT")),
   mPartitionCount(stateType->getFieldAddress("PARTITIONCOUNT")),
   mPartition(stateType->getFieldAddress("PARTITION")),
-  mLoopUpperBound(upperBound->create()),
+  mLoopUpperBoundRef(upperBound->getReference()),
   mStateMalloc(stateType->getMalloc()),
-  mStateFree(stateType->getFree()),
-  mInputFree(inputType->getFree()),
-  mTransfer(NULL),
-  mModule(transfer->create())
+  mStateFreeRef(stateFreeFunctor.getReference()),
+  mInputFreeRef(inputFreeFunctor.getReference()),
+  mModuleRef(transfer.getReference())
 {
-}
-
-RuntimeGenerateOperatorType::RuntimeGenerateOperatorType(DynamicRecordContext & ctxt, 
-							 const std::string & prog, 
-							 int64_t upperBound)
-  :
-  RuntimeOperatorType("RuntimeGenerateOperatorType"),
-  mLoopUpperBound(NULL),
-  mTransfer(NULL),
-  mModule(NULL)
-{
-  // Create the state type here.
-  std::vector<RecordMember> members;
-  RecordType emptyType(ctxt, members);
-  members.push_back(RecordMember("RECORDCOUNT", Int64Type::Get(ctxt)));
-  members.push_back(RecordMember("PARTITIONCOUNT", Int32Type::Get(ctxt)));
-  members.push_back(RecordMember("PARTITION", Int32Type::Get(ctxt)));
-  RecordType stateType(ctxt, members);
-  mRecordCount = stateType.getFieldAddress("RECORDCOUNT");
-  mPartitionCount = stateType.getFieldAddress("PARTITIONCOUNT");
-  mPartition = stateType.getFieldAddress("PARTITION");
-  mStateMalloc = stateType.getMalloc();
-  mStateFree = stateType.getFree();
-  mInputFree = emptyType.getFree();
-
-  std::vector<AliasedRecordType> inputAndEmpty;
-  inputAndEmpty.push_back(AliasedRecordType("input", &emptyType));
-  inputAndEmpty.push_back(AliasedRecordType("input", &emptyType));
-  RecordTypeFunction f(ctxt, "myLoopUpperBound", inputAndEmpty, 
-		       boost::lexical_cast<std::string>(upperBound));
-
-  std::vector<AliasedRecordType> inputAndState;
-  inputAndState.push_back(AliasedRecordType("input", &emptyType));
-  inputAndState.push_back(AliasedRecordType("state", &stateType));
-  mTransfer = new RecordTypeTransfer2(ctxt, "myGenerate", inputAndState, prog);
-  mModule = mTransfer->create();
-  mLoopUpperBound = f.create();
 }
 
 RuntimeGenerateOperatorType::~RuntimeGenerateOperatorType()
 {
-  delete mModule;
-}
-
-const RecordType * RuntimeGenerateOperatorType::getOutputType() const
-{ 
-  return mTransfer->getTarget(); 
 }
 
 RuntimeOperator* RuntimeGenerateOperatorType::create(RuntimeOperator::Services& s) const
@@ -1145,8 +1134,8 @@ void RuntimeGenerateOperator::onEvent(RuntimePort * port)
       } else {
 	mInput = RecordBuffer();
       }
-      mEnd = getGenerateType().mLoopUpperBound->execute(mInput, RecordBuffer(), 
-							mRuntimeContext);
+      mEnd = getGenerateType().mLoopUpperBound.execute(mInput, RecordBuffer(), 
+                                                       mRuntimeContext);
       for(mIter=0; mIter<mEnd; ++mIter) {
 	requestWrite(0);
 	mState = WRITE;
@@ -1155,7 +1144,7 @@ void RuntimeGenerateOperator::onEvent(RuntimePort * port)
 	getGenerateType().mRecordCount.setInt64(mIter, mStateRecord);
 	{
 	    RecordBuffer output;
-	    getGenerateType().mModule->execute(mInput, mStateRecord, output, 
+	    getGenerateType().mModule.execute(mInput, mStateRecord, output, 
 					       mRuntimeContext, false, false);
 	    write(port, output, false);
 	}
@@ -1184,10 +1173,12 @@ void RuntimeGenerateOperator::shutdown()
 LogicalGroupBy::LogicalGroupBy(LogicalGroupBy::Algorithm a)
   :
   LogicalOperator(1,1,1,1),
-  mAggregate(NULL),
-  mHash(NULL),
-  mHashEq(NULL),
-  mSortEq(NULL),
+  mFree(nullptr),
+  mAggregate(nullptr),
+  mAggregateFree(nullptr),
+  mHash(nullptr),
+  mHashEq(nullptr),
+  mSortEq(nullptr),
   mAlgorithm(a),
   mIsRunningTotal(false)
 {
@@ -1195,7 +1186,9 @@ LogicalGroupBy::LogicalGroupBy(LogicalGroupBy::Algorithm a)
 
 LogicalGroupBy::~LogicalGroupBy()
 {
+  delete mFree;
   delete mAggregate;
+  delete mAggregateFree;
   delete mHash;
   delete mHashEq;
   delete mSortEq;
@@ -1295,27 +1288,32 @@ void LogicalGroupBy::check(PlanCheckContext& log)
       tmp += ",";
     }
     init = tmp + init;
-    mAggregate = new RecordTypeAggregate(log,
-					 "hashAgg",
-					 getInput(0)->getRecordType(),
-					 init,
-					 update,
-					 allGroupKeys,
-					 mIsRunningTotal);
+    mAggregate = new TreculAggregate(log,
+                                     log.getCodeGenerator(),
+                                     "hashAgg",
+                                     getInput(0)->getRecordType(),
+                                     init,
+                                     update,
+                                     allGroupKeys,
+                                     mIsRunningTotal);
   } else {
     // Must specify output if non init/update
     if (0 == mProgram.size()) {
       log.logError(*this, "Must specify argument 'output'");
     }
   
-    mAggregate = new RecordTypeAggregate(log,
-					 "hashAgg",
-					 getInput(0)->getRecordType(),
-					 mProgram,
-					 allGroupKeys,
-					 mIsRunningTotal);
+    mAggregate = new TreculAggregate(log,
+                                     log.getCodeGenerator(),
+                                     "hashAgg",
+                                     getInput(0)->getRecordType(),
+                                     mProgram,
+                                     allGroupKeys,
+                                     mIsRunningTotal);
   }
 
+  mFree = new TreculFreeOperation(log.getCodeGenerator(), getInput(0)->getRecordType());
+  mAggregateFree = new TreculFreeOperation(log.getCodeGenerator(), mAggregate->getAggregate());
+  
   if (mSortGroupKeys.size()) {
     mSortEq = EqualsFunction::get(log, 
 				  mAggregate->getAggregate(),
@@ -1345,23 +1343,27 @@ void LogicalGroupBy::create(class RuntimePlanBuilder& plan)
   RuntimeOperatorType * opType = NULL;
   if (mIsRunningTotal) {
     opType = 
-      new RuntimeSortRunningTotalOperatorType(getInput(0)->getRecordType()->getFree(),
+      new RuntimeSortRunningTotalOperatorType(*mFree,
 					      mHash,
 					      mSortEq,
-					      mAggregate);
-  } else if (mHashEq == NULL)
+					      *mAggregate,
+                                              *mAggregateFree);
+  } else if (mHashEq == NULL) {
     opType = 
-      new RuntimeSortGroupByOperatorType(getInput(0)->getRecordType()->getFree(),
+      new RuntimeSortGroupByOperatorType(*mFree,
 					 mHash,
 					 mSortEq,
-					 mAggregate);
-  else
+					 *mAggregate,
+                                         *mAggregateFree);
+  } else {
     opType = 
-      new RuntimeHashGroupByOperatorType(getInput(0)->getRecordType()->getFree(),
-					 mHash,
-					 mHashEq,
-					 mAggregate,
+      new RuntimeHashGroupByOperatorType(*mFree,
+					 *mHash,
+					 *mHashEq,
+					 *mAggregate,
+                                         *mAggregateFree,
 					 mSortEq);
+  }
   plan.addOperatorType(opType);
   plan.mapInputPort(this, 0, opType, 0);  
   plan.mapOutputPort(this, 0, opType, 0);  
@@ -1435,9 +1437,9 @@ void RuntimeHybridGroupByOperator::onEvent(RuntimePort * port)
 	// input stream.
 	if (RecordBuffer::isEOS(mSearchIterator.mQueryPredicate.ProbeThis) || 
 	    mCurrentAggregate == RecordBuffer() ||
-	    !getHashGroupByType().mSortKeyEqFun->execute(mCurrentAggregate, 
-							 mSearchIterator.mQueryPredicate.ProbeThis, 
-							 mRuntimeContext)) {
+	    !getHashGroupByType().mSortKeyEqFun.execute(mCurrentAggregate, 
+                                                        mSearchIterator.mQueryPredicate.ProbeThis, 
+                                                        mRuntimeContext)) {
 	  // If table is not empty, then we output the accumulated table
 	  // TODO: Potentially speed this up by enabling quick check if empty
 	  mScanIterator.init(mTable);
@@ -1447,13 +1449,13 @@ void RuntimeHybridGroupByOperator::onEvent(RuntimePort * port)
 	    mState = WRITE;
 	    return;
 	  case WRITE: 
-	    if (getHashGroupByType().mAggregate->getIsTransferIdentity()) {
+	    if (getHashGroupByType().mAggregateRef.getIsTransferIdentity()) {
 	      write(port, mScanIterator.value(), false);
 	    } else {
 	      RecordBuffer out;
-	      getHashGroupByType().mAggregate->executeTransfer(mScanIterator.value(),
-	  						       out, 
-	  						       mRuntimeContext);
+	      getHashGroupByType().mAggregate.executeTransfer(mScanIterator.value(),
+                                                              out, 
+                                                              mRuntimeContext);
 	      getHashGroupByType().mAggregateFree.free(mScanIterator.value());
 	      write(port, out, false);
 	    }
@@ -1482,9 +1484,9 @@ void RuntimeHybridGroupByOperator::onEvent(RuntimePort * port)
 	  // Create a new record and initialize it (using copy semantics).
 	  // TODO: It might be possible to use a move here if the group
 	  // keys aren't referenced in the aggregate functions
-	  getHashGroupByType().mAggregate->executeInit(mSearchIterator.mQueryPredicate.ProbeThis, 
-						       agg, 
-						       mRuntimeContext);
+	  getHashGroupByType().mAggregate.executeInit(mSearchIterator.mQueryPredicate.ProbeThis, 
+                                                      agg, 
+                                                      mRuntimeContext);
 	  mTable.insert(agg, mSearchIterator);
 	  if (mCurrentAggregate == RecordBuffer()) {
 	    // Save a reference to first aggregate record
@@ -1496,9 +1498,9 @@ void RuntimeHybridGroupByOperator::onEvent(RuntimePort * port)
 	  agg = mSearchIterator.value();
 	}
 	// In place update agg using input.
-	getHashGroupByType().mAggregate->executeUpdate(mSearchIterator.mQueryPredicate.ProbeThis, 
-						       agg, 
-						       mRuntimeContext);
+	getHashGroupByType().mAggregate.executeUpdate(mSearchIterator.mQueryPredicate.ProbeThis, 
+                                                      agg, 
+                                                      mRuntimeContext);
 	getHashGroupByType().mFree.free(mSearchIterator.mQueryPredicate.ProbeThis);
 	mSearchIterator.mQueryPredicate.ProbeThis = RecordBuffer();
       }
@@ -1512,7 +1514,7 @@ void RuntimeHybridGroupByOperator::shutdown()
 
 RuntimeOperator * RuntimeHashGroupByOperatorType::create(RuntimeOperator::Services & s) const
 {
-  if (mSortKeyEqFun == NULL) 
+  if (!mSortKeyEqFun) 
     return new RuntimeHashGroupByOperator(s, *this);
   else
     return new RuntimeHybridGroupByOperator(s, *this);
@@ -1563,17 +1565,17 @@ void RuntimeHashGroupByOperator::onEvent(RuntimePort * port)
 	  // Create a new record and initialize it (using copy semantics).
 	  // TODO: It might be possible to use a move here if the group
 	  // keys aren't referenced in the aggregate functions
-	  getHashGroupByType().mAggregate->executeInit(mSearchIterator.mQueryPredicate.ProbeThis, 
-						       agg, 
-						       mRuntimeContext);
+	  getHashGroupByType().mAggregate.executeInit(mSearchIterator.mQueryPredicate.ProbeThis, 
+                                                      agg, 
+                                                      mRuntimeContext);
 	  mTable.insert(agg, mSearchIterator);
 	} else {
 	  agg = mSearchIterator.value();
 	}
 	// In place update agg using input.
-	getHashGroupByType().mAggregate->executeUpdate(mSearchIterator.mQueryPredicate.ProbeThis, 
-						       agg, 
-						       mRuntimeContext);
+	getHashGroupByType().mAggregate.executeUpdate(mSearchIterator.mQueryPredicate.ProbeThis, 
+                                                      agg, 
+                                                      mRuntimeContext);
 	getHashGroupByType().mFree.free(mSearchIterator.mQueryPredicate.ProbeThis);
 	mSearchIterator.mQueryPredicate.ProbeThis = RecordBuffer();
       }
@@ -1585,13 +1587,13 @@ void RuntimeHashGroupByOperator::onEvent(RuntimePort * port)
       mState = WRITE;
       return;
     case WRITE: 
-      if (getHashGroupByType().mAggregate->getIsTransferIdentity()) {
+      if (getHashGroupByType().mAggregateRef.getIsTransferIdentity()) {
 	write(port, mScanIterator.value(), false);
       } else {
 	RecordBuffer out;
-	getHashGroupByType().mAggregate->executeTransfer(mScanIterator.value(),
-							 out, 
-							 mRuntimeContext);
+	getHashGroupByType().mAggregate.executeTransfer(mScanIterator.value(),
+                                                        out, 
+                                                        mRuntimeContext);
 	getHashGroupByType().mAggregateFree.free(mScanIterator.value());
 	write(port, out, false);
       }
@@ -1639,14 +1641,14 @@ void RuntimeSortGroupByOperator::onEvent(RuntimePort * port)
 {
   switch(mState) {
   case START:
-    if (NULL == getSortGroupByType().mEqFun) {
+    if (!getSortGroupByType().mEqFun) {
       // No group keys specified.  Create an aggregate state record
       mCurrentAggregate = RecordBuffer::create();
       // No need for an input record because no keys
       RecordBuffer tmp;
-      getSortGroupByType().mAggregate->executeInit(tmp, 
-						   mCurrentAggregate, 
-						   mRuntimeContext);
+      getSortGroupByType().mAggregate.executeInit(tmp, 
+                                                  mCurrentAggregate, 
+                                                  mRuntimeContext);
     }
     while(true) {
       // Read all inputs
@@ -1659,22 +1661,22 @@ void RuntimeSortGroupByOperator::onEvent(RuntimePort * port)
 
 	if (RecordBuffer::isEOS(mInput) || 
 	    mCurrentAggregate == RecordBuffer() ||
-	    (getSortGroupByType().mEqFun != NULL &&
-	     !getSortGroupByType().mEqFun->execute(mCurrentAggregate, mInput, mRuntimeContext))) {
+	    (!!getSortGroupByType().mEqFun &&
+	     !getSortGroupByType().mEqFun.execute(mCurrentAggregate, mInput, mRuntimeContext))) {
 	  // If table is not empty, then we output the accumulated record
 	  if (mCurrentAggregate != RecordBuffer()) {
 	    requestWrite(0);
 	    mState = WRITE;
 	    return;
 	  case WRITE:
-	    if (getSortGroupByType().mAggregate->getIsTransferIdentity()) {
+	    if (getSortGroupByType().mAggregateRef.getIsTransferIdentity()) {
 	      write(port, mCurrentAggregate, false);
 	      mCurrentAggregate=RecordBuffer();
 	    } else {
 	      RecordBuffer out;
-	      getSortGroupByType().mAggregate->executeTransfer(mCurrentAggregate,
-							       out, 
-							       mRuntimeContext);
+	      getSortGroupByType().mAggregate.executeTransfer(mCurrentAggregate,
+                                                              out, 
+                                                              mRuntimeContext);
 	      getSortGroupByType().mAggregateFree.free(mCurrentAggregate);
 	      mCurrentAggregate=RecordBuffer();
 	      write(port, out, false);
@@ -1698,20 +1700,20 @@ void RuntimeSortGroupByOperator::onEvent(RuntimePort * port)
 	    // two different sets of hash/equality: one to probe with the
 	    // input and one set to insert the aggregate record.
 	    mCurrentAggregate = RecordBuffer::create();
-	    getSortGroupByType().mAggregate->executeInit(mInput, 
-							 mCurrentAggregate, 
-							 mRuntimeContext);
-	    getSortGroupByType().mAggregate->executeUpdate(mInput, 
-							   mCurrentAggregate, 
-							   mRuntimeContext);
+	    getSortGroupByType().mAggregate.executeInit(mInput, 
+                                                        mCurrentAggregate, 
+                                                        mRuntimeContext);
+	    getSortGroupByType().mAggregate.executeUpdate(mInput, 
+                                                          mCurrentAggregate, 
+                                                          mRuntimeContext);
 	  }
 	} else {
 	  // In place update agg using input.
 	  BOOST_ASSERT(mInput != RecordBuffer(NULL));
 	  BOOST_ASSERT(mCurrentAggregate != RecordBuffer(NULL));
-	  getSortGroupByType().mAggregate->executeUpdate(mInput, 
-							 mCurrentAggregate, 
-							 mRuntimeContext);
+	  getSortGroupByType().mAggregate.executeUpdate(mInput, 
+                                                        mCurrentAggregate, 
+                                                        mRuntimeContext);
 	}
 	if (mInput != RecordBuffer()) {
 	  getSortGroupByType().mFree.free(mInput);
@@ -1758,14 +1760,14 @@ void RuntimeSortRunningTotalOperator::onEvent(RuntimePort * port)
   case START:
     // TODO: If this is GROUP ALL then initialize aggregate record here (to
     // make sure we have an output even without inputs).
-    if (NULL == getSortRunningTotalType().mEqFun) {
+    if (!getSortRunningTotalType().mEqFun) {
       // No group keys specified.  Create an aggregate state record
       mCurrentAggregate = RecordBuffer::create();
       // No need for an input record because no keys
       RecordBuffer tmp;
-      getSortRunningTotalType().mAggregate->executeInit(tmp, 
-							mCurrentAggregate, 
-							mRuntimeContext);
+      getSortRunningTotalType().mAggregate.executeInit(tmp, 
+                                                       mCurrentAggregate, 
+                                                       mRuntimeContext);
     }
     while(true) {
       // Read all inputs
@@ -1780,8 +1782,8 @@ void RuntimeSortRunningTotalOperator::onEvent(RuntimePort * port)
 	// input stream.
 	if (RecordBuffer::isEOS(mInput) || 
 	    mCurrentAggregate == RecordBuffer() ||
-	    (getSortRunningTotalType().mEqFun != NULL &&
-	     !getSortRunningTotalType().mEqFun->execute(mCurrentAggregate, mInput, mRuntimeContext))) {
+	    (!!getSortRunningTotalType().mEqFun &&
+	     !getSortRunningTotalType().mEqFun.execute(mCurrentAggregate, mInput, mRuntimeContext))) {
 	  // If table is not empty, then we output the accumulated record
 	  if (mCurrentAggregate != RecordBuffer()) {
 	      getSortRunningTotalType().mAggregateFree.free(mCurrentAggregate);
@@ -1805,18 +1807,18 @@ void RuntimeSortRunningTotalOperator::onEvent(RuntimePort * port)
 	    // two different sets of hash/equality: one to probe with the
 	    // input and one set to insert the aggregate record.
 	    mCurrentAggregate = RecordBuffer::create();
-	    getSortRunningTotalType().mAggregate->executeInit(mInput, 
-							      mCurrentAggregate, 
-							      mRuntimeContext);
+	    getSortRunningTotalType().mAggregate.executeInit(mInput, 
+                                                             mCurrentAggregate, 
+                                                             mRuntimeContext);
 	  }
 	}
 
 	// In place update agg using input.
 	BOOST_ASSERT(mInput != RecordBuffer(NULL));
 	BOOST_ASSERT(mCurrentAggregate != RecordBuffer(NULL));
-	getSortRunningTotalType().mAggregate->executeUpdate(mInput, 
-							    mCurrentAggregate, 
-							    mRuntimeContext);
+	getSortRunningTotalType().mAggregate.executeUpdate(mInput, 
+                                                           mCurrentAggregate, 
+                                                           mRuntimeContext);
 	
 	requestWrite(0);
 	mState = WRITE;
@@ -1824,10 +1826,10 @@ void RuntimeSortRunningTotalOperator::onEvent(RuntimePort * port)
       case WRITE:
 	{
 	  RecordBuffer out;
-	  getSortRunningTotalType().mAggregate->executeTransfer(mInput,
-								mCurrentAggregate,
-								out, 
-								mRuntimeContext);
+	  getSortRunningTotalType().mAggregate.executeTransfer(mInput,
+                                                               mCurrentAggregate,
+                                                               out, 
+                                                               mRuntimeContext);
 	  write(port, out, false);
 	  if (mInput != RecordBuffer()) {
 	    getSortRunningTotalType().mFree.free(mInput);
@@ -1843,12 +1845,12 @@ void RuntimeSortRunningTotalOperator::shutdown()
 {
 }
 
-paged_hash_table::paged_hash_table(bool ownTableData, const IQLFunctionModule * tableHash)
+paged_hash_table::paged_hash_table(bool ownTableData, const TreculFunctionRuntime & tableHash)
   :
   mOwnTableData(ownTableData),
   mNumBuckets(8),
   mBuckets(NULL),
-  mTableHash(tableHash ? tableHash->getRawFunction() : NULL),
+  mTableHash(tableHash.getRawFunction()),
   mLoadFactor(1.0*PageEntries),
   mSize(0)
 {
@@ -2013,15 +2015,19 @@ void paged_hash_table::find(paged_hash_table::query_iterator<paged_hash_table::p
 HashJoin::HashJoin(HashJoin::JoinType joinType)
   :
   LogicalOperator(2,2,1,1),
-  mTableInput(NULL),
-  mProbeInput(NULL),
-  mTableHash(NULL),
-  mProbeHash(NULL),
-  mEq(NULL),
-  mTransfer(NULL),
-  mSemiJoinTransfer(NULL),
-  mProbeMakeNullableTransfer(NULL),
-  mTableMakeNullableTransfer(NULL),  
+  mTableInput(nullptr),
+  mProbeInput(nullptr),
+  mTableFree(nullptr),
+  mProbeFree(nullptr),
+  mTableHash(nullptr),
+  mProbeHash(nullptr),
+  mEq(nullptr),
+  mTransfer(nullptr),
+  mSemiJoinTransfer(nullptr),
+  mTableMakeNullableTransfer(nullptr),  
+  mProbeMakeNullableTransfer(nullptr),
+  mTableMakeNullableFree(nullptr),
+  mProbeMakeNullableFree(nullptr),
   mJoinType(joinType),
   mJoinOne(false)
 {
@@ -2070,7 +2076,7 @@ void HashJoin::create(class RuntimePlanBuilder& plan)
   plan.mapOutputPort(this, 0, opType, 0);  
 }
 
-HashJoin::HashJoin(DynamicRecordContext & ctxt,
+HashJoin::HashJoin(PlanCheckContext & ctxt,
 		   const RecordType * tableInput,
 		   const RecordType * probeInput,
 		   const std::string& tableKey,
@@ -2082,13 +2088,17 @@ HashJoin::HashJoin(DynamicRecordContext & ctxt,
   :
   mTableInput(tableInput),
   mProbeInput(probeInput),
-  mTableHash(NULL),
-  mProbeHash(NULL),
-  mEq(NULL),
-  mTransfer(NULL),
-  mSemiJoinTransfer(NULL),
-  mProbeMakeNullableTransfer(NULL),
-  mTableMakeNullableTransfer(NULL),  
+  mTableFree(nullptr),
+  mProbeFree(nullptr),
+  mTableHash(nullptr),
+  mProbeHash(nullptr),
+  mEq(nullptr),
+  mTransfer(nullptr),
+  mSemiJoinTransfer(nullptr),
+  mTableMakeNullableTransfer(nullptr),  
+  mProbeMakeNullableTransfer(nullptr),
+  mTableMakeNullableFree(nullptr),
+  mProbeMakeNullableFree(nullptr),
   mJoinType(INNER),
   mJoinOne(joinOne)
 {
@@ -2099,7 +2109,7 @@ HashJoin::HashJoin(DynamicRecordContext & ctxt,
   init(ctxt, tableKeys, probeKeys, residual, transfer);
 }
 
-HashJoin::HashJoin(DynamicRecordContext & ctxt,
+HashJoin::HashJoin(PlanCheckContext & ctxt,
 		   HashJoin::JoinType joinType,
 		   const RecordType * tableInput,
 		   const RecordType * probeInput,
@@ -2111,13 +2121,17 @@ HashJoin::HashJoin(DynamicRecordContext & ctxt,
   :
   mTableInput(tableInput),
   mProbeInput(probeInput),
-  mTableHash(NULL),
-  mProbeHash(NULL),
-  mEq(NULL),
-  mTransfer(NULL),
-  mSemiJoinTransfer(NULL),
-  mProbeMakeNullableTransfer(NULL),
-  mTableMakeNullableTransfer(NULL),  
+  mTableFree(nullptr),
+  mProbeFree(nullptr),
+  mTableHash(nullptr),
+  mProbeHash(nullptr),
+  mEq(nullptr),
+  mTransfer(nullptr),
+  mSemiJoinTransfer(nullptr),
+  mTableMakeNullableTransfer(nullptr),  
+  mProbeMakeNullableTransfer(nullptr),
+  mTableMakeNullableFree(nullptr),
+  mProbeMakeNullableFree(nullptr),
   mJoinType(joinType),
   mJoinOne(false)
 {
@@ -2128,7 +2142,7 @@ HashJoin::HashJoin(DynamicRecordContext & ctxt,
   init(ctxt, tableKeys, probeKeys, residual, transfer);
 }
 
-HashJoin::HashJoin(DynamicRecordContext & ctxt,
+HashJoin::HashJoin(PlanCheckContext & ctxt,
 		   const RecordType * tableInput,
 		   const RecordType * probeInput,
 		   const std::vector<std::string>& tableKeys,
@@ -2140,13 +2154,17 @@ HashJoin::HashJoin(DynamicRecordContext & ctxt,
   :
   mTableInput(tableInput),
   mProbeInput(probeInput),
-  mTableHash(NULL),
-  mProbeHash(NULL),
-  mEq(NULL),
-  mTransfer(NULL),
-  mSemiJoinTransfer(NULL),
-  mProbeMakeNullableTransfer(NULL),
-  mTableMakeNullableTransfer(NULL),  
+  mTableFree(nullptr),
+  mProbeFree(nullptr),
+  mTableHash(nullptr),
+  mProbeHash(nullptr),
+  mEq(nullptr),
+  mTransfer(nullptr),
+  mSemiJoinTransfer(nullptr),
+  mTableMakeNullableTransfer(nullptr),  
+  mProbeMakeNullableTransfer(nullptr),
+  mTableMakeNullableFree(nullptr),
+  mProbeMakeNullableFree(nullptr),
   mJoinType(INNER),
   mJoinOne(joinOne)
 {
@@ -2155,6 +2173,8 @@ HashJoin::HashJoin(DynamicRecordContext & ctxt,
 
 HashJoin::~HashJoin()
 {
+  delete mTableFree;
+  delete mProbeFree;
   delete mTableHash;
   delete mProbeHash;
   delete mEq;
@@ -2162,14 +2182,18 @@ HashJoin::~HashJoin()
   delete mSemiJoinTransfer;
   delete mProbeMakeNullableTransfer;
   delete mTableMakeNullableTransfer; 
+  delete mTableMakeNullableFree;
+  delete mProbeMakeNullableFree;
 }
 
-void HashJoin::init(DynamicRecordContext & ctxt,
+void HashJoin::init(PlanCheckContext & ctxt,
 		    const std::vector<std::string>& tableKeys,
 		    const std::vector<std::string>& probeKeys,
 		    const std::string& residual,
 		    const std::string& transfer)
 {
+  mTableFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mTableInput);
+  mProbeFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mProbeInput);
   std::vector<RecordMember> emptyMembers;
   RecordType emptyTy(ctxt, emptyMembers);
   std::vector<const RecordType *> tableOnly;
@@ -2209,7 +2233,7 @@ void HashJoin::init(DynamicRecordContext & ctxt,
       const FieldType * tableType = mTableInput->getMember(tableKeys[i]).GetType();
       const FieldType * targetType = 
 	TypeCheckContext::leastCommonTypeNullable(probeType, tableType);
-      if (targetType == NULL) {
+      if (targetType == nullptr) {
 	throw std::runtime_error((boost::format("Error generating conversion of"
 						"join key %1% to join key %2%") %
 				  probeKeys[i] % tableKeys[i]).str());
@@ -2229,8 +2253,9 @@ void HashJoin::init(DynamicRecordContext & ctxt,
       eq += (boost::format("table.%1% = probe.%2%") % tableKeys[i] % 
 	     probeKeys[i]).str();
     }
-    mTableHash = new RecordTypeFunction(ctxt, "tableHash", tableOnly, (boost::format("#(%1%)") % tableKey).str());
-    mProbeHash = new RecordTypeFunction(ctxt, "probeHash", probeOnly, (boost::format("#(%1%)") % probeKey).str());
+    // TODO : Use HashFunction::get
+    mTableHash = new TreculFunction(ctxt, ctxt.getCodeGenerator(), "tableHash", tableOnly, (boost::format("#(%1%)") % tableKey).str());
+    mProbeHash = new TreculFunction(ctxt, ctxt.getCodeGenerator(), "probeHash", probeOnly, (boost::format("#(%1%)") % probeKey).str());
 
     std::string copy(residual);
     if (residual.size()) {
@@ -2238,10 +2263,10 @@ void HashJoin::init(DynamicRecordContext & ctxt,
     }
     //Table is first argument in equals! 
     //So the input rec fmts are table then probe.
-    mEq = new RecordTypeFunction(ctxt, "eq", tableAndProbe, eq);
+    mEq = new TreculFunction(ctxt, ctxt.getCodeGenerator(), "eq", tableAndProbe, eq);
   } else if(residual.size()) {
     // OK to have a cross join with residual.
-    mEq = new RecordTypeFunction(ctxt, "eq", tableAndProbe, residual);
+    mEq = new TreculFunction(ctxt, ctxt.getCodeGenerator(), "eq", tableAndProbe, residual);
   }
 
   if (mJoinType == FULL_OUTER ||
@@ -2250,6 +2275,8 @@ void HashJoin::init(DynamicRecordContext & ctxt,
       mJoinType==INNER) {
     mTableMakeNullableTransfer = SortMergeJoin::makeNullableTransfer(ctxt, mTableInput);
     mProbeMakeNullableTransfer = SortMergeJoin::makeNullableTransfer(ctxt, mProbeInput);
+    mTableMakeNullableFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mTableMakeNullableTransfer->getTarget());
+    mProbeMakeNullableFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mProbeMakeNullableTransfer->getTarget());
     std::vector<AliasedRecordType> types;
     types.push_back(AliasedRecordType("table", (mJoinType==FULL_OUTER ||
 						mJoinType==RIGHT_OUTER) ?
@@ -2259,9 +2286,9 @@ void HashJoin::init(DynamicRecordContext & ctxt,
 						mJoinType==LEFT_OUTER) ?
 				      mProbeMakeNullableTransfer->getTarget() :
 				      mProbeInput));
-    mTransfer = new RecordTypeTransfer2(ctxt, "makeoutput", types, transfer.size() ? transfer : "table.*, probe.*");
+    mTransfer = new TreculTransfer2(ctxt, ctxt.getCodeGenerator(), "makeoutput", types, transfer.size() ? transfer : "table.*, probe.*");
   } else {
-    mSemiJoinTransfer = new RecordTypeTransfer(ctxt, "makeoutput", 
+    mSemiJoinTransfer = new TreculTransfer(ctxt, ctxt.getCodeGenerator(), "makeoutput", 
 					       mProbeInput, 
 					       transfer.size() ? transfer : "input.*");
   }
@@ -2271,50 +2298,45 @@ RuntimeOperatorType * HashJoin::create() const
 {
   if(mTableHash) {
     if (mJoinType == INNER) {
-      return new RuntimeHashJoinOperatorType(mTableInput->getFree(),
-					     mProbeInput->getFree(),
-					     mTableHash,
-					     mProbeHash,
-					     mEq,
-					     mTransfer,
+      return new RuntimeHashJoinOperatorType(*mTableFree,
+					     *mProbeFree,
+					     *mTableHash,
+					     *mProbeHash,
+					     *mEq,
+					     *mTransfer,
 					     mJoinOne);
     } else if (mJoinType == FULL_OUTER || mJoinType == LEFT_OUTER ||
 	       mJoinType == RIGHT_OUTER) {
       return new RuntimeHashJoinOperatorType(mJoinType,
-					     mTableInput->getFree(),
-					     mProbeInput->getFree(),
-					     mTableHash,
-					     mProbeHash,
-					     mEq,
-					     mTransfer,
-					     mTableMakeNullableTransfer,
-					     mProbeMakeNullableTransfer);
+					     *mTableFree,
+					     *mProbeFree,
+					     *mTableHash,
+					     *mProbeHash,
+					     *mEq,
+					     *mTransfer,
+					     *mTableMakeNullableTransfer,
+					     *mProbeMakeNullableTransfer,
+					     *mTableMakeNullableFree,
+					     *mProbeMakeNullableFree);
     } else {
-      return new RuntimeHashJoinOperatorType(mTableInput->getFree(),
-					     mProbeInput->getFree(),
-					     mTableHash,
-					     mProbeHash,
-					     mEq,
+      return new RuntimeHashJoinOperatorType(*mTableFree,
+					     *mProbeFree,
+					     *mTableHash,
+					     *mProbeHash,
+					     *mEq,
 					     mSemiJoinTransfer,
 					     mJoinType);
     }
   } else {
-    return new RuntimeCrossJoinOperatorType(mTableInput->getFree(),
-					    mProbeInput->getFree(),
+    return new RuntimeCrossJoinOperatorType(*mTableFree,
+					    *mProbeFree,
 					    mEq,
-					    mTransfer);
+					    *mTransfer);
   }
 }
 
 RuntimeHashJoinOperatorType::~RuntimeHashJoinOperatorType()
 {
-  delete mTableHashFun;
-  delete mProbeHashFun;
-  delete mEqFun;
-  delete mTransferModule;
-  delete mSemiJoinTransferModule;
-  delete mProbeMakeNullableTransferModule;
-  delete mTableMakeNullableTransferModule;
 }
 
 RuntimeOperator * RuntimeHashJoinOperatorType::create(RuntimeOperator::Services & s) const
@@ -2329,8 +2351,8 @@ RuntimeHashJoinOperator::RuntimeHashJoinOperator(RuntimeOperator::Services& serv
   mState(START),
   mRuntimeContext(new InterpreterContext()),
   mTable(true, getHashJoinType().mTableHashFun),
-  mSearchIterator(paged_hash_table::probe_predicate(getHashJoinType().mProbeHashFun->getRawFunction(),
-						    getHashJoinType().mEqFun->getRawFunction()))
+  mSearchIterator(paged_hash_table::probe_predicate(getHashJoinType().mProbeHashFun,
+						    getHashJoinType().mEqFun))
 {
 }
 
@@ -2372,7 +2394,7 @@ RecordBuffer RuntimeHashJoinOperator::onInner()
   // Must put this in tmp variable because signature of transfer
   // wants a non-const reference (to support move semantics).
   RecordBuffer tmp = mSearchIterator.value();
-  getHashJoinType().mTransferModule->execute(tmp,
+  getHashJoinType().mTransferModule.execute(tmp,
 					     mSearchIterator.mQueryPredicate.ProbeThis,
 					     output,
 					     mRuntimeContext,
@@ -2385,7 +2407,7 @@ RecordBuffer RuntimeHashJoinOperator::onSemi()
 {
   RecordBuffer output;
   if (getHashJoinType().mSemiJoinTransferModule) {
-    getHashJoinType().mSemiJoinTransferModule->execute(mSearchIterator.mQueryPredicate.ProbeThis,
+    getHashJoinType().mSemiJoinTransferModule.execute(mSearchIterator.mQueryPredicate.ProbeThis,
 						       output,
 						       mRuntimeContext,
 						       false);
@@ -2408,12 +2430,12 @@ RecordBuffer RuntimeHashJoinOperator::onRightOuterMatch()
       // Convert to nullable properties on the table.
       RecordBuffer tmp1 = mSearchIterator.value();
       RecordBuffer tmp2;
-      getHashJoinType().mTableMakeNullableTransferModule->execute(tmp1,
+      getHashJoinType().mTableMakeNullableTransferModule.execute(tmp1,
 								  tmp2,
 								  mRuntimeContext,
 								  false);
   
-      getHashJoinType().mTransferModule->execute(tmp2,
+      getHashJoinType().mTransferModule.execute(tmp2,
 						 mSearchIterator.mQueryPredicate.ProbeThis,
 						 output,
 						 mRuntimeContext,
@@ -2428,17 +2450,17 @@ RecordBuffer RuntimeHashJoinOperator::onRightOuterMatch()
       RecordBuffer tmp = mSearchIterator.value();
       RecordBuffer tmp1;
       RecordBuffer tmp2;
-      getHashJoinType().mTableMakeNullableTransferModule->execute(tmp,
+      getHashJoinType().mTableMakeNullableTransferModule.execute(tmp,
 								  tmp1,
 								  mRuntimeContext,
 								  false);
       tmp = mSearchIterator.mQueryPredicate.ProbeThis;
-      getHashJoinType().mProbeMakeNullableTransferModule->execute(tmp,
+      getHashJoinType().mProbeMakeNullableTransferModule.execute(tmp,
 								  tmp2,
 								  mRuntimeContext,
 								  false);
   
-      getHashJoinType().mTransferModule->execute(tmp1,
+      getHashJoinType().mTransferModule.execute(tmp1,
 						 tmp2,
 						 output,
 						 mRuntimeContext,
@@ -2454,12 +2476,12 @@ RecordBuffer RuntimeHashJoinOperator::onRightOuterMatch()
       RecordBuffer tmp = mSearchIterator.mQueryPredicate.ProbeThis;
       RecordBuffer tmp1 = mSearchIterator.value();
       RecordBuffer tmp2;
-      getHashJoinType().mProbeMakeNullableTransferModule->execute(tmp,
+      getHashJoinType().mProbeMakeNullableTransferModule.execute(tmp,
 								  tmp2,
 								  mRuntimeContext,
 								  false);
   
-      getHashJoinType().mTransferModule->execute(tmp1,
+      getHashJoinType().mTransferModule.execute(tmp1,
 						 tmp2,
 						 output,
 						 mRuntimeContext,
@@ -2485,11 +2507,11 @@ RecordBuffer RuntimeHashJoinOperator::onTableNonMatch(RecordBuffer tableBuf)
     {
       // Convert to nullable properties on the table.
       RecordBuffer tmp1;
-      getHashJoinType().mTableMakeNullableTransferModule->execute(tableBuf,
+      getHashJoinType().mTableMakeNullableTransferModule.execute(tableBuf,
 								  tmp1,
 								  mRuntimeContext,
 								  false);
-      getHashJoinType().mTransferModule->execute(tmp1,
+      getHashJoinType().mTransferModule.execute(tmp1,
 						 mNullProbeRecord,
 						 output,
 						 mRuntimeContext,
@@ -2500,7 +2522,7 @@ RecordBuffer RuntimeHashJoinOperator::onTableNonMatch(RecordBuffer tableBuf)
     }
   case HashJoin::LEFT_OUTER:
     {
-      getHashJoinType().mTransferModule->execute(tableBuf,
+      getHashJoinType().mTransferModule.execute(tableBuf,
 						 mNullProbeRecord,
 						 output,
 						 mRuntimeContext,
@@ -2521,7 +2543,7 @@ RecordBuffer RuntimeHashJoinOperator::onRightOuterNonMatch()
   switch (getHashJoinType().mJoinType) {
   case HashJoin::RIGHT_OUTER:
     {
-      getHashJoinType().mTransferModule->execute(mNullTableRecord,
+      getHashJoinType().mTransferModule.execute(mNullTableRecord,
 						 mSearchIterator.mQueryPredicate.ProbeThis,
 						 output,
 						 mRuntimeContext,
@@ -2534,11 +2556,11 @@ RecordBuffer RuntimeHashJoinOperator::onRightOuterNonMatch()
       // Convert to nullable properties on the probe.
       RecordBuffer tmp = mSearchIterator.mQueryPredicate.ProbeThis;
       RecordBuffer tmp1;
-      getHashJoinType().mProbeMakeNullableTransferModule->execute(tmp,
+      getHashJoinType().mProbeMakeNullableTransferModule.execute(tmp,
 								  tmp1,
 								  mRuntimeContext,
 								  false);
-      getHashJoinType().mTransferModule->execute(mNullTableRecord,
+      getHashJoinType().mTransferModule.execute(mNullTableRecord,
 						 tmp1,
 						 output,
 						 mRuntimeContext,
@@ -2664,8 +2686,6 @@ void RuntimeHashJoinOperator::shutdown()
 
 RuntimeCrossJoinOperatorType::~RuntimeCrossJoinOperatorType()
 {
-  delete mEqFun;
-  delete mTransferModule;
 }
 
 RuntimeOperator * RuntimeCrossJoinOperatorType::create(RuntimeOperator::Services & s) const
@@ -2724,8 +2744,8 @@ void RuntimeCrossJoinOperator::onEvent(RuntimePort * port)
 	for(mScanIterator = mTable.begin();
 	    mScanIterator != mTable.end();
 	    ++mScanIterator) {
-	  if (getCrossJoinType().mEqFun == NULL ||
-	      getCrossJoinType().mEqFun->execute(*mScanIterator, mProbe, mRuntimeContext)) {
+	  if (!getCrossJoinType().mEqFun ||
+	      getCrossJoinType().mEqFun.execute(*mScanIterator, mProbe, mRuntimeContext)) {
 	    requestWrite(0);
 	    mState = WRITE;
 	    return;
@@ -2734,7 +2754,7 @@ void RuntimeCrossJoinOperator::onEvent(RuntimePort * port)
 	      // Must put this in tmp variable because signature of transfer
 	      // wants a non-const reference (to support move semantics).
 	      RecordBuffer output;
-	      getCrossJoinType().mTransferModule->execute(*mScanIterator,
+	      getCrossJoinType().mTransferModule.execute(*mScanIterator,
 							  mProbe,
 							  output,
 							  mRuntimeContext,
@@ -2754,7 +2774,7 @@ void RuntimeCrossJoinOperator::onEvent(RuntimePort * port)
   case WRITE_EOS:
     write(port, RecordBuffer(NULL), true);
     {
-      const RecordTypeFree & f(getCrossJoinType().mTableFree);
+      const TreculRecordFreeRuntime & f(getCrossJoinType().mTableFree);
       // Free records in table
       for(mScanIterator = mTable.begin(); 
 	  mScanIterator != mTable.end();
@@ -2772,7 +2792,6 @@ void RuntimeCrossJoinOperator::shutdown()
 
 RuntimeHashPartitionerOperatorType::~RuntimeHashPartitionerOperatorType()
 {
-  delete mHashFun;
 }
   
 RuntimeOperator * RuntimeHashPartitionerOperatorType::create(RuntimeOperator::Services & s) const
@@ -2812,7 +2831,7 @@ void RuntimeHashPartitionerOperator::onEvent(RuntimePort * port)
       read(port, mBuffer);
       if (RecordBuffer::isEOS(mBuffer)) break;
       {
-	int32_t h = getMyOperatorType().mHashFun->execute(mBuffer, NULL, mRuntimeContext);
+	int32_t h = getMyOperatorType().mHashFun.execute(mBuffer, nullptr, mRuntimeContext);
 	requestWrite(h % getOutputPorts().size());
       }
       mState = WRITE;
@@ -2839,7 +2858,6 @@ void RuntimeHashPartitionerOperator::shutdown()
 
 RuntimeBroadcastPartitionerOperatorType::~RuntimeBroadcastPartitionerOperatorType()
 {
-  delete mTransfer;
 }
   
 RuntimeOperator * RuntimeBroadcastPartitionerOperatorType::create(RuntimeOperator::Services & s) const
@@ -2888,7 +2906,7 @@ void RuntimeBroadcastPartitionerOperator::onEvent(RuntimePort * port)
       case WRITE:
 	if (mOutputIt+1 != output_port_end()) {
 	  RecordBuffer output;
-	  getMyOperatorType().mTransfer->execute(mInput, 
+	  getMyOperatorType().mTransfer.execute(mInput, 
 						 output, 
 						 mRuntimeContext, 
 						 false);
@@ -3086,8 +3104,8 @@ RuntimeOperator * RuntimeNondeterministicCollectorOperatorType::create(RuntimeOp
   return new op_type(s, *this);
 }
 
-RecordTypeTransfer * 
-SortMergeJoin::makeNullableTransfer(DynamicRecordContext& ctxt,
+TreculTransfer * 
+SortMergeJoin::makeNullableTransfer(PlanCheckContext& ctxt,
 				    const RecordType * input)
 {
   std::string makeNullableXfer;
@@ -3103,7 +3121,7 @@ SortMergeJoin::makeNullableTransfer(DynamicRecordContext& ctxt,
 			   m->GetName()).str();
     }
   }
-  return new RecordTypeTransfer(ctxt, 
+  return new TreculTransfer(ctxt, ctxt.getCodeGenerator(), 
 				"makenullable", 
 				input,
 				makeNullableXfer);
@@ -3121,19 +3139,23 @@ SortMergeJoin::SortMergeJoin(SortMergeJoin::JoinType joinType)
   :
   LogicalOperator(2,2,1,1),
   mJoinType(joinType),
-  mLeftInput(NULL),
-  mRightInput(NULL),
-  mLeftKeyCompare(NULL),
-  mRightKeyCompare(NULL),
-  mLeftRightKeyCompare(NULL),
-  mResidual(NULL),
-  mMatchTransfer(NULL),
-  mLeftMakeNullableTransfer(NULL),
-  mRightMakeNullableTransfer(NULL)
+  mLeftInput(nullptr),
+  mRightInput(nullptr),
+  mLeftFree(nullptr),
+  mRightFree(nullptr),
+  mLeftKeyCompare(nullptr),
+  mRightKeyCompare(nullptr),
+  mLeftRightKeyCompare(nullptr),
+  mResidual(nullptr),
+  mMatchTransfer(nullptr),
+  mLeftMakeNullableTransfer(nullptr),
+  mRightMakeNullableTransfer(nullptr),
+  mLeftMakeNullableFree(nullptr),
+  mRightMakeNullableFree(nullptr)
 {
 }
 
-SortMergeJoin::SortMergeJoin(DynamicRecordContext & ctxt,
+SortMergeJoin::SortMergeJoin(PlanCheckContext & ctxt,
 			     SortMergeJoin::JoinType joinType,
 			     const RecordType * leftInput,
 			     const RecordType * rightInput,
@@ -3146,23 +3168,30 @@ SortMergeJoin::SortMergeJoin(DynamicRecordContext & ctxt,
   mJoinType(joinType),
   mLeftInput(leftInput),
   mRightInput(rightInput),
-  mLeftKeyCompare(NULL),
-  mRightKeyCompare(NULL),
-  mLeftRightKeyCompare(NULL),
-  mResidual(NULL),
-  mMatchTransfer(NULL),
-  mLeftMakeNullableTransfer(NULL),
-  mRightMakeNullableTransfer(NULL)
+  mLeftFree(nullptr),
+  mRightFree(nullptr),
+  mLeftKeyCompare(nullptr),
+  mRightKeyCompare(nullptr),
+  mLeftRightKeyCompare(nullptr),
+  mResidual(nullptr),
+  mMatchTransfer(nullptr),
+  mLeftMakeNullableTransfer(nullptr),
+  mRightMakeNullableTransfer(nullptr),
+  mLeftMakeNullableFree(nullptr),
+  mRightMakeNullableFree(nullptr)
 {
   init(ctxt, leftKeys, rightKeys, residual, matchTransfer);
 }
 
-void SortMergeJoin::init(DynamicRecordContext & ctxt,
+void SortMergeJoin::init(PlanCheckContext & ctxt,
 			 const std::vector<SortKey>& leftKeys,
 			 const std::vector<SortKey>& rightKeys,
 			 const std::string& residual,
 			 const std::string& matchTransfer)
 {
+  mLeftFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mLeftInput);
+  mRightFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mRightInput);
+
   // In the right outer case the left inputs
   // may need to be coerced to be nullable.
   // The current approach is rather inefficient
@@ -3191,7 +3220,7 @@ void SortMergeJoin::init(DynamicRecordContext & ctxt,
     std::vector<AliasedRecordType> residualTypes;
     residualTypes.push_back(AliasedRecordType("l", mLeftInput));
     residualTypes.push_back(AliasedRecordType("r", mRightInput));
-    mResidual = new RecordTypeFunction(ctxt, "eqpred", residualTypes, residual);
+    mResidual = new TreculFunction(ctxt, ctxt.getCodeGenerator(), "eqpred", residualTypes, residual);
   }
 
   if (isInnerOrOuter(mJoinType)) {
@@ -3204,13 +3233,13 @@ void SortMergeJoin::init(DynamicRecordContext & ctxt,
 						   mJoinType==LEFT_OUTER) ?
 					     mRightMakeNullableTransfer->getTarget() :
 					     mRightInput));
-    mMatchTransfer = new RecordTypeTransfer2(ctxt, "onmatch", 
+    mMatchTransfer = new TreculTransfer2(ctxt, ctxt.getCodeGenerator(), "onmatch", 
 					     aliasedTypes, 
 					     matchTransfer.size() ?
 					     matchTransfer :
 					     "l.*, r.*");
   } else {
-    mLeftMakeNullableTransfer = new RecordTypeTransfer(ctxt, "onmatch",
+    mLeftMakeNullableTransfer = new TreculTransfer(ctxt, ctxt.getCodeGenerator(), "onmatch",
 						   mRightInput,
 						   matchTransfer.size() ?
 						   matchTransfer :
@@ -3218,10 +3247,15 @@ void SortMergeJoin::init(DynamicRecordContext & ctxt,
     // Not used at runtime but necessary for creating the runtime operator type.
     mRightMakeNullableTransfer = makeNullableTransfer(ctxt, mRightInput);
   }
+
+  mLeftMakeNullableFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mLeftMakeNullableTransfer->getTarget());
+  mRightMakeNullableFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mRightMakeNullableTransfer->getTarget());
 }
 
 SortMergeJoin::~SortMergeJoin()
 {
+  delete mLeftFree;
+  delete mRightFree;
   delete mLeftKeyCompare;
   delete mRightKeyCompare;
   delete mLeftRightKeyCompare;
@@ -3229,6 +3263,8 @@ SortMergeJoin::~SortMergeJoin()
   delete mMatchTransfer;
   delete mLeftMakeNullableTransfer;
   delete mRightMakeNullableTransfer;
+  delete mLeftMakeNullableFree;
+  delete mRightMakeNullableFree;
 }
 
 const RecordType * SortMergeJoin::getOutputType() const
@@ -3285,24 +3321,21 @@ RuntimeOperatorType * SortMergeJoin::create() const
   return new RuntimeSortMergeJoinOperatorType(mJoinType,
 					      mLeftInput,
 					      mRightInput,
-					      mLeftKeyCompare,
-					      mRightKeyCompare,
-					      mLeftRightKeyCompare,
+                                              *mLeftFree,
+                                              *mRightFree,
+					      *mLeftKeyCompare,
+					      *mRightKeyCompare,
+					      *mLeftRightKeyCompare,
 					      mResidual,
 					      mMatchTransfer,
 					      mLeftMakeNullableTransfer,
-					      mRightMakeNullableTransfer);
+					      mRightMakeNullableTransfer,
+                                              *mLeftMakeNullableFree,
+                                              *mRightMakeNullableFree);
 }
 
 RuntimeSortMergeJoinOperatorType::~RuntimeSortMergeJoinOperatorType()
 {
-  delete mLeftKeyCompareFun;
-  delete mRightKeyCompareFun;
-  delete mLeftRightKeyCompareFun;
-  delete mEqFun;
-  delete mMatchTransfer;
-  delete mLeftMakeNullableTransfer;
-  delete mRightMakeNullableTransfer;
 }
   
 RuntimeOperator * RuntimeSortMergeJoinOperatorType::create(RuntimeOperator::Services & s) const
@@ -3355,9 +3388,9 @@ void RuntimeSortMergeJoinOperator::onRightNonMatch(RuntimePort * port)
     {
       RecordBuffer out;
       RecordBuffer tmp;
-      getMyOperatorType().mRightMakeNullableTransfer->execute(mRightInput, tmp, mRuntimeContext, false);
+      getMyOperatorType().mRightMakeNullableTransfer.execute(mRightInput, tmp, mRuntimeContext, false);
       // TODO: Add move optimizations.
-      getMyOperatorType().mMatchTransfer->execute(mLeftNulls, tmp, out, mRuntimeContext, false, false);
+      getMyOperatorType().mMatchTransfer.execute(mLeftNulls, tmp, out, mRuntimeContext, false, false);
       write(port, out, false);
       getMyOperatorType().mRightNullFree.free(tmp);
       break;
@@ -3366,18 +3399,18 @@ void RuntimeSortMergeJoinOperator::onRightNonMatch(RuntimePort * port)
     {
       RecordBuffer out;
       // TODO: Add move optimizations.
-      getMyOperatorType().mMatchTransfer->execute(mLeftNulls, mRightInput, out, mRuntimeContext, false, false);
+      getMyOperatorType().mMatchTransfer.execute(mLeftNulls, mRightInput, out, mRuntimeContext, false, false);
       write(port, out, false);
       break;
     }
   case SortMergeJoin::RIGHT_ANTI_SEMI:
     {
       RecordBuffer out;
-      if (NULL == getMyOperatorType().mLeftMakeNullableTransfer) {
+      if (!getMyOperatorType().mLeftMakeNullableTransfer) {
 	write(port, mRightInput, false);
 	mRightInput = NULL;
       } else {
-	getMyOperatorType().mLeftMakeNullableTransfer->execute(mRightInput, out, mRuntimeContext, false);
+	getMyOperatorType().mLeftMakeNullableTransfer.execute(mRightInput, out, mRuntimeContext, false);
 	write(port, out, false);
       }
       break;
@@ -3394,8 +3427,8 @@ void RuntimeSortMergeJoinOperator::onLeftNonMatch(RuntimePort * port, RecordBuff
     {
       RecordBuffer out;
       RecordBuffer tmp;
-      getMyOperatorType().mLeftMakeNullableTransfer->execute(buf, tmp, mRuntimeContext, false);
-      getMyOperatorType().mMatchTransfer->execute(tmp, mRightNulls, out, mRuntimeContext, false, false);
+      getMyOperatorType().mLeftMakeNullableTransfer.execute(buf, tmp, mRuntimeContext, false);
+      getMyOperatorType().mMatchTransfer.execute(tmp, mRightNulls, out, mRuntimeContext, false, false);
       write(port, out, false);
       getMyOperatorType().mLeftNullFree.free(tmp);
       break;
@@ -3404,7 +3437,7 @@ void RuntimeSortMergeJoinOperator::onLeftNonMatch(RuntimePort * port, RecordBuff
     {
       RecordBuffer out;
       // TODO: Add move optimizations.
-      getMyOperatorType().mMatchTransfer->execute(buf, mRightNulls, out, mRuntimeContext, false, false);
+      getMyOperatorType().mMatchTransfer.execute(buf, mRightNulls, out, mRuntimeContext, false, false);
       write(port, out, false);
       break;
     }
@@ -3419,7 +3452,7 @@ void RuntimeSortMergeJoinOperator::onMatch(RuntimePort * port)
   case SortMergeJoin::INNER:
     {
       RecordBuffer out;
-      getMyOperatorType().mMatchTransfer->execute(mLastMatch, mRightInput, out, mRuntimeContext, false, false);		    
+      getMyOperatorType().mMatchTransfer.execute(mLastMatch, mRightInput, out, mRuntimeContext, false, false);		    
       write(port, out, false);
       break;
     }
@@ -3427,8 +3460,8 @@ void RuntimeSortMergeJoinOperator::onMatch(RuntimePort * port)
     {
       RecordBuffer out;
       RecordBuffer tmp;
-      getMyOperatorType().mLeftMakeNullableTransfer->execute(mLastMatch, tmp, mRuntimeContext, false);
-      getMyOperatorType().mMatchTransfer->execute(tmp, mRightInput, out, mRuntimeContext, false, false);		    
+      getMyOperatorType().mLeftMakeNullableTransfer.execute(mLastMatch, tmp, mRuntimeContext, false);
+      getMyOperatorType().mMatchTransfer.execute(tmp, mRightInput, out, mRuntimeContext, false, false);		    
       getMyOperatorType().mLeftNullFree.free(tmp);
       write(port, out, false);
       break;
@@ -3437,8 +3470,8 @@ void RuntimeSortMergeJoinOperator::onMatch(RuntimePort * port)
     {
       RecordBuffer out;
       RecordBuffer tmp;
-      getMyOperatorType().mRightMakeNullableTransfer->execute(mRightInput, tmp, mRuntimeContext, false);
-      getMyOperatorType().mMatchTransfer->execute(mLastMatch, tmp, out, mRuntimeContext, false, false);		    
+      getMyOperatorType().mRightMakeNullableTransfer.execute(mRightInput, tmp, mRuntimeContext, false);
+      getMyOperatorType().mMatchTransfer.execute(mLastMatch, tmp, out, mRuntimeContext, false, false);		    
       getMyOperatorType().mRightNullFree.free(tmp);
       write(port, out, false);
       break;
@@ -3448,9 +3481,9 @@ void RuntimeSortMergeJoinOperator::onMatch(RuntimePort * port)
       RecordBuffer out;
       RecordBuffer tmp1;
       RecordBuffer tmp2;
-      getMyOperatorType().mLeftMakeNullableTransfer->execute(mLastMatch, tmp1, mRuntimeContext, false);
-      getMyOperatorType().mRightMakeNullableTransfer->execute(mRightInput, tmp2, mRuntimeContext, false);
-      getMyOperatorType().mMatchTransfer->execute(tmp1, tmp2, out, mRuntimeContext, false, false);		    
+      getMyOperatorType().mLeftMakeNullableTransfer.execute(mLastMatch, tmp1, mRuntimeContext, false);
+      getMyOperatorType().mRightMakeNullableTransfer.execute(mRightInput, tmp2, mRuntimeContext, false);
+      getMyOperatorType().mMatchTransfer.execute(tmp1, tmp2, out, mRuntimeContext, false, false);		    
       getMyOperatorType().mLeftNullFree.free(tmp1);
       getMyOperatorType().mRightNullFree.free(tmp2);
       write(port, out, false);
@@ -3458,12 +3491,12 @@ void RuntimeSortMergeJoinOperator::onMatch(RuntimePort * port)
     }
   case SortMergeJoin::RIGHT_SEMI:
     {
-      if (NULL == getMyOperatorType().mLeftMakeNullableTransfer) {
+      if (!getMyOperatorType().mLeftMakeNullableTransfer) {
 	write(port, mRightInput, false);
 	mRightInput = NULL;
       } else {
 	RecordBuffer out;
-	getMyOperatorType().mLeftMakeNullableTransfer->execute(mRightInput, out, mRuntimeContext, false);
+	getMyOperatorType().mLeftMakeNullableTransfer.execute(mRightInput, out, mRuntimeContext, false);
 	write(port, out, false);
       }
       break;
@@ -3492,9 +3525,9 @@ void RuntimeSortMergeJoinOperator::onEvent(RuntimePort * port)
     while(!RecordBuffer::isEOS(mLeftInput) &&
 	  !RecordBuffer::isEOS(mRightInput)) {
       // Advance lagging left until catches up with right
-      while (0 > getMyOperatorType().mLeftRightKeyCompareFun->execute(mLeftInput,
-								      mRightInput,
-								      mRuntimeContext)) {
+      while (0 > getMyOperatorType().mLeftRightKeyCompareFun.execute(mLeftInput,
+                                                                     mRightInput,
+                                                                     mRuntimeContext)) {
 	if (getMyOperatorType().mJoinType == SortMergeJoin::FULL_OUTER ||
 	    getMyOperatorType().mJoinType == SortMergeJoin::LEFT_OUTER) {
 	  requestWrite(0);
@@ -3519,9 +3552,9 @@ void RuntimeSortMergeJoinOperator::onEvent(RuntimePort * port)
       // Compare left and write if we have matches.
       if(!RecordBuffer::isEOS(mLeftInput) &&
 	    !RecordBuffer::isEOS(mRightInput) &&
-	    0==getMyOperatorType().mLeftRightKeyCompareFun->execute(mLeftInput,
-								    mRightInput,
-								    mRuntimeContext)) { // On Equality
+	    0==getMyOperatorType().mLeftRightKeyCompareFun.execute(mLeftInput,
+                                                                   mRightInput,
+                                                                   mRuntimeContext)) { // On Equality
 	// Read the entire key run from left.
 	do {
 	  mLeftBuffer.push_back(mLeftInput);
@@ -3531,14 +3564,14 @@ void RuntimeSortMergeJoinOperator::onEvent(RuntimePort * port)
 	case READ_LEFT_EQ:
 	  read(port, mLeftInput);
 	} while (!RecordBuffer::isEOS(mLeftInput) &&  
-		 0==getMyOperatorType().mLeftRightKeyCompareFun->execute(mLeftInput,
-									 mRightInput,
-									 mRuntimeContext));
+		 0==getMyOperatorType().mLeftRightKeyCompareFun.execute(mLeftInput,
+                                                                        mRightInput,
+                                                                        mRuntimeContext));
 
 	while(!RecordBuffer::isEOS(mRightInput) &&
-	      0==getMyOperatorType().mLeftRightKeyCompareFun->execute(mLeftBuffer.back().Buffer,
-								      mRightInput,
-								      mRuntimeContext)){ // Scan for matches
+	      0==getMyOperatorType().mLeftRightKeyCompareFun.execute(mLeftBuffer.back().Buffer,
+                                                                     mRightInput,
+                                                                     mRuntimeContext)){ // Scan for matches
 	  mMatchFound = false;
 	  mLastMatch = NULL;
 
@@ -3546,10 +3579,10 @@ void RuntimeSortMergeJoinOperator::onEvent(RuntimePort * port)
 	  for(mIt = mLeftBuffer.begin();
 	      mIt != mLeftBuffer.end();
 	      ++mIt) {
-	    if (NULL==getMyOperatorType().mEqFun ||
-		getMyOperatorType().mEqFun->execute(mIt->Buffer,
-						    mRightInput,
-						    mRuntimeContext)) {
+	    if (!getMyOperatorType().mEqFun ||
+		getMyOperatorType().mEqFun.execute(mIt->Buffer,
+                                                   mRightInput,
+                                                   mRuntimeContext)) {
 	      mMatchFound = mIt->Matched = true;
 	      if (getMyOperatorType().mJoinType == SortMergeJoin::INNER ||
 		  getMyOperatorType().mJoinType == SortMergeJoin::FULL_OUTER ||
@@ -3628,9 +3661,9 @@ void RuntimeSortMergeJoinOperator::onEvent(RuntimePort * port)
       // Advance lagging right if needed (won't have done any equality processing if we hit this).
       while(!RecordBuffer::isEOS(mLeftInput) &&
 	    !RecordBuffer::isEOS(mRightInput) &&
-	    0 < getMyOperatorType().mLeftRightKeyCompareFun->execute(mLeftInput,
-								     mRightInput,
-								     mRuntimeContext)) {
+	    0 < getMyOperatorType().mLeftRightKeyCompareFun.execute(mLeftInput,
+                                                                    mRightInput,
+                                                                    mRuntimeContext)) {
 	if (getMyOperatorType().mJoinType == SortMergeJoin::RIGHT_ANTI_SEMI ||
 	    getMyOperatorType().mJoinType == SortMergeJoin::FULL_OUTER ||
 	    getMyOperatorType().mJoinType == SortMergeJoin::RIGHT_OUTER) {
@@ -3961,10 +3994,11 @@ void LogicalSwitch::check(PlanCheckContext& log)
     std::vector<const RecordType *> inputs;
     inputs.push_back(getInput(0)->getRecordType());
     inputs.push_back(&emptyTy);
-    mSwitcher = new RecordTypeFunction(log,
-				       "switcher",
-				       inputs,
-				       predicate);
+    mSwitcher = new TreculFunction(log,
+                                   log.getCodeGenerator(),
+                                   "switcher",
+                                   inputs,
+                                   predicate);
   }
 
   for(std::size_t i=0; i<size_outputs(); ++i) {
@@ -3976,7 +4010,7 @@ void LogicalSwitch::create(class RuntimePlanBuilder& plan)
 {
   RuntimeOperatorType * opType = 
     new RuntimeSwitchOperatorType(getInput(0)->getRecordType(),
-				  mSwitcher);
+				  *mSwitcher);
   
   plan.addOperatorType(opType);
   plan.mapInputPort(this, 0, opType, 0);  
@@ -4029,9 +4063,9 @@ void RuntimeSwitchOperator::onEvent(RuntimePort * port)
 	break;
       
       {
-	uint32_t output =  getMyOperatorType().mSwitcher->execute(mInput, 
-								  RecordBuffer(),
-								  mRuntimeContext);
+	uint32_t output =  getMyOperatorType().mSwitcher.execute(mInput, 
+                                                                 RecordBuffer(),
+                                                                 mRuntimeContext);
       
 	requestWrite(output % mNumOutputs);
       }

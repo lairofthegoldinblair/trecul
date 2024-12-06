@@ -74,7 +74,7 @@
 class TableColumnGroupVersionOutput
 {
 public:
-  TableColumnGroupVersionOutput(DynamicRecordContext & ctxt,
+  TableColumnGroupVersionOutput(PlanCheckContext & ctxt,
 	     const class TableFileMetadata * pathMetadata,
 	     const RecordType * opOutput);
   ~TableColumnGroupVersionOutput();
@@ -83,9 +83,11 @@ public:
   // The format of the file output operator
   // (e.g. take into consideration omitted columns).
   const RecordType * FileOutput;
+  // Free method for the file output
+  TreculFreeOperation * FileOutputFree;
   // Transfer from file output to column group output
   // (e.g. reordering of columns or computed columns).
-  RecordTypeTransfer * Transfer;
+  TreculTransfer * Transfer;
 
   // The paths to process
   std::vector<SerialOrganizedTableFilePtr> Paths;
@@ -118,13 +120,17 @@ class ColumnGroupOutput
 private:
   // The type of the column group (on disk; with all columns)
   const RecordType * mColumnGroupFormat;
-
-  RecordTypeFunction * mKeyPrefixFun;
-  RecordTypeFunction * mKeyLessThanFun;
-  RecordTypeFunction * mPresortedEqFun;
-  RecordTypeAggregate * mAggregate;
-  RecordTypeFunction * mFilterFun;
-  RecordTypeTransfer * mFinalTransfer;
+  
+  TreculFreeOperation * mColumnGroupTypeFree;
+  TreculFunction * mKeyPrefixFun;
+  TreculFunction * mKeyLessThanFun;
+  TreculFunction * mPresortedEqFun;
+  TreculAggregate * mAggregate;
+  TreculFreeOperation * mAggregateFree;
+  TreculFreeOperation * mAggregateTargetFree;
+  TreculPrintOperation * mPrint;
+  TreculFunction * mFilterFun;
+  TreculTransfer * mFinalTransfer;
 
   std::vector<SortKey> mPrimaryKeyWithSuffix;
 
@@ -138,20 +144,20 @@ public:
   // If we are reading multiple files within the column group,
   // they must be sort merged.
   // Here are predicates for this.
-  RecordTypeFunction * mKeyPrefix;
-  RecordTypeFunction * mLessThan;
+  TreculFunction * mKeyPrefix;
+  TreculFunction * mLessThan;
   RuntimeOperatorType * OutputOperator;
 
   // Mapping from minor versions we'll be reading to
   // their output specs (which may very well be identities).
   std::map<int32_t, TableColumnGroupVersionOutput *> mOutputs;
 
-  ColumnGroupOutput(DynamicRecordContext& ctxt,
+  ColumnGroupOutput(PlanCheckContext& ctxt,
 		    TableColumnGroup * metadata,
 		    const std::set<std::string>& referenced);
   ~ColumnGroupOutput();
 
-  void addPath(DynamicRecordContext& ctxt,
+  void addPath(PlanCheckContext& ctxt,
 	       TableFileMetadata * fileMetadata,
 	       SerialOrganizedTableFilePtr file);
 
@@ -221,20 +227,21 @@ public:
   TableOutput(const TableMetadata * metadata,
 	      const RecordType * tableType);
   ~TableOutput();
-  ColumnGroupOutput * create(DynamicRecordContext& ctxt, 
+  ColumnGroupOutput * create(PlanCheckContext& ctxt, 
 			     TableColumnGroup* cg,
 			     const std::set<std::string>& referenced);
   ColumnGroupOutput * find(TableColumnGroup* cg);
   void check(PlanCheckContext & ctxt);
 };
 
-TableColumnGroupVersionOutput::TableColumnGroupVersionOutput(DynamicRecordContext & ctxt,
-		       const TableFileMetadata * fileMetadata,
-		       const RecordType * ty)
+TableColumnGroupVersionOutput::TableColumnGroupVersionOutput(PlanCheckContext & ctxt,
+                                                             const TableFileMetadata * fileMetadata,
+                                                             const RecordType * ty)
   :
-  FileType(NULL),
-  FileOutput(NULL),
-  Transfer(NULL)
+  FileType(nullptr),
+  FileOutput(nullptr),
+  FileOutputFree(nullptr),
+  Transfer(nullptr)
 {
   FileType = fileMetadata->getRecordType(ctxt);
   std::vector<std::string> referenced;
@@ -244,6 +251,7 @@ TableColumnGroupVersionOutput::TableColumnGroupVersionOutput(DynamicRecordContex
     referenced.push_back(outputMember->GetName());
   }  
   FileOutput = RecordType::get(ctxt, FileType, referenced.begin(), referenced.end());
+  FileOutputFree = new TreculFreeOperation(ctxt.getCodeGenerator(), FileOutput);
       
   // Create a transfer spec from minor version file output to operator output.
   std::string xfer;
@@ -272,32 +280,38 @@ TableColumnGroupVersionOutput::TableColumnGroupVersionOutput(DynamicRecordContex
       xfer += cc->first;
     }
   }
-  Transfer = new RecordTypeTransfer(ctxt, 
-				    "ImportMinorVersionXfer", 
-				    FileOutput,
-				    xfer);
+  Transfer = new TreculTransfer(ctxt,
+                                ctxt.getCodeGenerator(),
+                                "ImportMinorVersionXfer", 
+                                FileOutput,
+                                xfer);
 }
 
 TableColumnGroupVersionOutput::~TableColumnGroupVersionOutput()
 {
+  delete FileOutputFree;
   delete Transfer;
 }
 
-ColumnGroupOutput::ColumnGroupOutput(DynamicRecordContext& ctxt, 
+ColumnGroupOutput::ColumnGroupOutput(PlanCheckContext& ctxt, 
 				     TableColumnGroup * metadata,
 				     const std::set<std::string>& referenced)
   :
-  mKeyPrefixFun(NULL),
-  mKeyLessThanFun(NULL),
-  mPresortedEqFun(NULL),
-  mAggregate(NULL),
-  mFilterFun(NULL),
-  mFinalTransfer(NULL),
-  ColumnGroupType(NULL),
+  mColumnGroupTypeFree(nullptr),
+  mKeyPrefixFun(nullptr),
+  mKeyLessThanFun(nullptr),
+  mPresortedEqFun(nullptr),
+  mAggregate(nullptr),
+  mAggregateFree(nullptr),
+  mAggregateTargetFree(nullptr),
+  mPrint(nullptr),
+  mFilterFun(nullptr),
+  mFinalTransfer(nullptr),
+  ColumnGroupType(nullptr),
   Metadata(metadata),
-  mKeyPrefix(NULL),
-  mLessThan(NULL),
-  OutputOperator(NULL)
+  mKeyPrefix(nullptr),
+  mLessThan(nullptr),
+  OutputOperator(nullptr)
 {
   const std::vector<std::string> & pk(Metadata->getTable()->getPrimaryKey());
   for (std::vector<std::string>::const_iterator k = pk.begin(), 
@@ -312,6 +326,7 @@ ColumnGroupOutput::ColumnGroupOutput(DynamicRecordContext& ctxt,
 
 ColumnGroupOutput::~ColumnGroupOutput()
 {
+  delete mColumnGroupTypeFree;
   for(std::map<int32_t, TableColumnGroupVersionOutput *>::iterator it=mOutputs.begin();
       it != mOutputs.end();
       ++it) {
@@ -325,11 +340,14 @@ ColumnGroupOutput::~ColumnGroupOutput()
   delete mKeyLessThanFun;
   delete mPresortedEqFun;
   delete mAggregate;
+  delete mAggregateFree;
+  delete mAggregateTargetFree;
+  delete mPrint;
   delete mFilterFun;
   delete mFinalTransfer;
 }
 
-void ColumnGroupOutput::addPath(DynamicRecordContext& ctxt,
+void ColumnGroupOutput::addPath(PlanCheckContext& ctxt,
 				TableFileMetadata * fileMetadata,
 				SerialOrganizedTableFilePtr file)
 {
@@ -355,6 +373,7 @@ void ColumnGroupOutput::check(PlanCheckContext & ctxt)
   std::string version = Metadata->getTable()->getVersion();
   if (version.size()) {
     const RecordType * input = ColumnGroupType;
+    mColumnGroupTypeFree = new TreculFreeOperation(ctxt.getCodeGenerator(), ColumnGroupType);
     std::vector<SortKey> sortKeys;
     sortKeys.push_back(version + " DESC");
     const std::vector<std::string>& primaryKey = Metadata->getTable()->getPrimaryKey();
@@ -375,8 +394,13 @@ void ColumnGroupOutput::check(PlanCheckContext & ctxt)
     }
     // Output index (TODO: Make sure this is unique)
     agg += ", SUM(1) AS versionIdx";
-    mAggregate = new RecordTypeAggregate(ctxt, "columnGroupAgg", input, 
-					 agg, primaryKey, true);
+    mAggregate = new TreculAggregate(ctxt, ctxt.getCodeGenerator(), "columnGroupAgg", input, 
+                                     agg, primaryKey, true);
+
+    mAggregateFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mAggregate->getAggregate());
+    mAggregateTargetFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mAggregate->getTarget());
+
+    mPrint = new TreculPrintOperation(ctxt.getCodeGenerator(), mAggregate->getTarget());
 
     // Filter largest version
     std::vector<RecordMember> emptyMembers;
@@ -384,8 +408,8 @@ void ColumnGroupOutput::check(PlanCheckContext & ctxt)
     std::vector<const RecordType *> inputs;
     inputs.push_back(mAggregate->getTarget());
     inputs.push_back(&emptyTy);
-    mFilterFun = new RecordTypeFunction(ctxt, "columnGroupVersionFilter", 
-					inputs, "versionIdx <= 1");
+    mFilterFun = new TreculFunction(ctxt, ctxt.getCodeGenerator(), "columnGroupVersionFilter", 
+                                    inputs, "versionIdx <= 1");
 
     // Transfer to final format.
     std::string xfers;
@@ -407,12 +431,12 @@ void ColumnGroupOutput::check(PlanCheckContext & ctxt)
 	xfers += appendSuffix(m->GetName());
       }
     }
-    mFinalTransfer = new RecordTypeTransfer(ctxt, "columnGroupTransfer", 
-					    mAggregate->getTarget(), xfers);
+    mFinalTransfer = new TreculTransfer(ctxt, ctxt.getCodeGenerator(), "columnGroupTransfer", 
+                                        mAggregate->getTarget(), xfers);
   }
 }
 
-RuntimeOperatorType * ColumnGroupOutput::create(class RuntimePlanBuilder& plan,
+RuntimeOperatorType * ColumnGroupOutput::create(RuntimePlanBuilder& plan,
 						RuntimeOperatorType * inputOp)
 {
   // s = sort[presorted="akid", key="version DESC"];
@@ -427,8 +451,9 @@ RuntimeOperatorType * ColumnGroupOutput::create(class RuntimePlanBuilder& plan,
 
   RuntimeOperatorType * sortTy = 
     new RuntimeSortOperatorType(ColumnGroupType,
-				mKeyPrefixFun,
-				mKeyLessThanFun,
+                                *mColumnGroupTypeFree,
+				*mKeyPrefixFun,
+				*mKeyLessThanFun,
 				mPresortedEqFun,
 				"",
 				1000000);
@@ -436,31 +461,33 @@ RuntimeOperatorType * ColumnGroupOutput::create(class RuntimePlanBuilder& plan,
   plan.connect(inputOp, 0, sortTy, 0, false);
 
   RuntimeOperatorType * runningTotalTy = 
-    new RuntimeSortRunningTotalOperatorType(ColumnGroupType->getFree(),
-					    NULL,
+    new RuntimeSortRunningTotalOperatorType(*mColumnGroupTypeFree,
+					    nullptr,
 					    mPresortedEqFun,
-					    mAggregate);
+					    *mAggregate,
+                                            *mAggregateFree);
   plan.addOperatorType(runningTotalTy);
   plan.connect(sortTy, 0, runningTotalTy, 0, false);
 
   RuntimeOperatorType * printTy = 
-    new RuntimePrintOperatorType(mAggregate->getTarget(), 0, 1, nullptr, nullptr);
+    new RuntimePrintOperatorType(mAggregate->getTarget(), *mPrint, 0, 1, nullptr, nullptr, nullptr);
   plan.addOperatorType(printTy);
 
   RuntimeOperatorType * filterTy = 
     new RuntimeFilterOperatorType(mAggregate->getTarget(),
+                                  *mAggregateTargetFree,
 				  mFilterFun,
 				  std::numeric_limits<int64_t>::max());
   plan.addOperatorType(filterTy);
   plan.connect(runningTotalTy, 0, printTy, 0, false);
   plan.connect(printTy, 0, filterTy, 0, false);
 
-  std::vector<const RecordTypeTransfer *> xfers;
+  std::vector<const TreculTransfer *> xfers;
   std::vector<bool> pics; 
   xfers.push_back(mFinalTransfer);
   pics.push_back(false);
   RuntimeOperatorType * copyTy = 
-    new RuntimeCopyOperatorType(mAggregate->getTarget()->getFree(),
+    new RuntimeCopyOperatorType(*mAggregateTargetFree,
 				xfers, pics);
   plan.connect(filterTy, 0, copyTy, 0, false);
 				
@@ -479,7 +506,7 @@ TableOutput::~TableOutput()
 {
 }
 
-ColumnGroupOutput * TableOutput::create(DynamicRecordContext& ctxt,
+ColumnGroupOutput * TableOutput::create(PlanCheckContext& ctxt,
 					TableColumnGroup* cg,
 					const std::set<std::string>& referenced)
 {
@@ -621,9 +648,10 @@ LogicalTableParser::LogicalTableParser(const std::string& table)
   mTable(table),
   mCommonVersion(1),
   mMajorVersion(1),
-  mTableFormat(NULL),
-  mTableOutput(NULL),
-  mSOT(NULL)
+  mTableOutput(nullptr),
+  mTableOutputFree(nullptr),
+  mTableFormat(nullptr),
+  mSOT(nullptr)
 {
 }
 
@@ -633,10 +661,11 @@ LogicalTableParser::LogicalTableParser(const std::string& table,
   mTable(table),
   mCommonVersion(1),
   mMajorVersion(1),
-  mTableFormat(NULL),
   mTableMetadata(tableMetadata),
-  mTableOutput(NULL),
-  mSOT(NULL)
+  mTableOutput(nullptr),
+  mTableOutputFree(nullptr),
+  mTableFormat(nullptr),
+  mSOT(nullptr)
 {
 }
 
@@ -644,6 +673,7 @@ LogicalTableParser::~LogicalTableParser()
 {
   delete mSOT;
   delete mTableOutput;
+  delete mTableOutputFree;
 }
 
 void LogicalTableParser::check(PlanCheckContext& ctxt)
@@ -682,10 +712,10 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
   
   // Attach to metadata catalog to get record type,
   // sort keys etc.
-  if (mTableMetadata.get() == NULL) {
+  if (mTableMetadata.get() == nullptr) {
     MetadataCatalog catalog;
     mTableMetadata = catalog.find(mTable);
-    if (mTableMetadata.get() == NULL) {
+    if (mTableMetadata.get() == nullptr) {
       ctxt.logError(*this, (boost::format("Table %1% does not exist") %
 			    mTable).str());
       // Attach a dummy empty record.
@@ -705,8 +735,10 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
   }
     
   // The output format of the operator.
-  getOutput(0)->setRecordType(RecordType::get(ctxt, mTableFormat, 
-					      mReferenced.begin(), mReferenced.end()));
+  auto outputRecordType = RecordType::get(ctxt, mTableFormat, 
+                                          mReferenced.begin(), mReferenced.end());
+  getOutput(0)->setRecordType(outputRecordType);
+  mTableOutputFree = new TreculFreeOperation(ctxt.getCodeGenerator(), outputRecordType);
 
 
   // In addition to the columns that the operators output,
@@ -765,7 +797,7 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
     // on akid.
     mSOT = new SerialOrganizedTable(mCommonVersion, mMajorVersion, 
 				    mTable, 
-				    mPredicate.size() ? mPredicate.c_str() : NULL);
+				    mPredicate.size() ? mPredicate.c_str() : nullptr);
     {
       // Scope to hide fs.
       FileSystem * fs = FileSystem::get(std::make_shared<URI>(mFileSystem.c_str()));
@@ -786,8 +818,8 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
     for(std::vector<SerialOrganizedTableFilePtr>::const_iterator it = mSOT->getSerialPaths().begin();
 	it != mSOT->getSerialPaths().end();
 	++it) {
-      TableFileMetadata * fileMetadata = NULL;
-      TableColumnGroup * cg = NULL;
+      TableFileMetadata * fileMetadata = nullptr;
+      TableColumnGroup * cg = nullptr;
       mTableMetadata->resolveMetadata(*it, cg, fileMetadata);
       if (nullptr == cg) {
 	ctxt.logError(*this, (boost::format("Could not resolve column group corresponding to file %1%") %
@@ -818,23 +850,24 @@ void LogicalTableParser::create(class RuntimePlanBuilder& plan)
   typedef GenericParserOperatorType<> file_op;
   typedef GenericParserOperatorType<SerialChunkStrategy> table_op;
   if (mFile.size()) {
-    RuntimeOperatorType * opType = NULL;
+    RuntimeOperatorType * opType = nullptr;
     opType = new file_op(mFile,
 			 '\t',
 			 '\n',
 			 '\\',
 			 getOutput(0)->getRecordType(),
+                         *mTableOutputFree,
 			 mTableFormat);
     plan.addOperatorType(opType);
     plan.mapOutputPort(this, 0, opType, 0);
   } else {
     for(std::vector<ColumnGroupOutput*>::iterator cg = mTableOutput->mColumnGroups.begin(),
 	  cgEnd = mTableOutput->mColumnGroups.end(); cg != cgEnd; ++cg) {
-      RuntimeOperatorType * mergeType = NULL;
+      RuntimeOperatorType * mergeType = nullptr;
       std::size_t inputNum = 0;
       // If sorted data then we sort merge otherwise union all.
-      if ((*cg)->mKeyPrefix != NULL && (*cg)->mLessThan != NULL) {
-	mergeType = new RuntimeSortMergeOperatorType((*cg)->mKeyPrefix, (*cg)->mLessThan);
+      if ((*cg)->mKeyPrefix != nullptr && (*cg)->mLessThan != nullptr) {
+	mergeType = new RuntimeSortMergeOperatorType(*(*cg)->mKeyPrefix, *(*cg)->mLessThan);
       } else {
 	mergeType = new RuntimeUnionAllOperatorType();
       }
@@ -849,13 +882,14 @@ void LogicalTableParser::create(class RuntimePlanBuilder& plan)
 						      '\n',
 						      '\\',
 						      po->FileOutput,
+                                                      *po->FileOutputFree,
 						      po->FileType);
 	  plan.addOperatorType(opType);
 	  if (!po->Transfer->isIdentity()) {
 	    // Resolve version discrepancies 
-	    std::vector<const RecordTypeTransfer *> xfers;
+	    std::vector<const TreculTransfer *> xfers;
 	    xfers.push_back(po->Transfer);
-	    RuntimeOperatorType * copyOp = new RuntimeCopyOperatorType(po->FileOutput->getFree(),
+	    RuntimeOperatorType * copyOp = new RuntimeCopyOperatorType(*po->FileOutputFree,
 								       xfers);
 	    plan.addOperatorType(copyOp);
 	    // Disable buffering here since not needed and chews up memory.
@@ -870,8 +904,8 @@ void LogicalTableParser::create(class RuntimePlanBuilder& plan)
 
 	// Is this a "versioned" column group?  If so collapse the 
 	// each stream of record versions into the last version.
-	BOOST_ASSERT(NULL != (*cg)->Metadata);
-	BOOST_ASSERT(NULL != (*cg)->Metadata->getTable());
+	BOOST_ASSERT(nullptr != (*cg)->Metadata);
+	BOOST_ASSERT(nullptr != (*cg)->Metadata->getTable());
 	if ((*cg)->Metadata->getTable()->getVersion().size()) {
 	  mergeType = (*cg)->create(plan, mergeType);
 	}

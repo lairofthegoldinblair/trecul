@@ -37,12 +37,7 @@
 #include <boost/make_shared.hpp>
 #include <boost/lexical_cast.hpp>
 
-// #include <antlr3defs.h>
-
-// #include "IQLLexer.h"
-// #include "IQLParser.h"
-// #include "IQLTypeCheck.h"
-
+#include "CodeGenerationContext.hh"
 #include "RuntimePlan.hh"
 #include "RuntimeOperator.hh"
 #include "Merger.hh"
@@ -316,6 +311,9 @@ std::shared_ptr<RuntimeOperatorPlan> PlanGenerator::deserialize64(const char * b
   boost::archive::binary_iarchive ia(in);
   RuntimeOperatorPlan * tmp=NULL;
   ia >> BOOST_SERIALIZATION_NVP(tmp);
+  if (nullptr != tmp) {
+    tmp->loadFunctions();
+  }
   return std::shared_ptr<RuntimeOperatorPlan>(tmp);
 }
 
@@ -480,13 +478,18 @@ void DataflowGraphBuilder::edgeBuild(const char * from,
 
 std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(int32_t numPartitions)
 {
-  mPlan->check();
+  return create(*mPlan, numPartitions);
+}
+
+std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(LogicalPlan & logicalPlan, int32_t numPartitions)
+{
+  logicalPlan.check();
 
   // If everything is OK we can apply rules to create
   // operator types.
   RuntimePlanBuilder bld;
-  for(std::vector<LogicalPlan::vertex_descriptor>::iterator it = mPlan->begin_operators();
-      it != mPlan->end_operators();
+  for(std::vector<LogicalPlan::vertex_descriptor>::iterator it = logicalPlan.begin_operators();
+      it != logicalPlan.end_operators();
       ++it) {
     (*it)->create(bld);
   }
@@ -501,8 +504,8 @@ std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(int32_t numPar
       ++it) {
     plan->addOperatorType(*it);
   }
-  for(LogicalPlan::edge_iterator it = mPlan->begin_edges();
-      it != mPlan->end_edges();
+  for(LogicalPlan::edge_iterator it = logicalPlan.begin_edges();
+      it != logicalPlan.end_edges();
       ++it) {
     std::pair<RuntimeOperatorType*, std::size_t> s =
       bld.mapOutputPort((*it)->source(), (*it)->getSourcePort());
@@ -519,6 +522,10 @@ std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(int32_t numPar
 			  it->Buffered, true);
   }
 
+  // Set all the module level JIT compiled stuff in the plan
+  plan->setModule(std::make_unique<TreculModule>(logicalPlan.getContext().getCodeGenerator().takeModule()));
+  plan->loadFunctions();
+  
   return plan;
 }
 

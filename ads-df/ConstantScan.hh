@@ -62,6 +62,7 @@ public:
   RuntimeConstantScanOperatorType(const RecordType * input,
 				  const std::vector<RecordBuffer>& inputs);
   ~RuntimeConstantScanOperatorType();
+  void loadFunctions(TreculModule & ) override {}
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
 };
 
@@ -94,6 +95,7 @@ private:
 public:
   RuntimeConstantSinkOperatorType(const RecordType * input);
   ~RuntimeConstantSinkOperatorType();
+  void loadFunctions(TreculModule & ) override {}
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
   const std::vector<RecordBuffer>& getSink() const { return mSink; }
   const RecordType * getInput() const { return mInput; }

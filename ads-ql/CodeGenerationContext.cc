@@ -47,8 +47,15 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/DynamicLibrary.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 
 /**
  * Call a decimal binary operator.
@@ -502,32 +509,1064 @@ CodeGenerationContext::CodeGenerationContext()
   :
   mOwnsModule(true),
   mSymbolTable(NULL),
-  LLVMContext(NULL),
-  LLVMModule(NULL),
+  AggFn(0),
+  AllocaCache(NULL),
+  IQLOutputRecord(NULL),
+  IQLRecordArguments(NULL),
+  LLVMMemcpyIntrinsic(NULL),
+  LLVMMemsetIntrinsic(NULL),
+  LLVMMemcmpIntrinsic(NULL),
+  LLVMContext(new llvm::LLVMContext()),
+  LLVMModule(new llvm::Module("my cool JIT", *LLVMContext)),
   LLVMBuilder(NULL),
   LLVMDecContextPtrType(NULL),
   LLVMDecimal128Type(NULL),
   LLVMVarcharType(NULL),
-  LLVMDatetimeType(NULL),
+  LLVMCidrV4Type(NULL),
+  LLVMInt32Type(NULL),
   LLVMFunction(NULL),
-  IQLRecordArguments(NULL),
-  IQLOutputRecord(NULL),
-  LLVMMemcpyIntrinsic(NULL),
-  LLVMMemsetIntrinsic(NULL),
-  LLVMMemcmpIntrinsic(NULL),
   IQLMoveSemantics(0),
-  IsIdentity(true),
-  AggFn(0),
-  AllocaCache(NULL)
+  IsIdentity(true)
 {
-  LLVMContext = new llvm::LLVMContext();
-  LLVMModule = new llvm::Module("my cool JIT", *LLVMContext);
+  // We disable this because we want to avoid it's installation of
+  // signal handlers.
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
+  llvm::InitializeNativeTargetAsmParser();
+
   std::unique_ptr<llvm::TargetMachine> tm(llvm::EngineBuilder().selectTarget());
   LLVMModule->setDataLayout(tm->createDataLayout());
+
+  this->createFunctionContext(TypeCheckConfiguration::get());
+
+#if DECSUBST
+  static unsigned numDecContextMembers(8);
+#else
+  static unsigned numDecContextMembers(7);
+#endif
+  // Declare extern functions for decNumber
+  llvm::Type * decContextMembers[numDecContextMembers];
+  decContextMembers[0] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  decContextMembers[1] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  decContextMembers[2] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  // This is actually enum; is this OK?
+  decContextMembers[3] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  // These two are actually unsigned in decContext
+  decContextMembers[4] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  decContextMembers[5] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  decContextMembers[6] = llvm::Type::getInt8Ty(*this->LLVMContext);
+#if DECSUBST
+  decContextMembers[7] = llvm::Type::getInt8Ty(*this->LLVMContext);
+#endif
+  this->LLVMDecContextPtrType = llvm::PointerType::get(llvm::StructType::get(*this->LLVMContext,
+										 llvm::ArrayRef(&decContextMembers[0], numDecContextMembers),
+										 0),
+							   0);
+  // Don't quite understand LLVM behavior of what happens with you pass { [16 x i8] } by value on the call stack.
+  // It seems to align each member at 4 bytes and therefore is a gross overestimate of the actually representation.
+  //llvm::Type * decimal128Member = LLVMArrayType(llvm::Type::getInt8Ty(*ctxt->LLVMContext), DECIMAL128_Bytes);
+  llvm::Type * decimal128Members[DECIMAL128_Bytes/sizeof(int32_t)];
+  for(unsigned int i=0; i<DECIMAL128_Bytes/sizeof(int32_t); ++i)
+    decimal128Members[i]= llvm::Type::getInt32Ty(*this->LLVMContext);;
+  this->LLVMDecimal128Type = llvm::StructType::get(*this->LLVMContext,
+						       llvm::ArrayRef(&decimal128Members[0], DECIMAL128_Bytes/sizeof(int32_t)),
+						       1);
+
+  // Set up VARCHAR type
+  llvm::Type * varcharMembers[3];
+  varcharMembers[0] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  varcharMembers[1] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  varcharMembers[2] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  this->LLVMVarcharType = llvm::StructType::get(*this->LLVMContext,
+						    llvm::ArrayRef(&varcharMembers[0], 3),
+						    0);
+  // DATETIME runtime type
+  this->LLVMDatetimeType = llvm::Type::getInt64Ty(*this->LLVMContext);
+  // CIDRV4 runtime type
+  varcharMembers[0] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  varcharMembers[1] = llvm::Type::getInt8Ty(*this->LLVMContext);
+  this->LLVMCidrV4Type = llvm::StructType::get(*this->LLVMContext,
+                                                   llvm::ArrayRef(&varcharMembers[0], 2),
+                                                   0);
+  // DATETIME runtime type
+  this->LLVMInt32Type = llvm::Type::getInt32Ty(*this->LLVMContext);
+
+  // Try to register the program as a source of symbols to resolve against.
+  llvm::sys::DynamicLibrary::LoadLibraryPermanently(0, NULL);
+  // Prototypes for external functions we want to provide access to.
+  // TODO:Handle redefinition of function
+  llvm::Type * argumentTypes[10];
+  unsigned numArguments=0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  llvm::Type * funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  llvm::Value * libFunVal = LoadAndValidateExternalFunction("InternalDecimalAdd", funTy);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalSub", funTy);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalMul", funTy);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalDiv", funTy);
+  
+  numArguments=0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalNeg", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalFromVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalFromChar", funTy);
+
+  numArguments=0;
+  argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalFromInt8", funTy);
+
+  numArguments=0;
+  argumentTypes[numArguments++] = llvm::Type::getInt16Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalFromInt16", funTy);
+
+  numArguments=0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalFromInt32", funTy);
+
+  numArguments=0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalFromInt64", funTy);
+
+  numArguments=0;
+  argumentTypes[numArguments++] = llvm::Type::getFloatTy(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalFromFloat", funTy);
+
+  numArguments=0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalFromDouble", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalFromDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalFromDatetime", funTy);
+
+  numArguments=0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDecimalCmp", funTy);
+
+  numArguments=0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  LoadAndValidateExternalFunction("round", "InternalDecimalRound", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharAdd", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharCopy", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharAllocate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharErase", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharEquals", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharRLike", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharNE", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharLT", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharLE", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharGT", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharGE", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  funTy = llvm::FunctionType::get(this->LLVMDatetimeType, 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDatetimeFromVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(this->LLVMDatetimeType, 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDatetimeFromDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDateFromVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalCharFromVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("length", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromChar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromInt8", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt16Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromInt16", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromInt32", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromInt64", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromDecimal", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getFloatTy(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromFloat", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromDouble", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromDatetime", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromIPv4", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromCIDRv4", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromIPv6", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+				  llvm::ArrayRef(&argumentTypes[0], numArguments),
+				  0);
+  libFunVal = LoadAndValidateExternalFunction("InternalVarcharFromCIDRv6", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt8FromVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt8FromChar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt8FromDecimal", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt8FromDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt8FromDatetime", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt16FromVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt16FromChar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt16FromDecimal", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt16FromDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt16Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt16FromDatetime", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt32FromVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt32FromChar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt32FromDecimal", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt32FromDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt32Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt32FromDatetime", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt64Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt64FromVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt64Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt64FromChar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt64Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt64FromDecimal", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt64Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt64FromDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt64Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalInt64FromDatetime", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getDoubleTy(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDoubleFromVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getDoubleTy(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDoubleFromChar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getDoubleTy(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDoubleFromDecimal", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getDoubleTy(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDoubleFromDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getDoubleTy(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), 
+			   llvm::ArrayRef(&argumentTypes[0], numArguments), 
+			   0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDoubleFromDatetime", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  LoadAndValidateExternalFunction("urldecode", "InternalVarcharUrlDecode", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  LoadAndValidateExternalFunction("urlencode", "InternalVarcharUrlEncode", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  LoadAndValidateExternalFunction("replace", "InternalVarcharReplace", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  LoadAndValidateExternalFunction("locate", "InternalVarcharLocate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("substr", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("trim", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("ltrim", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("rtrim", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("lower", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("upper", funTy);
+
+  // Date functions
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("date", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("dayofweek", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("dayofmonth", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("dayofyear", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("month", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("year", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("last_day", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("datediff", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("julian_day", funTy);
+
+  // Datetime functions
+  numArguments = 0;
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("utc_timestamp", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("unix_timestamp", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("from_unixtime", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("datetime_add_day", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("datetime_add_month", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("datetime_add_year", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("datetime_add_second", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("datetime_add_minute", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("datetime_add_hour", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("date_add_day", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("date_add_month", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("date_add_year", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("date_add_second", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("date_add_minute", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("date_add_hour", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("SuperFastHash", funTy);
+
+  // Print Functions
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintVarchar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintChar", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintCharRaw", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMDecimal128Type, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintDecimal", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintInt64", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintDouble", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintDatetime", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintDate", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt32Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintIPv4", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintCIDRv4", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintIPv6", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintCIDRv6", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("ceil", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("floor", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("sqrt", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("log", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("exp", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("sin", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("cos", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("asin", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::Type::getDoubleTy(*this->LLVMContext);
+  funTy = llvm::FunctionType::get(llvm::Type::getDoubleTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("acos", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("free", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  LoadAndValidateExternalFunction("ip_address", "InternalIPAddress", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  LoadAndValidateExternalFunction("parse_ip_address", "InternalParseIPAddress", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  // argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  LoadAndValidateExternalFunction("InternalIPAddressAddrBlockMatch", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  LoadAndValidateExternalFunction("is_v4_ip_address", "InternalIsV4IPAddress", funTy);
+
+  numArguments = 0;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalArrayException", funTy);
+
+  // LLVM intrinsics we want to use
+  CreateMemcpyIntrinsic();
+  CreateMemsetIntrinsic();
+  CreateMemcmpIntrinsic();
+  // Compiler for the code
+    
+  mFPM = new llvm::legacy::FunctionPassManager(LLVMModule);
+
+  // Set up the optimizer pipeline.
+  // Do simple "peephole" optimizations and bit-twiddling optzns.
+  mFPM->add(llvm::createInstructionCombiningPass());
+  // Reassociate expressions.
+  mFPM->add(llvm::createReassociatePass());
+  // Eliminate Common SubExpressions.
+  mFPM->add(llvm::createGVNPass());
+  // Simplify the control flow graph (deleting unreachable blocks, etc).
+  mFPM->add(llvm::createCFGSimplificationPass());
+
+  mFPM->doInitialization();
 }
 
 CodeGenerationContext::~CodeGenerationContext()
 {
+  delete mFPM;
   typedef std::vector<IQLToLLVMValue *> factory;
   for(factory::iterator it = ValueFactory.begin();
       it != ValueFactory.end();
@@ -624,6 +1663,11 @@ CodeGenerationContext::~CodeGenerationContext()
 void CodeGenerationContext::disownModule()
 {
   mOwnsModule = false;
+}
+
+std::unique_ptr<llvm::Module> CodeGenerationContext::takeModule()
+{
+  return llvm::CloneModule(*LLVMModule);
 }
 
 bool CodeGenerationContext::isValueType(const FieldType * ft)
@@ -1059,6 +2103,7 @@ void CodeGenerationContext::reinitializeForTransfer(const TypeCheckConfiguration
   delete mSymbolTable;
   mSymbolTable = new TreculSymbolTable(typeCheckConfig);
   AllocaCache = new local_cache();
+  AggFn = 0;
 }
 
 void CodeGenerationContext::reinitialize()
@@ -1067,6 +2112,7 @@ void CodeGenerationContext::reinitialize()
   mSymbolTable->clear();
   LLVMFunction = NULL;
   unwrap(IQLRecordArguments)->clear();
+  AggFn = 0;
 }
 
 void CodeGenerationContext::createFunctionContext(const TypeCheckConfiguration & typeCheckConfig)
@@ -3565,6 +4611,85 @@ void CodeGenerationContext::zeroHostBits(const IQLToLLVMValue * prefixLength,
   args[4] = b->getInt1(0);
   b->CreateCall(fn->getFunctionType(), fn, llvm::ArrayRef(&args[0], 5), "");
   buildEndIf(IQLToLLVMRValue::get(this, pred, IQLToLLVMValue::eLocal));
+}
+
+void CodeGenerationContext::CreateMemcpyIntrinsic()
+{
+  llvm::Module * mod = this->LLVMModule;
+
+  llvm::PointerType* PointerTy_3 = llvm::PointerType::get(llvm::IntegerType::get(mod->getContext(), 8), 0);
+  
+  std::vector<llvm::Type*>FuncTy_7_args;
+  FuncTy_7_args.push_back(PointerTy_3);
+  FuncTy_7_args.push_back(PointerTy_3);
+  FuncTy_7_args.push_back(llvm::IntegerType::get(mod->getContext(), 64));
+  FuncTy_7_args.push_back(llvm::IntegerType::get(mod->getContext(), 32));
+  FuncTy_7_args.push_back(llvm::IntegerType::get(mod->getContext(), 1));
+  llvm::FunctionType* FuncTy_7 = llvm::FunctionType::get(
+							 /*Result=*/llvm::Type::getVoidTy(mod->getContext()),
+							 /*Params=*/FuncTy_7_args,
+							 /*isVarArg=*/false);
+
+  llvm::Function* func_llvm_memcpy_i64 = llvm::Function::Create(
+								/*Type=*/FuncTy_7,
+								/*Linkage=*/llvm::GlobalValue::ExternalLinkage,
+								/*Name=*/"llvm.memcpy.p0i8.p0i8.i64", mod); // (external, no body)
+  func_llvm_memcpy_i64->setCallingConv(llvm::CallingConv::C);
+  func_llvm_memcpy_i64->setDoesNotThrow();
+
+  this->LLVMMemcpyIntrinsic = func_llvm_memcpy_i64;
+}
+
+void CodeGenerationContext::CreateMemsetIntrinsic()
+{
+  llvm::Module * mod = this->LLVMModule;
+
+  llvm::PointerType* PointerTy_3 = llvm::PointerType::get(llvm::IntegerType::get(mod->getContext(), 8), 0);
+  
+  std::vector<llvm::Type*>FuncTy_7_args;
+  FuncTy_7_args.push_back(PointerTy_3);
+  FuncTy_7_args.push_back(llvm::IntegerType::get(mod->getContext(), 8));
+  FuncTy_7_args.push_back(llvm::IntegerType::get(mod->getContext(), 64));
+  FuncTy_7_args.push_back(llvm::IntegerType::get(mod->getContext(), 32));
+  FuncTy_7_args.push_back(llvm::IntegerType::get(mod->getContext(), 1));
+  llvm::FunctionType* FuncTy_7 = llvm::FunctionType::get(
+    /*Result=*/llvm::Type::getVoidTy(mod->getContext()),
+    /*Params=*/FuncTy_7_args,
+    /*isVarArg=*/false);
+
+  llvm::Function* func_llvm_memset_i64 = llvm::Function::Create(
+    /*Type=*/FuncTy_7,
+    /*Linkage=*/llvm::GlobalValue::ExternalLinkage,
+    /*Name=*/"llvm.memset.p0i8.i64", mod); // (external, no body)
+  func_llvm_memset_i64->setCallingConv(llvm::CallingConv::C);
+  func_llvm_memset_i64->setDoesNotThrow();
+
+  this->LLVMMemsetIntrinsic = func_llvm_memset_i64;
+}
+
+void CodeGenerationContext::CreateMemcmpIntrinsic()
+{
+  llvm::Module * mod = this->LLVMModule;
+
+  llvm::PointerType* PointerTy_0 = llvm::PointerType::get(llvm::IntegerType::get(mod->getContext(), 8), 0);
+
+  std::vector<llvm::Type*>FuncTy_12_args;
+  FuncTy_12_args.push_back(PointerTy_0);
+  FuncTy_12_args.push_back(PointerTy_0);
+  FuncTy_12_args.push_back(llvm::IntegerType::get(mod->getContext(), 64));
+  llvm::FunctionType* FuncTy_12 = llvm::FunctionType::get(
+							  /*Result=*/llvm::IntegerType::get(mod->getContext(), 32),
+							  /*Params=*/FuncTy_12_args,
+							  /*isVarArg=*/false);
+
+  llvm::Function* func_memcmp = llvm::Function::Create(
+    /*Type=*/FuncTy_12,
+    /*Linkage=*/llvm::GlobalValue::ExternalLinkage,
+    /*Name=*/"memcmp", mod); // (external, no body)
+  func_memcmp->setCallingConv(llvm::CallingConv::C);
+  func_memcmp->setDoesNotThrow();
+
+  this->LLVMMemcmpIntrinsic = func_memcmp;
 }
 
 IQLToLLVMValue::ValueType 
@@ -6737,7 +7862,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildAggregateFunction(const char 
   restoreAggregateContext(&Initialize);
 
   int saveIsIdentity = IsIdentity;
-  buildSetField(&AggFn, agg->initialize(this, retTy));
+  buildSetAggregateField(agg->initialize(this, retTy));
   IsIdentity = saveIsIdentity;
 
   // Shift back to transfer context and return a reference to the
@@ -6785,6 +7910,11 @@ void CodeGenerationContext::buildSetField(int * pos, const IQLToLLVMValue * val)
   }
 
   buildSetNullableValue(&fieldLVal, val, fieldType, false, true);
+}
+
+void CodeGenerationContext::buildSetAggregateField(const IQLToLLVMValue * val)
+{
+  buildSetField(&AggFn, val);
 }
 
 void CodeGenerationContext::buildSetFields(const char * recordName, int * pos)
@@ -6875,6 +8005,230 @@ void CodeGenerationContext::buildQuotedId(const char * quotedId, const char * re
     buildSetFieldsRegex(it->second.first,
 			it->second.second, strExpr, renameExpr, "", pos);
   }
+}
+
+void CodeGenerationContext::ConstructFunction(const std::string& funName, const std::vector<std::string>& recordArgs)
+{
+  ConstructFunction(funName, recordArgs, llvm::Type::getVoidTy(*this->LLVMContext));
+}
+
+void CodeGenerationContext::ConstructFunction(const std::string& funName, 
+				 const std::vector<std::string>& recordArgs,
+				 llvm::Type * retType)
+{
+  // Setup LLVM access to our external structure.  Here we just set a char* pointer and we manually
+  // create typed pointers to offsets/members.  We could try to achieve the same effect with
+  // defining a struct but it isn't exactly clear how alignment rules in the LLVM data layout might
+  // make this difficult.
+  std::vector<const char *> argumentNames;
+  std::vector<llvm::Type *> argumentTypes;
+  for(std::vector<std::string>::const_iterator it = recordArgs.begin();
+      it != recordArgs.end();
+      ++it) {
+    argumentNames.push_back(it->c_str());
+    argumentTypes.push_back(llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0));
+  }
+  // If we have a non-void ret type then add it as a special out param
+  if (retType != llvm::Type::getVoidTy(*this->LLVMContext)) {
+    argumentNames.push_back("__ReturnValue__");
+    argumentTypes.push_back(llvm::PointerType::get(retType, 0));
+  }
+  // Every Function takes the decContext pointer as a final argument
+  argumentNames.push_back("__DecimalContext__");
+  argumentTypes.push_back(this->LLVMDecContextPtrType);
+  llvm::FunctionType * funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext),
+						       llvm::ArrayRef(&argumentTypes[0], argumentTypes.size()),
+						       0);
+  this->LLVMFunction = llvm::Function::Create(funTy, llvm::GlobalValue::ExternalLinkage, funName.c_str(), this->LLVMModule);
+  llvm::BasicBlock * entryBlock = llvm::BasicBlock::Create(*this->LLVMContext, "EntryBlock", this->LLVMFunction);
+  this->LLVMBuilder->SetInsertPoint(entryBlock);
+  for(unsigned int i = 0; i<argumentNames.size(); i++) {
+    llvm::Value * allocAVal = this->buildEntryBlockAlloca(argumentTypes[i], argumentNames[i]);
+    llvm::Value * arg = &this->LLVMFunction->arg_begin()[i];
+    this->defineVariable(argumentNames[i], allocAVal,
+			     NULL, NULL, NULL, IQLToLLVMValue::eGlobal);
+    // Set names on function arguments
+    arg->setName(argumentNames[i]);
+    // Store argument in the alloca 
+    this->LLVMBuilder->CreateStore(arg, allocAVal);
+  }  
+}
+
+void CodeGenerationContext::ConstructFunction(const std::string& funName, 
+                                 const std::vector<std::string> & argumentNames,
+                                 const std::vector<llvm::Type *> & argumentTypes)
+{
+  llvm::FunctionType * funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext),
+						       llvm::ArrayRef(&argumentTypes[0], argumentTypes.size()),
+						       0);
+  this->LLVMFunction = llvm::Function::Create(funTy, llvm::GlobalValue::ExternalLinkage, funName.c_str(), this->LLVMModule);
+  llvm::BasicBlock * entryBlock = llvm::BasicBlock::Create(*this->LLVMContext, "EntryBlock", this->LLVMFunction);
+  this->LLVMBuilder->SetInsertPoint(entryBlock);
+  for(unsigned int i = 0; i<argumentNames.size(); i++) {
+    llvm::Value * allocAVal = this->buildEntryBlockAlloca(argumentTypes[i], argumentNames[i].c_str());
+    llvm::Value * arg = &this->LLVMFunction->arg_begin()[i];
+    this->defineVariable(argumentNames[i].c_str(), allocAVal,
+			     NULL, NULL, NULL, IQLToLLVMValue::eGlobal);
+    // Set names on function arguments
+    arg->setName(argumentNames[i]);
+    // Store argument in the alloca 
+    this->LLVMBuilder->CreateStore(arg, allocAVal);
+  }  
+}
+
+void CodeGenerationContext::createFunction(const std::vector<AliasedRecordType>& sources,
+                                           llvm::Type * returnType,
+                                           std::string & suggestedName)
+{
+  reinitialize();
+  std::vector<std::string> argumentNames;
+  for(std::size_t i=0; i<sources.size(); i++) {
+    argumentNames.push_back((boost::format("__BasePointer%1%__") % i).str());
+  }
+  this->ConstructFunction(suggestedName, argumentNames, returnType);
+
+  // Inject the members of the input struct into the symbol table.
+  // For the moment just make sure we don't have any ambiguous references
+  for(std::vector<AliasedRecordType>::const_iterator it = sources.begin();
+      it != sources.end();
+      ++it) {
+    this->addInputRecordType(it->getAlias().c_str(), 
+                             (boost::format("__BasePointer%1%__") % (it - sources.begin())).str().c_str(), 			   
+                             it->getType());
+  }
+
+  // Special context entry for output record required by 
+  // transfer but not by function
+  this->IQLOutputRecord = NULL;
+  this->IQLMoveSemantics = 0;
+
+  suggestedName = LLVMFunction->getName();
+}
+
+void CodeGenerationContext::createRecordTypeOperation(const RecordType * input,
+                                                      std::string& suggestedName)
+{
+  reinitialize();
+  std::vector<std::string> argumentNames;
+  argumentNames.push_back("__BasePointer__");
+  argumentNames.push_back("__OutputStreamPointer__");
+  argumentNames.push_back("__OutputRecordDelimiter__");
+  std::vector<llvm::Type *> argumentTypes;
+  argumentTypes.push_back(llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0));
+  argumentTypes.push_back(llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0));
+  argumentTypes.push_back(llvm::Type::getInt32Ty(*this->LLVMContext));
+  // Create the function object with its arguments (these go into the
+  // new freshly created symbol table).
+  ConstructFunction(suggestedName, argumentNames, argumentTypes);
+  // Inject the members of the input struct into the symbol table.
+  this->addInputRecordType("input", "__BasePointer__", input);
+  // Special context entry for output record required by 
+  // transfer but not by record type op
+  this->IQLMoveSemantics = 0;
+  this->IQLOutputRecord = nullptr;
+  suggestedName = LLVMFunction->getName();
+}
+
+void CodeGenerationContext::createTransferFunction(const RecordType * input,
+                                                   const RecordType * output,
+                                                   std::string& suggestedFunName)
+{
+  std::vector<AliasedRecordType> sources { AliasedRecordType("input", input) };
+  createTransferFunction(sources, output, suggestedFunName);
+}
+
+void CodeGenerationContext::createTransferFunction(const std::vector<AliasedRecordType>& sources,
+                                                   const RecordType * output,
+                                                   std::string & suggestedFunName)
+{
+  std::vector<boost::dynamic_bitset<>> masks;
+  for(const auto & s : sources) {
+    masks.emplace_back(s.getType()->size());
+    masks.back().set();
+  }
+  createTransferFunction(sources, masks, output, suggestedFunName);
+}
+
+void CodeGenerationContext::createTransferFunction(const std::vector<AliasedRecordType>& sources,
+                                                   const std::vector<boost::dynamic_bitset<> >& masks,
+                                                   const RecordType * output,
+                                                   std::string & suggestedFunName)
+{
+  // Setup LLVM access to our external structure(s).  
+  std::vector<std::string> argumentNames;
+  for(std::vector<AliasedRecordType>::const_iterator it = sources.begin(); 
+      it != sources.end();
+      ++it) {
+    argumentNames.push_back(sources.size() == 1 ? 
+			    "__BasePointer__" : 
+			    (boost::format("__BasePointer%1%__") % (it - sources.begin())).str().c_str());
+  }
+  argumentNames.push_back("__OutputPointer__");
+  ConstructFunction(suggestedFunName, argumentNames);
+
+  for(std::vector<AliasedRecordType>::const_iterator it = sources.begin(); 
+      it != sources.end();
+      ++it) {
+    std::size_t i = (std::size_t) (it - sources.begin());
+    const boost::dynamic_bitset<> mask(masks[i]);
+    // Inject the members of the input struct into the symbol table.
+    this->addInputRecordType(it->getAlias().c_str(),
+                             sources.size() == 1 ? 
+                             "__BasePointer__" :  
+                             (boost::format("__BasePointer%1%__") % i).str().c_str(), 
+                             it->getType(),
+                             mask);
+  }
+  // Special context entry for output record required by statement list
+  this->IQLOutputRecord = wrap(output);
+  suggestedFunName = LLVMFunction->getName();
+}
+
+void CodeGenerationContext::createTransferFunction(const std::vector<const RecordType *>& sources,
+                                                   const std::vector<boost::dynamic_bitset<> >& masks,
+                                                   const RecordType * output,
+                                                   std::string & suggestedFunName)
+{
+  // Setup LLVM access to our external structure(s).  
+  std::vector<std::string> argumentNames;
+  for(std::size_t i=0; i<sources.size(); i++)
+    argumentNames.push_back((boost::format("__BasePointer%1%__") % i).str());
+  if (output != NULL)
+    argumentNames.push_back("__OutputPointer__");
+  ConstructFunction(suggestedFunName, argumentNames);
+
+  // Inject the members of the input struct into the symbol table.
+  // For the moment just make sure we don't have any ambiguous references
+  std::set<std::string> uniqueNames;
+  for(std::vector<const RecordType *>::const_iterator it = sources.begin();
+      it != sources.end();
+      ++it) {
+    std::size_t i = (std::size_t) (it - sources.begin());
+    const boost::dynamic_bitset<> mask(masks[i]);
+    for(RecordType::const_member_iterator mit = (*it)->begin_members();
+	mit != (*it)->end_members();
+	++mit) {
+      if (mask.test(mit-(*it)->begin_members())) {
+	if (uniqueNames.end() != uniqueNames.find(mit->GetName()))
+	  throw std::runtime_error("Field names must be unique in in place update statements");
+	uniqueNames.insert(mit->GetName());
+      }
+    }
+    this->addInputRecordType((boost::format("input%1%") % i).str().c_str(), 
+				 (boost::format("__BasePointer%1%__") % i).str().c_str(), 			   
+				 *it,
+				 mask);
+  }
+  this->IQLOutputRecord = wrap(output);
+  suggestedFunName = LLVMFunction->getName();
+}
+
+void CodeGenerationContext::createUpdate(const std::vector<const RecordType *>& sources,
+                                         const std::vector<boost::dynamic_bitset<> >& masks,
+                                         std::string & funName)
+{
+  createTransferFunction(sources, masks, nullptr, funName);
+  IQLMoveSemantics = 0;
 }
 
 class NullInitializedAggregate : public AggregateFunction

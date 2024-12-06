@@ -24,6 +24,7 @@
 class LogicalTcpRead : public LogicalOperator
 {
 private:
+  TreculFreeOperation * mFree;
   unsigned short mPort;
 public:
   LogicalTcpRead();
@@ -38,7 +39,8 @@ class TcpReadOperatorType : public RuntimeOperatorType
 private:
   // Create new records
   RecordTypeMalloc mMalloc;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   StreamBufferBlock mStreamBufferBlock;
   // How to configure endpoint?
   // It may be OK to set a port (if we only have one operator
@@ -54,7 +56,7 @@ private:
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mStreamBufferBlock);
     ar & BOOST_SERIALIZATION_NVP(mPort);
   }
@@ -64,11 +66,12 @@ private:
 
 public:
   TcpReadOperatorType(int32_t port, 
-		      const RecordType * streamBlockType)
+		      const RecordType * streamBlockType,
+                      const TreculFreeOperation & freeFunctor)
     :
     RuntimeOperatorType("TcpReadOperatorType"),
     mMalloc(streamBlockType->getMalloc()),
-    mFree(streamBlockType->getFree()),
+    mFreeRef(freeFunctor.getReference()),
     mStreamBufferBlock(streamBlockType),
     mPort(port)
   {
@@ -83,12 +86,18 @@ public:
     return 1;
   }
 
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }  
+
   RuntimeOperator * create(RuntimeOperator::Services & services) const;
 };
 
 class LogicalTcpWrite : public LogicalOperator
 {
 private:
+  TreculFreeOperation * mFree;
   std::string mHost;
   unsigned short mPort;
 public:
@@ -103,7 +112,8 @@ class TcpWriteOperatorType : public RuntimeOperatorType
   friend class TcpWriteOperator;
 private:
   // Create new records
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   StreamBufferBlock mStreamBufferBlock;
   // How to configure endpoint?
   // It may be OK to set a port (if we only have one operator
@@ -119,7 +129,7 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mStreamBufferBlock);
     ar & BOOST_SERIALIZATION_NVP(mHost);
     ar & BOOST_SERIALIZATION_NVP(mPort);
@@ -131,10 +141,11 @@ private:
 public:
   TcpWriteOperatorType(const std::string& host,
 		       int32_t port, 
-		       const RecordType * streamBlockType)
+		       const RecordType * streamBlockType,
+                       const TreculFreeOperation & freeFunctor)
     :
     RuntimeOperatorType("TcpWriteOperatorType"),
-    mFree(streamBlockType->getFree()),
+    mFreeRef(freeFunctor.getReference()),
     mStreamBufferBlock(streamBlockType),
     mHost(host),
     mPort(port)
@@ -149,6 +160,11 @@ public:
   {
     return 1;
   }
+
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }  
 
   RuntimeOperator * create(RuntimeOperator::Services & services) const;
 };

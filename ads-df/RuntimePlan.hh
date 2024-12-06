@@ -41,6 +41,7 @@
 #include <boost/serialization/string.hpp>
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/map.hpp>
+#include <boost/serialization/unique_ptr.hpp>
 #include <boost/dynamic_bitset.hpp>
 #include <boost/iterator/filter_iterator.hpp>
 
@@ -138,6 +139,7 @@ public:
   virtual bool isPartitioner() const { return false; }
   virtual bool isCollector() const { return false; }
   virtual int32_t numServiceCompletionPorts() const { return 0; }
+  virtual void loadFunctions(TreculModule & ) =0;
   const RuntimePartitionConstraint& getPartitionConstraint() const 
   {
     return mConstraint;
@@ -345,7 +347,8 @@ protected:
   int32_t mTag;
   RecordTypeDeserialize mDeserialize;
   RecordTypeSerialize mSerialize;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   RecordTypeMalloc mMalloc;
 
   // Serialization
@@ -357,7 +360,7 @@ protected:
     ar & BOOST_SERIALIZATION_NVP(mTag);
     ar & BOOST_SERIALIZATION_NVP(mDeserialize);
     ar & BOOST_SERIALIZATION_NVP(mSerialize);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
   }
 
@@ -370,13 +373,14 @@ public:
   InterProcessFifoSpec(AssignedOperatorType * sourceOperator, int32_t sourcePort,
 		       AssignedOperatorType * targetOperator, int32_t targetPort,
 		       bool buffered, bool locallyBuffered, int32_t tag, 
-		       const RecordType * ty)
+		       const RecordType * ty,
+                       const TreculFreeOperation & freeFunctor)
     :
     IntraProcessFifoSpec(sourceOperator, sourcePort, targetOperator, targetPort, locallyBuffered, buffered),
     mTag(tag),
     mDeserialize(ty->getDeserialize()),
     mSerialize(ty->getSerialize()),
-    mFree(ty->getFree()),
+    mFreeRef(freeFunctor.getReference()),
     mMalloc(ty->getMalloc())
   {
   }
@@ -387,8 +391,12 @@ public:
   int32_t getTag() const { return mTag; }
   const RecordTypeDeserialize& getDeserialize() const { return mDeserialize; }
   const RecordTypeSerialize& getSerialize() const { return mSerialize; }
-  const RecordTypeFree& getFree() const { return mFree; }
+  const TreculRecordFreeRuntime& getFree() const { return mFree; }
   const RecordTypeMalloc& getMalloc() const { return mMalloc; }
+  void loadFunctions(TreculModule & m)
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }  
 };
 
 /**
@@ -421,9 +429,25 @@ private:
   // The current count of channels created that aren't straight line.
   int32_t mCurrentTag;
 
+  // Module that contains all of the JIT compiled functions needed by
+  // operators.
+  std::unique_ptr<TreculModule> mModule;
+
   // Serialization.  Not sure there is a point in having
   // these be template functions.  We'll only use binary archives.
   friend class boost::serialization::access;
+  // template <class Archive>
+  // void save(Archive & ar, const unsigned int version) const
+  // {
+  //   ar & BOOST_SERIALIZATION_NVP(mPartitions);
+  //   ar & BOOST_SERIALIZATION_NVP(mOperators);
+  //   ar & BOOST_SERIALIZATION_NVP(mStraightLineConnections);
+  //   ar & BOOST_SERIALIZATION_NVP(mBroadcastConnections);
+  //   ar & BOOST_SERIALIZATION_NVP(mCollectConnections);
+  //   ar & BOOST_SERIALIZATION_NVP(mCrossbarConnections);
+  //   ar & BOOST_SERIALIZATION_NVP(mCurrentTag);
+  //   ar & BOOST_SERIALIZATION_NVP(mModule);
+  // }
   template <class Archive>
   void serialize(Archive & ar, const unsigned int version) 
   {
@@ -434,7 +458,9 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mCollectConnections);
     ar & BOOST_SERIALIZATION_NVP(mCrossbarConnections);
     ar & BOOST_SERIALIZATION_NVP(mCurrentTag);
+    ar & BOOST_SERIALIZATION_NVP(mModule);
   }
+  // BOOST_SERIALIZATION_SPLIT_MEMBER()
 
   RuntimeOperatorPlan()
     :
@@ -482,7 +508,7 @@ public:
    * a partitioner and the target is a collector.
    */
   void connectCrossbar(RuntimeOperatorType * source, RuntimeOperatorType * target, const RecordType * ty,
-		       bool buffered, bool locallyBuffered);
+		       const TreculFreeOperation & freeFunctor, bool buffered, bool locallyBuffered);
   /**
    * Connect a partitioner running on a single partition with an operator running
    * on 1 or more partitions.
@@ -495,6 +521,31 @@ public:
    */
   void connectCollect(RuntimeOperatorType * source, int32_t sourcePort, RuntimeOperatorType * target,
 		      bool buffered, bool locallyBuffered);
+
+  /**
+   * Set module containing all plan-level JIT compiled functions.
+   */
+  void setModule(std::unique_ptr<TreculModule> module)
+  {
+    mModule = std::move(module);
+  }
+
+  void loadFunctions()
+  {
+    if (!!mModule) {
+      for(auto & op : mOperators) {
+        const_cast<RuntimeOperatorType *>(op->Operator)->loadFunctions(*mModule.get());
+      }
+      for(auto & cxn : mCrossbarConnections) {
+        cxn.loadFunctions(*mModule.get());
+      }
+      for(auto & cxn : mBroadcastConnections) {
+        cxn.loadFunctions(*mModule.get());
+      }
+    }
+  }
+
+  
 
   typedef std::vector<IntraProcessFifoSpec>::const_iterator intraprocess_fifo_const_iterator;
   typedef std::vector<InterProcessFifoSpec>::const_iterator interprocess_fifo_const_iterator;

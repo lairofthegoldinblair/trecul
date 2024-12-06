@@ -57,8 +57,8 @@ struct SortNodeLess : std::binary_function<SortNode, SortNode, bool>
     return lhs.KeyPrefix < rhs.KeyPrefix ||
       (lhs.KeyPrefix == rhs.KeyPrefix && IQLCompare(lhs.Value, rhs.Value));
   }    
-  SortNodeLess(const class IQLFunctionModule * f = NULL,
-	       class InterpreterContext * ctxt = NULL)
+  SortNodeLess(const TreculFunctionRuntime & f,
+               class InterpreterContext * ctxt)
     :
     IQLCompare(f,ctxt)
   {
@@ -437,12 +437,14 @@ LogicalFileRead::LogicalFileRead()
   mFieldSeparator('\t'),
   mRecordSeparator('\n'),
   mEscapeChar('\\'),
-  mFormat(NULL)
+  mFormat(nullptr),
+  mFree(nullptr)
 {
 }
 
 LogicalFileRead::~LogicalFileRead()
 {
+  delete mFree;
 }
 
 std::string LogicalFileRead::readFormatFile(const std::string& formatFile)
@@ -561,10 +563,11 @@ void LogicalFileRead::check(PlanCheckContext& ctxt)
 	  referenced.push_back(m->GetName());
 	}
       }
-      
-      getOutput(0)->setRecordType(RecordType::get(ctxt, mFormat, 
-						  referenced.begin(), 
-						  referenced.end()));
+      auto outputRecordType = RecordType::get(ctxt, mFormat, 
+                                              referenced.begin(), 
+                                              referenced.end());
+      getOutput(0)->setRecordType(outputRecordType);
+      mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), outputRecordType);
     } catch(std::exception& ex) {
       ctxt.logError(*this, *formatParam, ex.what());
     }
@@ -594,6 +597,7 @@ void LogicalFileRead::internalCreate(class RuntimePlanBuilder& plan)
 					      mRecordSeparator,
 					      mEscapeChar,
 					      getOutput(0)->getRecordType(),
+                                              *mFree,
 					      mFormat,
 					      mCommentLine.c_str());
     sot->setSkipHeader(mSkipHeader);
@@ -604,6 +608,7 @@ void LogicalFileRead::internalCreate(class RuntimePlanBuilder& plan)
 					  mRecordSeparator,
 					  mEscapeChar,
 					  getOutput(0)->getRecordType(),
+                                          *mFree,
 					  mFormat,
 					  mCommentLine.c_str());
     tot->setSkipHeader(mSkipHeader);
@@ -616,7 +621,10 @@ void LogicalFileRead::internalCreate(class RuntimePlanBuilder& plan)
 LogicalFileWrite::LogicalFileWrite()
   :
   mMode("binary"),
-  mFileNameExpr(NULL),
+  mPrint(nullptr),
+  mFree(nullptr),
+  mFileNameExpr(nullptr),
+  mFileNameExprFree(nullptr),
   mMaxRecords(0),
   mMaxSeconds(0)
 {
@@ -624,7 +632,10 @@ LogicalFileWrite::LogicalFileWrite()
 
 LogicalFileWrite::~LogicalFileWrite()
 {
+  delete mPrint;
+  delete mFree;
   delete mFileNameExpr;
+  delete mFileNameExprFree;
 }
 
 void LogicalFileWrite::buildHeader(bool isFormatHeader)
@@ -730,11 +741,14 @@ void LogicalFileWrite::check(PlanCheckContext& ctxt)
     checkPath(ctxt, mFile);
   } else {
     std::string xfer = mFile + " AS out";
-    mFileNameExpr = new RecordTypeTransfer(ctxt, "fileNameExpr", 
-					   getInput(0)->getRecordType(), xfer);
+    mFileNameExpr = new TreculTransfer(ctxt, ctxt.getCodeGenerator(), "fileNameExpr", 
+                                       getInput(0)->getRecordType(), xfer);
+    mFileNameExprFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mFileNameExpr->getTarget());
   }
   if (mHeaderFile.size()) 
     checkPath(ctxt, mHeaderFile);
+  mPrint = new TreculPrintOperation(ctxt.getCodeGenerator(), getInput(0)->getRecordType());
+  mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), getInput(0)->getRecordType());
 }
 
 void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
@@ -747,6 +761,8 @@ void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
     if (isStreamingWrite()) {
       opType = new RuntimeHdfsWriteOperatorType<StreamingFileCreationPolicy>("write",
                                                                              getInput(0)->getRecordType(),
+                                                                             *mPrint,
+                                                                             *mFree,
                                                                              getFileFactory(uri),
                                                                              mHeader,
                                                                              mHeaderFile,
@@ -756,20 +772,25 @@ void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
     } else {
       opType = new RuntimeHdfsWriteOperatorType<MultiFileCreationPolicy>("write",
                                                                          getInput(0)->getRecordType(),
+                                                                         *mPrint,
+                                                                         *mFree,
                                                                          getFileFactory(uri),
                                                                          mHeader,
                                                                          mHeaderFile,
                                                                          new MultiFileCreationPolicy(mConnect.size() ? "" : uri->getPath(),
-                                                                                                     mFileNameExpr));
+                                                                                                     mFileNameExpr, mFileNameExprFree));
     }
   } else if (boost::algorithm::iequals("binary", mMode)) {
     opType = new InternalFileWriteOperatorType("write",
 					       getInput(0)->getRecordType(),
+                                               *mFree,
 					       uri->getPath());
   } else {
     // TODO: The HdfsWriteOperatorType should replace this 
     opType = new RuntimeWriteOperatorType("write",
 					  getInput(0)->getRecordType(),
+                                          *mPrint,
+                                          *mFree,
 					  uri->getPath(),
 					  mHeader,
 					  mHeaderFile);
@@ -831,8 +852,8 @@ void LogicalSortMerge::check(PlanCheckContext& ctxt)
 void LogicalSortMerge::create(class RuntimePlanBuilder& plan)
 {
   RuntimeOperatorType * opType = 
-    new RuntimeSortMergeOperatorType(mKeyPrefix, 
-				     mKeyEq);
+    new RuntimeSortMergeOperatorType(*mKeyPrefix, 
+				     *mKeyEq);
   plan.addOperatorType(opType);
   for(std::size_t i = 0; i < size_inputs(); i++) {
     plan.mapInputPort(this, i, opType, i);
@@ -840,7 +861,7 @@ void LogicalSortMerge::create(class RuntimePlanBuilder& plan)
   plan.mapOutputPort(this, 0, opType, 0);  
 }
 
-SortMerge::SortMerge(DynamicRecordContext& ctxt,
+SortMerge::SortMerge(PlanCheckContext& ctxt,
 		     const RecordType * input,
 		     const std::vector<std::string>& sortKeys)
   :
@@ -849,16 +870,17 @@ SortMerge::SortMerge(DynamicRecordContext& ctxt,
   mKeyEq(NULL)
 {
   // Start by supporting a single integer key.
-  std::vector<RecordMember> emptyMembers;
-  RecordType emptyTy(ctxt, emptyMembers);
-  std::vector<const RecordType *> tableOnly;
-  tableOnly.push_back(mInput);
-  tableOnly.push_back(&emptyTy);
-  mKeyPrefix = new RecordTypeFunction(ctxt, 
-				      "keyPrefix", 
-				      tableOnly, 
-				      (boost::format("$(%1%)") % sortKeys[0]).str());
-
+  // std::vector<RecordMember> emptyMembers;
+  // RecordType emptyTy(ctxt, emptyMembers);
+  // std::vector<const RecordType *> tableOnly;
+  // tableOnly.push_back(mInput);
+  // tableOnly.push_back(&emptyTy);
+  // mKeyPrefix = new TreculFunction(ctxt,
+  //                                 ctxt.getCodeGenerator(),
+  //       			      "keyPrefix", 
+  //       			      tableOnly, 
+  //       			      (boost::format("$(%1%)") % sortKeys[0]).str());
+  mKeyPrefix = KeyPrefixFunction::get(ctxt, mInput, sortKeys);
 
   mKeyEq = LessThanFunction::get(ctxt, mInput, sortKeys);
 }
@@ -871,7 +893,7 @@ SortMerge::~SortMerge()
 
 RuntimeOperatorType * SortMerge::create() const
 {
-  return new RuntimeSortMergeOperatorType(mKeyPrefix, mKeyEq);
+  return new RuntimeSortMergeOperatorType(*mKeyPrefix, *mKeyEq);
 }
 
 RuntimeOperator * RuntimeSortMergeOperatorType::create(RuntimeOperator::Services & s) const
@@ -934,7 +956,7 @@ void RuntimeSortMergeOperator::onEvent(RuntimePort * port)
 	if(RecordBuffer::isEOS(buf)) {
 	  mMergeTree.close(mMergeTree.getInput());
 	} else {
-	  uint32_t keyPrefix = getMyOperatorType().mKeyPrefix->execute(buf, NULL, mRuntimeContext);
+	  uint32_t keyPrefix = getMyOperatorType().mKeyPrefix.execute(buf, NULL, mRuntimeContext);
 	  // Correct key prefix for the fact that LoserTree is a max-priority queue.
 	  mMergeTree.update(mMergeTree.getInput(), 
 			    0x7fffffff - keyPrefix, 
@@ -974,15 +996,17 @@ void RuntimeSortMergeOperator::setReturnAddress(RuntimeOperator * op, int32_t po
 
 LogicalSort::LogicalSort()
   :
-  mKeyPrefix(NULL),
-  mKeyEq(NULL),
-  mPresortedKeyEq(NULL),
+  mFree(nullptr),
+  mKeyPrefix(nullptr),
+  mKeyEq(nullptr),
+  mPresortedKeyEq(nullptr),
   mMemory(128*1024*1024)
 {
 }
 
 LogicalSort::~LogicalSort()
 {
+  delete mFree;
   delete mKeyPrefix;
   delete mKeyEq;
   delete mPresortedKeyEq;
@@ -1021,7 +1045,8 @@ void LogicalSort::check(PlanCheckContext& ctxt)
   }
   const RecordType * input = getInput(0)->getRecordType();
   getOutput(0)->setRecordType(input);
-
+  mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), input);
+  
   // Validate that the keys exist and are sortable.
   checkFieldsExist(ctxt, sortKeys, 0);
   checkFieldsExist(ctxt, presortedKeys, 0);
@@ -1044,8 +1069,9 @@ void LogicalSort::create(class RuntimePlanBuilder& plan)
 {
   RuntimeOperatorType * opType = 
     new RuntimeSortOperatorType(getInput(0)->getRecordType(),
-				mKeyPrefix, 
-				mKeyEq,
+                                *mFree,
+				*mKeyPrefix, 
+				*mKeyEq,
 				// TODO: Support presorted keys
 				mPresortedKeyEq,
 				mTempDir,
@@ -1174,8 +1200,8 @@ private:
       return lhs.KeyPrefix < rhs.KeyPrefix ||
 	(lhs.KeyPrefix == rhs.KeyPrefix && IQLCompare(lhs.Value, rhs.Value));
     }    
-    SortNodeLess(const class IQLFunctionModule * f = NULL,
-		 class InterpreterContext * ctxt = NULL)
+    SortNodeLess(const TreculFunctionRuntime & f,
+                 class InterpreterContext * ctxt)
       :
       IQLCompare(f,ctxt)
     {
@@ -1241,9 +1267,9 @@ void RuntimeSortOperator::addSortRun()
 {
   std::size_t sz = getMyOperatorType().mSerialize.getRecordLength(mInput);
   uint32_t keyPrefix = 
-    getMyOperatorType().mKeyPrefix->execute(mInput, 
-					    NULL, 
-					    mLessFunction.IQLCompare.Context);
+    getMyOperatorType().mKeyPrefix.execute(mInput, 
+                                           NULL, 
+                                           mLessFunction.IQLCompare.Context);
   SortNode n(keyPrefix, mInput);
   // See if we are forced to spill
   if(!mSortRuns.push_back(n, sz)) {
@@ -1277,7 +1303,8 @@ void RuntimeSortOperator::writeSortRun(SortRun & sortRuns)
     mWriterType = 
       new InternalFileWriteOperatorType("sortInternalWriter",
 					getMyOperatorType().mSerialize,
-					getMyOperatorType().mFree,			   
+					getMyOperatorType().mFreeRef, 
+					getMyOperatorType().mFree, 
 					"");
 
     int32_t dummy=0;
@@ -1458,10 +1485,10 @@ void RuntimeSortOperator::onEvent(RuntimePort * port)
 	  // If we have presorted keys, see if we have a new presorted
 	  // key value.
 	  if (mSortRuns.size() &&
-	      getMyOperatorType().mPresortedEqualsFun &&	      
-	      0 == getMyOperatorType().mPresortedEqualsFun->execute(mInput,
-								    mSortRuns.front().Value,
-								    mLessFunction.IQLCompare.Context)) 
+	      !!getMyOperatorType().mPresortedEqualsFun &&	      
+	      0 == getMyOperatorType().mPresortedEqualsFun.execute(mInput,
+                                                                   mSortRuns.front().Value,
+                                                                   mLessFunction.IQLCompare.Context)) 
 	    break;
 	  // Otherwise we building sort runs.
 	  addSortRun();
@@ -1579,9 +1606,9 @@ void RuntimeSortOperator::onEvent(RuntimePort * port)
 	  break;
 	} else {
 	  uint32_t keyPrefix = 
-	    getMyOperatorType().mKeyPrefix->execute(buf, 
-						    NULL, 
-						    mLessFunction.IQLCompare.Context);
+	    getMyOperatorType().mKeyPrefix.execute(buf, 
+                                                   NULL, 
+                                                   mLessFunction.IQLCompare.Context);
 	  if (mCurrentRunPtr == mCurrentRunEnd) {
 	    // Sort previous L1 cache size buffer and save
 	    // block for later merging.  

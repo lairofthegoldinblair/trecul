@@ -45,6 +45,7 @@
 #include "llvm/IR/IRBuilder.h"
 
 #include "LLVMGen.h"
+#include "TypeCheckContext.hh"
 
 namespace llvm {
   class BasicBlock;
@@ -53,6 +54,9 @@ namespace llvm {
   class LLVMContext;
   class Type;
   class Value;
+  namespace legacy {
+    class FunctionPassManager;
+  }
 }
 class CodeGenerationContext;
 class FieldType;
@@ -384,6 +388,7 @@ public:
 // parser.
 class CodeGenerationContext {
 public:
+  friend class NullInitializedAggregate;
   /**
    * Type of the cache of alloca'd locals
    * that we can reuse.  Keeping the number
@@ -412,6 +417,29 @@ private:
   // name here.  Note that this should be getting resolved during type
   // check not during code generation.
   std::map<std::string, std::string> mTreculNameToSymbol;
+  // A stack for constructs like if/then/else
+  std::stack<class IQLToLLVMStackRecord* > IQLStack;
+  // A stack of switch builders
+  std::stack<class IQLToLLVMSwitchRecord* > IQLSwitch;
+  // A stack of CASE builders
+  std::stack<class IQLToLLVMCaseState* > IQLCase;
+  // HACK: used for naming variables corresponding
+  // to aggregate functions.
+  int AggFn;
+  // Alloca cache
+  local_cache * AllocaCache;
+  // String pool
+  std::map<std::string, const IQLToLLVMValue *> StringPool;
+  // Output record type for expression lists.
+  IQLRecordTypeRef IQLOutputRecord;
+  // Alias to record type mapping for inputs
+  IQLToLLVMRecordMapRef IQLRecordArguments;
+  // Memcpy
+  llvm::Value * LLVMMemcpyIntrinsic;
+  // Memset
+  llvm::Value * LLVMMemsetIntrinsic;
+  // Memcmp
+  llvm::Value * LLVMMemcmpIntrinsic;
 
   /**
    * Private Interface to the variable length datatype (including VARCHAR)
@@ -538,6 +566,16 @@ private:
   void zeroHostBits(const IQLToLLVMValue * prefixLength,
                     llvm::Value * ret, 
                     const FieldType * retType);
+
+  void CreateMemcpyIntrinsic();  
+  void CreateMemsetIntrinsic();  
+  void CreateMemcmpIntrinsic();  
+
+  void ConstructFunction(const std::string& funName, const std::vector<std::string>& recordArgs);
+  void ConstructFunction(const std::string& funName, const std::vector<std::string>& recordArgs, llvm::Type * returnType);
+  void ConstructFunction(const std::string& funName, 
+                         const std::vector<std::string> & argumentNames,
+                         const std::vector<llvm::Type *> & argumentTypes);
 public:
   llvm::LLVMContext * LLVMContext;
   llvm::Module * LLVMModule;
@@ -547,30 +585,14 @@ public:
   llvm::Type * LLVMVarcharType;
   llvm::Type * LLVMDatetimeType;
   llvm::Type * LLVMCidrV4Type;
+  llvm::Type * LLVMInt32Type;
   // This is set by the code generator not by the caller
   llvm::Function * LLVMFunction;
-  // Alias to record type mapping for inputs
-  IQLToLLVMRecordMapRef IQLRecordArguments;
-  // Output record type for expression lists.
-  IQLRecordTypeRef IQLOutputRecord;
-  // Memcpy
-  llvm::Value * LLVMMemcpyIntrinsic;
-  // Memset
-  llvm::Value * LLVMMemsetIntrinsic;
-  // Memcmp
-  llvm::Value * LLVMMemcmpIntrinsic;
   // Move or copy semantics
   int32_t IQLMoveSemantics;
-  // A stack for constructs like if/then/else
-  std::stack<class IQLToLLVMStackRecord* > IQLStack;
-  // A stack of switch builders
-  std::stack<class IQLToLLVMSwitchRecord* > IQLSwitch;
-  // A stack of CASE builders
-  std::stack<class IQLToLLVMCaseState* > IQLCase;
   // Indicator whether we have generated an
   // identity transfer
   bool IsIdentity;
-
   // For aggregate function these
   // are for update operations
   CodeGenerationFunctionContext Update;
@@ -580,16 +602,9 @@ public:
   // For aggregate function these
   // are for transfer operations
   CodeGenerationFunctionContext Transfer;
-  // HACK: used for naming variables corresponding
-  // to aggregate functions.
-  int AggFn;
   // Value factory
   std::vector<IQLToLLVMValue *> ValueFactory;
-  // Alloca cache
-  local_cache * AllocaCache;
-  // String pool
-  std::map<std::string, const IQLToLLVMValue *> StringPool;
-
+  llvm::legacy::FunctionPassManager * mFPM;
   CodeGenerationContext();
   ~CodeGenerationContext();
   /**
@@ -598,6 +613,8 @@ public:
    * EE takes ownership of the module.
    */
   void disownModule();
+
+  std::unique_ptr<llvm::Module> takeModule();
 
   /**
    * Define a variable
@@ -708,6 +725,16 @@ public:
 				    const char * implName,
 				    llvm::Type * funTy);
 
+  llvm::Value * LoadAndValidateExternalFunction(const char * externalFunctionName, 
+                                                llvm::Type * funTy) {
+    return LoadAndValidateExternalFunction(externalFunctionName, externalFunctionName, funTy);
+  }
+
+  llvm::Value * LoadAndValidateExternalFunction(const char * treculName,
+                                                const char * implName, 
+                                                llvm::Type * funTy) {
+    return addExternalFunction(treculName, implName, funTy);
+  }
   /**
    * Local variable
    */
@@ -1526,6 +1553,7 @@ public:
   // completely bypassing memory allocation and transfer code.
   // References to fields may be reference or value.
   void buildSetField(int * pos, const IQLToLLVMValue * val);
+  void buildSetAggregateField(const IQLToLLVMValue * val);
   // Copy all of the field (same as regex .* unless in the
   // broken "move semantics" mode).
   void buildSetFields(const char * recordName, int * pos);
@@ -1548,6 +1576,32 @@ public:
   
   // Is val a pointer to value of type ft?
   static bool isPointerToValueType(llvm::Value * val, const FieldType * ft);
+
+  /**
+   * suggestedName is modified if the existing name is taken
+   */
+  void createFunction(const std::vector<AliasedRecordType>& sources,
+                      llvm::Type * returnType,
+                      std::string & suggestedName);
+  void createRecordTypeOperation(const RecordType * input,
+                                 std::string& suggestedName);
+  void createTransferFunction(const RecordType * input,
+			      const RecordType * output,
+                              std::string& suggestedFunName);
+  void createTransferFunction(const std::vector<AliasedRecordType>& sources,
+                              const RecordType * output,
+                              std::string & suggestedFunName);
+  void createTransferFunction(const std::vector<AliasedRecordType>& sources,
+			      const std::vector<boost::dynamic_bitset<> >& masks,
+			      const RecordType * output,
+                              std::string & suggestedFunName);
+  void createTransferFunction(const std::vector<const RecordType *>& mSources,
+			      const std::vector<boost::dynamic_bitset<> >& masks,
+			      const RecordType * output,
+                              std::string & suggestedFunName);
+  void createUpdate(const std::vector<const RecordType *>& mSources,
+		    const std::vector<boost::dynamic_bitset<> >& masks,
+                    std::string & suggestedFunName);
 };
 
 class AggregateFunction

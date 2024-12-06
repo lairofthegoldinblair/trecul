@@ -66,6 +66,9 @@ private:
   std::shared_ptr<const class TableMetadata> mTableMetadata;
   class TableOutput * mTableOutput;
 
+  // Free function for the table output
+  TreculFreeOperation * mTableOutputFree;
+  
   // The format of the underlying table.
   // May not be the same as the output format
   // if we are applying a select/output list.

@@ -133,12 +133,14 @@ public:
 LogicalTcpRead::LogicalTcpRead()
   :
   LogicalOperator(0,0,1,1),
+  mFree(nullptr),
   mPort(0)
 {
 }
 
 LogicalTcpRead::~LogicalTcpRead()
 {
+  delete mFree;
 }
 
 void LogicalTcpRead::check(PlanCheckContext& ctxt)
@@ -174,13 +176,16 @@ void LogicalTcpRead::check(PlanCheckContext& ctxt)
     }
   }
 
-  getOutput(0)->setRecordType(StreamBufferBlock::getStreamBufferType(ctxt, cap));
+  const RecordType * outputType = StreamBufferBlock::getStreamBufferType(ctxt, cap);
+  getOutput(0)->setRecordType(outputType);
+  mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), outputType);
 }
 
 void LogicalTcpRead::create(class RuntimePlanBuilder& plan)
 {
   RuntimeOperatorType * opType = new TcpReadOperatorType(mPort, 
-							 getOutput(0)->getRecordType());
+							 getOutput(0)->getRecordType(),
+                                                         *mFree);
   plan.addOperatorType(opType);
   plan.mapOutputPort(this, 0, opType, 0);    
 }
@@ -329,12 +334,14 @@ public:
 LogicalTcpWrite::LogicalTcpWrite()
   :
   LogicalOperator(1,1,0,0),
+  mFree(nullptr),
   mPort(0)
 {
 }
 
 LogicalTcpWrite::~LogicalTcpWrite()
 {
+  delete mFree;
 }
 
 void LogicalTcpWrite::check(PlanCheckContext& ctxt)
@@ -372,13 +379,15 @@ void LogicalTcpWrite::check(PlanCheckContext& ctxt)
   }
   
   // TODO: Make sure we have a stream input
+  mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), getInput(0)->getRecordType());
 }
 
 void LogicalTcpWrite::create(class RuntimePlanBuilder& plan)
 {
   RuntimeOperatorType * opType = new TcpWriteOperatorType(mHost,
 							  mPort, 
-							  getInput(0)->getRecordType());
+							  getInput(0)->getRecordType(),
+                                                          *mFree);
   plan.addOperatorType(opType);
   plan.mapInputPort(this, 0, opType, 0);    
 }

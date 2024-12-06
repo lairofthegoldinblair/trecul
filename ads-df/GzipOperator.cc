@@ -4,12 +4,15 @@
 LogicalGunzip::LogicalGunzip()
   :
   LogicalOperator(1,1,1,1),
+  mStreamBlock(nullptr),
+  mFree(nullptr),
   mBufferCapacity(64*1024)
 {
 }
 
 LogicalGunzip::~LogicalGunzip()
 {
+  delete mFree;
 }
 
 void LogicalGunzip::check(PlanCheckContext& ctxt)
@@ -18,13 +21,14 @@ void LogicalGunzip::check(PlanCheckContext& ctxt)
     ctxt.logError(*this, "Invalid type on input; must be stream type");
   }
   mStreamBlock = StreamBufferBlock::getStreamBufferType(ctxt, mBufferCapacity);
+  mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), mStreamBlock);
   getOutput(0)->setRecordType(mStreamBlock);
 }
 
 void LogicalGunzip::create(class RuntimePlanBuilder& plan)
 {
   RuntimeOperatorType * opType = 
-    new RuntimeGunzipOperatorType(mStreamBlock);
+    new RuntimeGunzipOperatorType(mStreamBlock, *mFree);
   plan.addOperatorType(opType);
   plan.mapInputPort(this, 0, opType, 0);  
   plan.mapOutputPort(this, 0, opType, 0);  
@@ -189,10 +193,11 @@ public:
   }
 };
 
-RuntimeGunzipOperatorType::RuntimeGunzipOperatorType(const RecordType * bufferTy)
+RuntimeGunzipOperatorType::RuntimeGunzipOperatorType(const RecordType * bufferTy,
+                                                     const TreculFreeOperation & freeFunctor)
   :
   mMalloc(bufferTy->getMalloc()),
-  mFree(bufferTy->getFree()),
+  mFreeRef(freeFunctor.getReference()),
   mStreamBlock(bufferTy)
 {
 }

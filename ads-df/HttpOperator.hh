@@ -10,6 +10,7 @@ private:
   unsigned short mPort;
   std::string mPostResource;
   std::string mAliveResource;
+  TreculFreeOperation * mFree;
 public:
   LogicalHttpRead();
   ~LogicalHttpRead();
@@ -31,7 +32,8 @@ private:
   FieldAddress mBody;
   std::map<std::string, FieldAddress> mNVP;
   RecordTypeMalloc mMalloc;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
@@ -44,14 +46,15 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mBody);
     ar & BOOST_SERIALIZATION_NVP(mNVP);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
   }
 
   void appendVarchar(const char * start, const char * end,
 		     FieldAddress field, RecordBuffer buf) const;
 public:
   HttpRequestType();
-  HttpRequestType(const RecordType * ty);
+  HttpRequestType(const RecordType * ty,
+                  const TreculFreeOperation & freeFunctor);
   ~HttpRequestType();
   void setContentLength(int64_t contentLenth, RecordBuffer buf) const;  
   void appendUserAgent(const char * start, const char * end, 
@@ -68,6 +71,10 @@ public:
   const char * getUrl(RecordBuffer buf) const;
   RecordBuffer malloc() const;
   void free(RecordBuffer buf) const;
+  void loadFunctions(TreculModule & m) 
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }  
 };
 
 class HttpReadOperatorType : public RuntimeOperatorType
@@ -76,7 +83,8 @@ class HttpReadOperatorType : public RuntimeOperatorType
 private:
   // Create new records
   RecordTypeMalloc mMalloc;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   // Dynamic record interface to HTTP request record.
   HttpRequestType mRequestType;
   // How to configure endpoint?
@@ -98,7 +106,7 @@ private:
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mRequestType);
     ar & BOOST_SERIALIZATION_NVP(mPort);
     ar & BOOST_SERIALIZATION_NVP(mPostResource);
@@ -112,12 +120,13 @@ public:
   HttpReadOperatorType(int32_t port, 
 		       const std::string& postResource,
 		       const std::string& aliveResource,
-		       const RecordType * output)
+		       const RecordType * output,
+                       const TreculFreeOperation & freeFunctor)
     :
     RuntimeOperatorType("HttpReadOperatorType"),
     mMalloc(output->getMalloc()),
-    mFree(output->getFree()),
-    mRequestType(output),
+    mFreeRef(freeFunctor.getReference()),
+    mRequestType(output, freeFunctor),
     mPort(port),
     mPostResource(postResource),
     mAliveResource(aliveResource)
@@ -134,6 +143,11 @@ public:
   }
 
   RuntimeOperator * create(RuntimeOperator::Services & services) const;
+  void loadFunctions(TreculModule & m) 
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    mRequestType.loadFunctions(m);
+  }  
 };
 
 #endif

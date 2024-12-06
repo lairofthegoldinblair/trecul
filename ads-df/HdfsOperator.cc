@@ -919,12 +919,14 @@ static HdfsDataBlockRegistrar dataBlockRegistrar;
 
 LogicalEmit::LogicalEmit()
   :
-  mPartitioner(NULL)
+  mFree(nullptr),
+  mPartitioner(nullptr)
 {
 }
 
 LogicalEmit::~LogicalEmit()
 {
+  delete mFree;
   delete mPartitioner;
 }
 
@@ -948,6 +950,8 @@ void LogicalEmit::check(PlanCheckContext& log)
     log.logError(*this, std::string("Missing field: ") + mKey);
   }
 
+  mFree = new TreculFreeOperation(log.getCodeGenerator(), getInput(0)->getRecordType());
+
   // if partitioner set, validate/compile
   if (partitioner.size()) {
     std::vector<RecordMember> emptyMembers;
@@ -955,10 +959,11 @@ void LogicalEmit::check(PlanCheckContext& log)
     std::vector<const RecordType *> tableOnly;
     tableOnly.push_back(getInput(0)->getRecordType());
     tableOnly.push_back(&emptyTy);
-    mPartitioner = new RecordTypeFunction(log, 
-					  "partitioner",
-					  tableOnly, 
-					  partitioner);
+    mPartitioner = new TreculFunction(log,
+                                      log.getCodeGenerator(),
+                                      "partitioner",
+                                      tableOnly, 
+                                      partitioner);
     std::cout << "Setting partitioner " << partitioner.c_str() << std::endl;
   }
 }
@@ -968,6 +973,7 @@ void LogicalEmit::create(class RuntimePlanBuilder& plan)
   RuntimeOperatorType * opType = 
     new RuntimeHadoopEmitOperatorType("RuntimeHadoopEmitOperatorType",
 				      getInput(0)->getRecordType(),
+                                      *mFree,
 				      mKey, mPartitioner);
   
   plan.addOperatorType(opType);
@@ -1039,7 +1045,7 @@ void RuntimeHadoopEmitOperator::shutdown()
 
 bool RuntimeHadoopEmitOperator::hasPartitioner()
 {
-  return getHadoopEmitType().mPartitioner != NULL;
+  return !!getHadoopEmitType().mPartitioner;
 }
 
 uint32_t RuntimeHadoopEmitOperator::partition(const std::string& key, 
@@ -1049,13 +1055,12 @@ uint32_t RuntimeHadoopEmitOperator::partition(const std::string& key,
   // from within the emit.  Therefore we can ignore the key
   // and just calculate the partition from the input record.  This saves
   // us from having to reparse the key.
-  return (uint32_t)getHadoopEmitType().mPartitioner->execute(mInput, RecordBuffer(),
-							     mRuntimeContext) % numPartitions;
+  return (uint32_t)getHadoopEmitType().mPartitioner.execute(mInput, RecordBuffer(),
+                                                            mRuntimeContext) % numPartitions;
 }
 
 RuntimeHadoopEmitOperatorType::~RuntimeHadoopEmitOperatorType()
 {
-  delete mPartitioner;
 }
 
 RuntimeOperator * RuntimeHadoopEmitOperatorType::create(RuntimeOperator::Services& services) const

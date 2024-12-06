@@ -101,6 +101,7 @@ public:
 
   // Create the runtime plan from the graph
   std::shared_ptr<RuntimeOperatorPlan> create(int32_t numPartitions);
+  static std::shared_ptr<RuntimeOperatorPlan> create(LogicalPlan & logicalPlan, int32_t numPartitions);
 };
 
 

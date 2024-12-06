@@ -18,7 +18,8 @@ HttpRequestType::HttpRequestType()
 {
 }
 
-HttpRequestType::HttpRequestType(const RecordType * ty)
+HttpRequestType::HttpRequestType(const RecordType * ty,
+                                 const TreculFreeOperation & freeFunctor)
   :
   mContentLength(ty->getFieldAddress("Content-Length")),
   mUserAgent(ty->getFieldAddress("User-Agent")),
@@ -26,7 +27,7 @@ HttpRequestType::HttpRequestType(const RecordType * ty)
   mUrl(ty->getFieldAddress("RequestUrl")),
   mBody(ty->getFieldAddress("body")),
   mMalloc(ty->getMalloc()),
-  mFree(ty->getFree())
+  mFreeRef(freeFunctor.getReference())
 {
   for(RecordType::const_member_iterator m = ty->begin_members(),
 	e = ty->end_members(); m != e; ++m) {
@@ -1038,12 +1039,14 @@ LogicalHttpRead::LogicalHttpRead()
   LogicalOperator(0,0,1,1),
   mPort(0),
   mPostResource("/"),
-  mAliveResource("/alive")
+  mAliveResource("/alive"),
+  mFree(nullptr)
 {
 }
 
 LogicalHttpRead::~LogicalHttpRead()
 {
+  delete mFree;
 }
 
 void LogicalHttpRead::check(PlanCheckContext& ctxt)
@@ -1108,7 +1111,9 @@ void LogicalHttpRead::check(PlanCheckContext& ctxt)
   // How much parsing do we do and how much do we punt.
   // Can we integrate regex to facilitate parsing query strings?
   // How about cookies?
-  getOutput(0)->setRecordType(RecordType::get(ctxt, members));
+  auto outputType = RecordType::get(ctxt, members);
+  getOutput(0)->setRecordType(outputType);
+  mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), outputType);
 }
 
 void LogicalHttpRead::create(class RuntimePlanBuilder& plan)
@@ -1116,7 +1121,8 @@ void LogicalHttpRead::create(class RuntimePlanBuilder& plan)
   RuntimeOperatorType * opType = new HttpReadOperatorType(mPort,
 							  mPostResource,
 							  mAliveResource,
-							  getOutput(0)->getRecordType());
+							  getOutput(0)->getRecordType(),
+                                                          *mFree);
   plan.addOperatorType(opType);
   plan.mapOutputPort(this, 0, opType, 0);    
 }

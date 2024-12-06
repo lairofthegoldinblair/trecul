@@ -38,6 +38,7 @@
 
 LogicalInputQueue::LogicalInputQueue()
   :
+  mFree(nullptr),
   mFieldSeparator('\t'),
   mEscapeChar('\\')
 {
@@ -45,6 +46,7 @@ LogicalInputQueue::LogicalInputQueue()
 
 LogicalInputQueue::~LogicalInputQueue()
 {
+  delete mFree;
 }
 
 void LogicalInputQueue::check(PlanCheckContext& ctxt)
@@ -88,7 +90,9 @@ void LogicalInputQueue::check(PlanCheckContext& ctxt)
 
   try {
     IQLRecordTypeBuilder bld(ctxt, mStringFormat, false);
-    getOutput(0)->setRecordType(bld.getProduct());
+    const RecordType * outputTy = bld.getProduct();
+    getOutput(0)->setRecordType(outputTy);
+    mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), outputTy);
   } catch(std::exception& ex) {
     ctxt.logError(*this, ex.what());
   }
@@ -97,19 +101,20 @@ void LogicalInputQueue::check(PlanCheckContext& ctxt)
 void LogicalInputQueue::create(class RuntimePlanBuilder& plan)
 {
   RuntimeOperatorType * opType =
-    new NativeInputQueueOperatorType(getOutput(0)->getRecordType(),
+    new NativeInputQueueOperatorType(getOutput(0)->getRecordType(), *mFree,
 				     mFieldSeparator, mEscapeChar);
   plan.addOperatorType(opType);
-  plan.mapOutputPort(this, 0, opType, 0);  
+  plan.mapOutputPort(this, 0, opType, 0);
 }
 
 NativeInputQueueOperatorType::NativeInputQueueOperatorType(const RecordType * recordType,
+                                                           const TreculFreeOperation & freeFunctor,                               
 							   char fieldSeparator, char escapeChar)
   :
-  RuntimeOperatorType("NativeInputQueueOperatorType")
+  RuntimeOperatorType("NativeInputQueueOperatorType"),
+  mFreeRef(freeFunctor.getReference())
 {
   mMalloc = recordType->getMalloc();
-  mFree = recordType->getFree();
 
   // Records have tab delimited fields and 0 delimited records
   field_importer_type::createDefaultImport(recordType, recordType, fieldSeparator, 

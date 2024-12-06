@@ -233,8 +233,8 @@ void QueryStringOperator::parseQueryString()
     mParser.parse(input->c_str(), input->size());
     mParser.parse(NULL, 0);
   }
-  getMyOperatorType().mTransfer->execute(mBuffer, mTemporary, mOutput, 
-					 mRuntimeContext, false, false);
+  getMyOperatorType().mTransfer.execute(mBuffer, mTemporary, mOutput, 
+                                        mRuntimeContext, false, false);
   opType.mQueryStringFields.free(mTemporary);
 }
 
@@ -242,10 +242,11 @@ QueryStringTempRecord::QueryStringTempRecord()
 {
 }
 
-QueryStringTempRecord::QueryStringTempRecord(const RecordType * ty)
+QueryStringTempRecord::QueryStringTempRecord(const RecordType * ty,
+                                             const TreculFreeOperation & freeFunctor)
   :
   mMalloc(ty->getMalloc()),
-  mFree(ty->getFree())
+  mFreeRef(freeFunctor.getReference())
 {
   for(RecordType::const_member_iterator m = ty->begin_members(),
 	e = ty->end_members(); m != e; ++m) {
@@ -261,13 +262,17 @@ QueryStringTempRecord::~QueryStringTempRecord()
 LogicalQueryString::LogicalQueryString()
   :
   LogicalOperator(1,1,1,1),
-  mFieldsType(NULL),
-  mTransfer(NULL)
+  mFree(nullptr),
+  mFieldsType(nullptr),
+  mFieldsFree(nullptr),
+  mTransfer(nullptr)
 {
 }
 
 LogicalQueryString::~LogicalQueryString()
 {
+  delete mFree;
+  delete mFieldsFree;
   delete mTransfer;
 }
 
@@ -310,13 +315,16 @@ void LogicalQueryString::check(PlanCheckContext& log)
     output = "input.*, query.*";
   }
 
+  mFree = new TreculFreeOperation(log.getCodeGenerator(), getInput(0)->getRecordType());
+  
   // parse into this record.
   mFieldsType = RecordType::get(log, fields);
-  
+  mFieldsFree = new TreculFreeOperation(log.getCodeGenerator(), mFieldsType);
+
   std::vector<AliasedRecordType> types;
   types.push_back(AliasedRecordType("input", getInput(0)->getRecordType()));
   types.push_back(AliasedRecordType("query", mFieldsType));
-  mTransfer = new RecordTypeTransfer2(log, "queryStringXfer", types, output);
+  mTransfer = new TreculTransfer2(log, log.getCodeGenerator(), "queryStringXfer", types, output);
   getOutput(0)->setRecordType(mTransfer->getTarget());
 }
 
@@ -324,32 +332,35 @@ void LogicalQueryString::create(class RuntimePlanBuilder& plan)
 {
   
   RuntimeOperatorType * opType = 
-    new QueryStringOperatorType(mTransfer,
+    new QueryStringOperatorType(*mTransfer,
 				getInput(0)->getRecordType(),
+                                *mFree,
 				mInputField,
-				mFieldsType);
+				mFieldsType,
+                                *mFieldsFree);
   plan.addOperatorType(opType);
   plan.mapInputPort(this, 0, opType, 0);  
   plan.mapOutputPort(this, 0, opType, 0);  
 }
 
-QueryStringOperatorType::QueryStringOperatorType(const RecordTypeTransfer2 * transfer,
+QueryStringOperatorType::QueryStringOperatorType(const TreculTransfer2 & transfer,
 						 const RecordType * input,
+                                                 const TreculFreeOperation & freeFunctor,
 						 const std::string& queryStringField,
-						 const RecordType * fields)
+						 const RecordType * fields,
+                                                 const TreculFreeOperation & fieldsFreeFunctor)
   :
   RuntimeOperatorType("QueryStringOperatorType"),
-  mMalloc(transfer->getTarget()->getMalloc()),
-  mFree(input->getFree()),
-  mQueryStringFields(fields),
-  mTransfer(transfer->create()),
+  mMalloc(transfer.getTarget()->getMalloc()),
+  mFreeRef(freeFunctor.getReference()),
+  mQueryStringFields(fields, fieldsFreeFunctor),
+  mTransferRef(transfer.getReference()),
   mQueryString(input->getFieldAddress(queryStringField))
 {
 }
 
 QueryStringOperatorType::~QueryStringOperatorType()
 {
-  delete mTransfer;
 }
 
 RuntimeOperator * QueryStringOperatorType::create(RuntimeOperator::Services & services) const

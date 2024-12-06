@@ -1251,6 +1251,7 @@ public:
 class LogicalAsyncParser : public LogicalOperator
 {
 private:
+  TreculFreeOperation * mInputStreamFree;
   const RecordType * mFormat;
   std::string mStringFormat;
   std::string mMode;
@@ -1280,7 +1281,8 @@ private:
   // Create new records
   RecordTypeMalloc mStreamMalloc;
   RecordTypeMalloc mMalloc;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   // What am I importing
   const RecordType * mRecordType;
   // Is there a header to skip?
@@ -1298,7 +1300,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mStreamBlock);
     ar & BOOST_SERIALIZATION_NVP(mStreamMalloc);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mSkipHeader);
     ar & BOOST_SERIALIZATION_NVP(mCommentLine);
   }
@@ -1310,6 +1312,7 @@ public:
   GenericAsyncParserOperatorType(char fieldSeparator,
 				 char recordSeparator,
 				 const RecordType * inputStreamType,
+                                 const TreculFreeOperation & inputStreamTypeFreeFunctor,
 				 const RecordType * recordType,
 				 const RecordType * baseRecordType=NULL,
 				 const char * commentLine = "");
@@ -1321,6 +1324,11 @@ public:
     mSkipHeader = value;
   }
 
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }
+  
   RuntimeOperator * create(RuntimeOperator::Services & services) const;
 };
 
@@ -1352,6 +1360,7 @@ class LogicalBlockRead : public LogicalOperator
 {
 private:
   const RecordType * mStreamBlock;
+  TreculFreeOperation * mStreamBlockFree;
   std::string mFile;
   int32_t mBufferCapacity;
   bool mBucketed;
@@ -1531,7 +1540,8 @@ public:
   file_input_type mFileInput;
   // Create new records
   RecordTypeMalloc mMalloc;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   // Accessors into buffer (size INTEGER, buffer CHAR(N))
   FieldAddress mBufferSize;
   FieldAddress mBufferAddress;
@@ -1545,7 +1555,7 @@ public:
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
     ar & BOOST_SERIALIZATION_NVP(mFileInput);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mBufferSize);
     ar & BOOST_SERIALIZATION_NVP(mBufferAddress);
     ar & BOOST_SERIALIZATION_NVP(mBufferCapacity);
@@ -1556,12 +1566,13 @@ public:
 
 public:
   GenericAsyncReadOperatorType(const typename _ChunkStrategy::file_input& file,
-			    const RecordType * streamBlockType)
+                               const RecordType * streamBlockType,
+                               const TreculFreeOperation & streamBlockFreeFunctor)
     :
     RuntimeOperatorType("GenericAsyncReadOperatorType"),
     mFileInput(file),
     mMalloc(streamBlockType->getMalloc()),
-    mFree(streamBlockType->getFree()),
+    mFreeRef(streamBlockFreeFunctor.getReference()),
     mBufferSize(streamBlockType->getFieldAddress("size")),
     mBufferAddress(streamBlockType->getFieldAddress("buffer")),
     mBufferCapacity(streamBlockType->getMember("buffer").GetType()->GetSize())
@@ -1577,6 +1588,11 @@ public:
     return 1;
   }
 
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }
+  
   RuntimeOperator * create(RuntimeOperator::Services & services) const;
 };
 

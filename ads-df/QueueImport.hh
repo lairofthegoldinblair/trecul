@@ -41,6 +41,7 @@
 class LogicalInputQueue : public LogicalOperator
 {
 private:
+  TreculFreeOperation * mFree;
   std::string mStringFormat;
   char mFieldSeparator;
   char mEscapeChar;
@@ -99,7 +100,8 @@ public:
   std::vector<field_importer_type> mImporters;
   // Create new records
   RecordTypeMalloc mMalloc;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   
   // Serialization
   friend class boost::serialization::access;
@@ -109,13 +111,14 @@ public:
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
     ar & BOOST_SERIALIZATION_NVP(mImporters);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
   }
   NativeInputQueueOperatorType()
   {
   }  
 public:
   NativeInputQueueOperatorType(const RecordType * recordType,
+                               const TreculFreeOperation & freeFunctor,                               
 			       char fieldSeparator, char escapeChar);
 
   ~NativeInputQueueOperatorType();
@@ -129,6 +132,10 @@ public:
   field_importer_const_iterator end_importers() const 
   {
     return mImporters.end();
+  }
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
   }
 };
 

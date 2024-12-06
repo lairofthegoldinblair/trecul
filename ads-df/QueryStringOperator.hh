@@ -154,8 +154,10 @@ public:
 class LogicalQueryString : public LogicalOperator
 {
 private:
+  TreculFreeOperation * mFree;
   const RecordType * mFieldsType;
-  RecordTypeTransfer2 * mTransfer;
+  TreculFreeOperation * mFieldsFree;
+  TreculTransfer2 * mTransfer;
   std::string mInputField;
 public:
   LogicalQueryString();
@@ -170,7 +172,8 @@ public:
   typedef std::map<std::string, FieldAddress>::const_iterator const_iterator;
 private:
   RecordTypeMalloc mMalloc;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   std::map<std::string, FieldAddress> mFields;
 
   // Serialization
@@ -179,12 +182,12 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mFields);
   }
 public:
   QueryStringTempRecord();
-  QueryStringTempRecord(const RecordType * ty);
+  QueryStringTempRecord(const RecordType * ty, const TreculFreeOperation & freeFunctor);
   ~QueryStringTempRecord();
   RecordBuffer malloc() const
   {
@@ -202,6 +205,10 @@ public:
   {
     return mFields.end();
   }
+  void loadFunctions(TreculModule & m) 
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }
 };
 
 class QueryStringOperatorType : public RuntimeOperatorType
@@ -210,9 +217,11 @@ class QueryStringOperatorType : public RuntimeOperatorType
 private:
   // Create new records
   RecordTypeMalloc mMalloc;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   QueryStringTempRecord mQueryStringFields;
-  IQLTransferModule2 * mTransfer;
+  TreculTransferReference mTransferRef;
+  TreculTransfer2Runtime mTransfer;
   FieldAddress mQueryString;
   // Serialization
   friend class boost::serialization::access;
@@ -221,9 +230,9 @@ private:
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mQueryStringFields);
-    ar & BOOST_SERIALIZATION_NVP(mTransfer);
+    ar & BOOST_SERIALIZATION_NVP(mTransferRef);
     ar & BOOST_SERIALIZATION_NVP(mQueryString);
   }
   QueryStringOperatorType()
@@ -231,14 +240,22 @@ private:
   }  
 
 public:
-  QueryStringOperatorType(const RecordTypeTransfer2 * transfer,
+  QueryStringOperatorType(const TreculTransfer2 & transfer,
 			  const RecordType * input,
+                          const TreculFreeOperation & freeFunctor,
 			  const std::string& queryStringField,
-			  const RecordType * fields);
+			  const RecordType * fields,
+                          const TreculFreeOperation & fieldsFreeFunctor);
 
   ~QueryStringOperatorType();
 
   RuntimeOperator * create(RuntimeOperator::Services & services) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    mTransfer = m.getTransfer<TreculTransfer2Runtime>(mTransferRef);
+    mQueryStringFields.loadFunctions(m);
+  }
 };
 
 #endif

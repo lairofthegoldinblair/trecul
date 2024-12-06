@@ -117,8 +117,10 @@ private:
   std::string mHdfsFile;
   // Transfer to calculate any expressions in the
   // file string.
-  IQLTransferModule * mTransfer;
-  RecordTypeFree * mTransferFree;
+  TreculTransferReference mTransferRef;
+  TreculTransferRuntime mTransfer;
+  TreculFunctionReference mTransferFreeRef;
+  TreculRecordFreeRuntime mTransferFree;
   FieldAddress * mTransferOutput;
 
   // Serialization
@@ -127,37 +129,44 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_NVP(mHdfsFile);
-    ar & BOOST_SERIALIZATION_NVP(mTransfer);
-    ar & BOOST_SERIALIZATION_NVP(mTransferFree);
+    ar & BOOST_SERIALIZATION_NVP(mTransferRef);
+    ar & BOOST_SERIALIZATION_NVP(mTransferFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mTransferOutput);
   }
 public:
   MultiFileCreationPolicy()
     :
-    mTransfer(NULL),
-    mTransferFree(NULL),
     mTransferOutput(NULL)
   {
   }
   MultiFileCreationPolicy(const std::string& hdfsFile,
-			  const RecordTypeTransfer * argTransfer)
+			  const TreculTransfer * argTransfer,
+                          const TreculFreeOperation * argTransferFree)
     :
     mHdfsFile(hdfsFile),
-    mTransfer(argTransfer ? argTransfer->create() : NULL),
-    mTransferFree(argTransfer ? new RecordTypeFree(argTransfer->getTarget()->getFree()) : NULL),
-    mTransferOutput(argTransfer ? new FieldAddress(*argTransfer->getTarget()->begin_offsets()) : NULL)
+    mTransferRef(nullptr != argTransfer ? argTransfer->getReference() : TreculTransferReference()),
+    mTransferFreeRef(nullptr != argTransferFree ? argTransferFree->getReference() : TreculFunctionReference()),
+    mTransferOutput(nullptr != argTransfer ? new FieldAddress(*argTransfer->getTarget()->begin_offsets()) : NULL)
   {
   }
   ~MultiFileCreationPolicy()
   {
-    delete mTransfer;
-    delete mTransferFree;
     delete mTransferOutput;
   }
     
   bool requiresServiceCompletionPort() const
   {
     return false;
+  }
+
+  void loadFunctions(TreculModule & m)
+  {
+    if (!mTransferRef.empty()) {
+      mTransfer = m.getTransfer<TreculTransferRuntime>(mTransferRef);
+    }
+    if (!mTransferFreeRef.empty()) {
+      mTransferFree = m.getFunction<TreculRecordFreeRuntime>(mTransferFreeRef);
+    }
   }
 };
 
@@ -205,7 +214,7 @@ MultiFileCreation<_Factory>::MultiFileCreation(const MultiFileCreationPolicy& po
   mCommitter(NULL),
   mPartition(services.getPartition())
 {
-  if (NULL != policy.mTransfer) {
+  if (!!policy.mTransfer) {
     mRuntimeContext = new InterpreterContext();
   }
 }
@@ -249,9 +258,9 @@ MultiFileCreation<_Factory>::onRecord(RecordBuffer input,
     return mFile.begin()->second;
   } else {
     RecordBuffer output;
-    mPolicy.mTransfer->execute(input, output, mRuntimeContext, false);
+    mPolicy.mTransfer.execute(input, output, mRuntimeContext, false);
     std::string fileName(mPolicy.mTransferOutput->getVarcharPtr(output)->c_str());
-    mPolicy.mTransferFree->free(output);
+    mPolicy.mTransferFree.free(output);
     mRuntimeContext->clear();
     typename std::map<std::string, output_file_type *>::iterator it = mFile.find(fileName);
     if (mFile.end() == it) {
@@ -393,6 +402,9 @@ public:
   {
   }
   bool requiresServiceCompletionPort() const { return true; }
+  void loadFunctions(TreculModule & m)
+  {
+  }
 };
 
 template<typename _Factory>

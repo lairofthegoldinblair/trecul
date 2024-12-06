@@ -43,6 +43,7 @@
 #include <boost/graph/graph_traits.hpp>
 #include "RecordType.hh"
 
+class CodeGenerationContext;
 class LogicalOperator;
 class LogicalOperatorParam;
 class LogicalFifo;
@@ -72,7 +73,12 @@ public:
 
 class PlanCheckContext : public DynamicRecordContext
 {
+private:
+  CodeGenerationContext * mCodeGenerator;
 public:
+
+  PlanCheckContext();
+  ~PlanCheckContext();
   /**
    * LogicalOperators should call this when they 
    * see an error that prevents them from code generating
@@ -90,6 +96,11 @@ public:
    */
   void logFatal(const LogicalOperator& op,
 		const std::string& msg);
+
+  CodeGenerationContext & getCodeGenerator()
+  {
+    return *mCodeGenerator;
+  }
 };
 
 class LogicalOperatorParam
@@ -312,6 +323,11 @@ public:
 
   LogicalPlan(PlanCheckContext& ctxt);
   ~LogicalPlan();
+
+  PlanCheckContext & getContext()
+  {
+    return mContext;
+  }
 
   std::size_t numOperators() const
   {

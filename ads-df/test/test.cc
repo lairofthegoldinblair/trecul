@@ -54,6 +54,7 @@
 #include <boost/process/io.hpp>
 #include <boost/process/system.hpp>
 
+#include "CodeGenerationContext.hh"
 #include "IQLInterpreter.hh"
 #include "RecordParser.hh"
 #include "DataflowRuntime.hh"
@@ -69,6 +70,8 @@
 #include "ZLib.hh"
 #include "Zstd.hh"
 #include "FileWriteOperator.hh"
+#include "TableMetadata.hh"
+#include "TableOperator.hh"
 
 #define BOOST_TEST_MODULE MyTest
 #include <boost/test/unit_test.hpp>
@@ -536,11 +539,11 @@ BOOST_AUTO_TEST_CASE(testConcurrentFifo)
 struct test_gz
 {
   std::filesystem::path filename;
-  test_gz(const char * _filename)
+  test_gz(const char * _filename,
+          const std::string & testdata)
     :
     filename(_filename)
   {
-    std::string testdata = "aaaaaaaaaabbbbbbbbbccccccccccccccccccccccccccccccdddddddd";
     namespace io = boost::iostreams;
     {
       // put ostream in a scope so its d'tor
@@ -552,6 +555,12 @@ struct test_gz
       out.push(f);
       out << testdata;
     }  
+  }
+  
+  test_gz(const char * _filename)
+    :
+    test_gz(_filename, "aaaaaaaaaabbbbbbbbbccccccccccccccccccccccccccccccdddddddd")
+  {
   }
   
   test_gz()
@@ -1155,14 +1164,16 @@ BOOST_AUTO_TEST_CASE(testPagedHashTable)
 
   // Use 
   {
-    RecordTypeFunction tableHash(ctxt, "chartablehash", tableOnly, "#(a)");
-    paged_hash_table table(true, tableHash.create());
-    
-    // Test probe of an empty table
-    RecordTypeFunction probeHash(ctxt, "charprobehash", probeOnly, "#(e)");
-    RecordTypeFunction equals(ctxt, "chareq", types, "a = e");
-    paged_hash_table::probe_predicate probe(probeHash.create(), equals.create());
+    CodeGenerationContext codeGen;
+    TreculFunction tableHash(ctxt, codeGen, "chartablehash", tableOnly, "#(a)");
+    TreculFunction probeHash(ctxt, codeGen, "charprobehash", probeOnly, "#(e)");
+    TreculFunction equals(ctxt, codeGen, "chareq", types, "a = e");
+    TreculModule module(codeGen);
+    paged_hash_table table(true, module.getFunction<TreculFunctionRuntime>(tableHash.getReference()));
+    paged_hash_table::probe_predicate probe(module.getFunction<TreculFunctionRuntime>(probeHash.getReference()),
+                                            module.getFunction<TreculFunctionRuntime>(equals.getReference()));
 
+    // Test probe of an empty table
     paged_hash_table::query_iterator<paged_hash_table::probe_predicate> qit(probe);
     qit.mQueryPredicate.ProbeThis = rhs2;
     table.find(qit, &runtimeCtxt);
@@ -1852,7 +1863,7 @@ BOOST_AUTO_TEST_CASE(testSortKeyParse)
 
 BOOST_AUTO_TEST_CASE(testLessThan1)
 {
-  DynamicRecordContext ctxt;
+  PlanCheckContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22)));
@@ -1861,8 +1872,11 @@ BOOST_AUTO_TEST_CASE(testLessThan1)
   std::vector<std::string> fields;
   fields.push_back("akid");
   
-  RecordTypeFunction * lessThan = LessThanFunction::get(ctxt, &recTy, &recTy, 
-							fields, "testEq");
+  TreculFunction * lessThanFun = LessThanFunction::get(ctxt, &recTy, &recTy, 
+                                                    fields, "testEq");
+  TreculModule module(ctxt.getCodeGenerator().takeModule());
+  TreculFunctionRuntime lessThan = module.getFunction<TreculFunctionRuntime>(lessThanFun->getReference());
+  
   InterpreterContext runtimeCtxt;
   
   boost::gregorian::date d1 = boost::gregorian::from_string("2011-04-07");
@@ -1877,8 +1891,8 @@ BOOST_AUTO_TEST_CASE(testLessThan1)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -1886,14 +1900,14 @@ BOOST_AUTO_TEST_CASE(testLessThan1)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
-  
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
+  delete lessThanFun;  
 }
 
 BOOST_AUTO_TEST_CASE(testLessThan2)
 {
-  DynamicRecordContext ctxt;
+  PlanCheckContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22)));
@@ -1903,8 +1917,11 @@ BOOST_AUTO_TEST_CASE(testLessThan2)
   fields.push_back("akid");
   fields.push_back("coop_id");
   
-  RecordTypeFunction * lessThan = LessThanFunction::get(ctxt, &recTy, &recTy, 
-							fields, "testEq");
+  TreculFunction * lessThanFun = LessThanFunction::get(ctxt, &recTy, &recTy, 
+                                                    fields, "testEq");
+  TreculModule module(ctxt.getCodeGenerator().takeModule());
+  TreculFunctionRuntime lessThan = module.getFunction<TreculFunctionRuntime>(lessThanFun->getReference());
+
   InterpreterContext runtimeCtxt;
   
   boost::gregorian::date d1 = boost::gregorian::from_string("2011-04-07");
@@ -1919,8 +1936,8 @@ BOOST_AUTO_TEST_CASE(testLessThan2)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -1928,8 +1945,8 @@ BOOST_AUTO_TEST_CASE(testLessThan2)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1233, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -1937,8 +1954,8 @@ BOOST_AUTO_TEST_CASE(testLessThan2)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -1946,13 +1963,14 @@ BOOST_AUTO_TEST_CASE(testLessThan2)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));  
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));  
+  delete lessThanFun;
 }
 
 BOOST_AUTO_TEST_CASE(testLessThan3)
 {
-  DynamicRecordContext ctxt;
+  PlanCheckContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22)));
@@ -1963,8 +1981,11 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   fields.push_back("coop_id");
   fields.push_back("cre_date");
   
-  RecordTypeFunction * lessThan = LessThanFunction::get(ctxt, &recTy, &recTy, 
-							fields, "testEq");
+  TreculFunction * lessThanFun = LessThanFunction::get(ctxt, &recTy, &recTy, 
+                                                    fields, "testEq");
+  TreculModule module(ctxt.getCodeGenerator().takeModule());
+  TreculFunctionRuntime lessThan = module.getFunction<TreculFunctionRuntime>(lessThanFun->getReference());
+
   InterpreterContext runtimeCtxt;
   
   boost::gregorian::date d1 = boost::gregorian::from_string("2011-04-07");
@@ -1985,8 +2006,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d2, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -1994,8 +2015,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
 
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2003,8 +2024,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
 
   // Switch order of second keys
   recTy.setDate("cre_date", d1, A);
@@ -2013,8 +2034,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1233, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d2, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2022,8 +2043,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1233, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2031,8 +2052,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1233, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
 
   // Make second key equal and muck with the third key
   recTy.setDate("cre_date", d1, A);
@@ -2041,8 +2062,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d2, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2050,8 +2071,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2059,8 +2080,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
   ///////////////////////////////////////////////////////////////
   // Second suite here tests when the first keys are equal.
@@ -2072,8 +2093,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d2, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2081,8 +2102,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
 
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2090,8 +2111,8 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
 
   ///////////////////////////////////////////////////////////////
   // Third suite here tests when the first two keys are equal
@@ -2102,27 +2123,27 @@ BOOST_AUTO_TEST_CASE(testLessThan3)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d2, A);
   recTy.setDate("cre_date", d1, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
 
   recTy.setDate("cre_date", d1, A);
   recTy.setDate("cre_date", d1, B);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
-  delete lessThan;
+  delete lessThanFun;
   recTy.getFree().free(A);
   recTy.getFree().free(B);
 }
 
 BOOST_AUTO_TEST_CASE(testLessThan7)
 {
-  DynamicRecordContext ctxt;
+  PlanCheckContext ctxt;
   std::vector<RecordMember> members;
   std::vector<std::string> fields;
   for(int32_t i=0; i<9; ++i) {
@@ -2133,8 +2154,11 @@ BOOST_AUTO_TEST_CASE(testLessThan7)
     }
   }
   RecordType recTy(ctxt, members);  
-  RecordTypeFunction * lessThan = LessThanFunction::get(ctxt, &recTy, &recTy, 
-							fields, "testEq");
+  TreculFunction * lessThanFun = LessThanFunction::get(ctxt, &recTy, &recTy, 
+                                                    fields, "testEq");
+  TreculModule module(ctxt.getCodeGenerator().takeModule());
+  TreculFunctionRuntime lessThan = module.getFunction<TreculFunctionRuntime>(lessThanFun->getReference());
+
   InterpreterContext runtimeCtxt;  
   RecordBuffer A = recTy.GetMalloc()->malloc();
   RecordBuffer B = recTy.GetMalloc()->malloc();
@@ -2144,34 +2168,34 @@ BOOST_AUTO_TEST_CASE(testLessThan7)
     recTy.setInt32(field, 12, A);
     recTy.setInt32(field, 12, B);
   }
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
 
   recTy.setInt32("a1", 9, A);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
 
   recTy.setInt32("a6", 6, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
 
   recTy.setInt32("a1", 12, A);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
 
   recTy.setInt32("a4", 6, A);
   recTy.setInt32("a5", 20, A);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
 
-  delete lessThan;
+  delete lessThanFun;
   recTy.getFree().free(A);
   recTy.getFree().free(B);
 }
 
 BOOST_AUTO_TEST_CASE(testCompare1)
 {
-  DynamicRecordContext ctxt;
+  PlanCheckContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22)));
@@ -2180,7 +2204,10 @@ BOOST_AUTO_TEST_CASE(testCompare1)
   std::vector<SortKey> fields;
   fields.push_back(SortKey("akid"));
   
-  RecordTypeFunction * lessThan = CompareFunction::get(ctxt, &recTy, &recTy, fields, fields);
+  TreculFunction * lessThanFun = CompareFunction::get(ctxt, &recTy, &recTy, fields, fields);
+  TreculModule module(ctxt.getCodeGenerator().takeModule());
+  TreculFunctionRuntime lessThan = module.getFunction<TreculFunctionRuntime>(lessThanFun->getReference());
+
   InterpreterContext runtimeCtxt;
   
   boost::gregorian::date d1 = boost::gregorian::from_string("2011-04-07");
@@ -2195,8 +2222,8 @@ BOOST_AUTO_TEST_CASE(testCompare1)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2204,17 +2231,17 @@ BOOST_AUTO_TEST_CASE(testCompare1)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
-  delete lessThan;
+  delete lessThanFun;
   recTy.getFree().free(A);
   recTy.getFree().free(B);
 }
 
 BOOST_AUTO_TEST_CASE(testCompare3)
 {  
-  DynamicRecordContext ctxt;
+  PlanCheckContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22)));
@@ -2225,7 +2252,9 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   fields.push_back(SortKey("coop_id"));
   fields.push_back(SortKey("cre_date"));
   
-  RecordTypeFunction * lessThan = CompareFunction::get(ctxt, &recTy, &recTy, fields, fields);
+  TreculFunction * lessThanFun = CompareFunction::get(ctxt, &recTy, &recTy, fields, fields);
+  TreculModule module(ctxt.getCodeGenerator().takeModule());
+  TreculFunctionRuntime lessThan = module.getFunction<TreculFunctionRuntime>(lessThanFun->getReference());
   InterpreterContext runtimeCtxt;
   
   boost::gregorian::date d1 = boost::gregorian::from_string("2011-04-07");
@@ -2246,8 +2275,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d2, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2255,8 +2284,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
 
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2264,8 +2293,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
 
   // Switch order of second keys
   recTy.setDate("cre_date", d1, A);
@@ -2274,8 +2303,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1233, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d2, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2283,8 +2312,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1233, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2292,8 +2321,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1233, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
 
   // Make second key equal and muck with the third key
   recTy.setDate("cre_date", d1, A);
@@ -2302,8 +2331,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d2, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2311,8 +2340,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2320,8 +2349,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
   
   ///////////////////////////////////////////////////////////////
   // Second suite here tests when the first keys are equal.
@@ -2333,8 +2362,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d2, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2342,8 +2371,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(B,A,&runtimeCtxt));
 
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2351,8 +2380,8 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d1, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(B,A,&runtimeCtxt));
 
   ///////////////////////////////////////////////////////////////
   // Third suite here tests when the first two keys are equal
@@ -2363,27 +2392,27 @@ BOOST_AUTO_TEST_CASE(testCompare3)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d2, A);
   recTy.setDate("cre_date", d1, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
 
   recTy.setDate("cre_date", d1, A);
   recTy.setDate("cre_date", d1, B);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
-  delete lessThan;
+  delete lessThanFun;
   recTy.getFree().free(A);
   recTy.getFree().free(B);
 }
 
 BOOST_AUTO_TEST_CASE(testCompareNull)
 {
-  DynamicRecordContext ctxt;
+  PlanCheckContext ctxt;
   std::vector<RecordMember> members;
   members.push_back(RecordMember("cre_date", DateType::Get(ctxt, true)));
   members.push_back(RecordMember("akid", CharType::Get(ctxt, 22, true)));
@@ -2392,7 +2421,9 @@ BOOST_AUTO_TEST_CASE(testCompareNull)
   std::vector<SortKey> fields;
   fields.push_back(SortKey("akid"));
   
-  RecordTypeFunction * lessThan = CompareFunction::get(ctxt, &recTy, &recTy, fields, fields);
+  TreculFunction * lessThanFun = CompareFunction::get(ctxt, &recTy, &recTy, fields, fields);
+  TreculModule module(ctxt.getCodeGenerator().takeModule());
+  TreculFunctionRuntime lessThan = module.getFunction<TreculFunctionRuntime>(lessThanFun->getReference());
   InterpreterContext runtimeCtxt;
   
   boost::gregorian::date d1 = boost::gregorian::from_string("2011-04-07");
@@ -2407,8 +2438,8 @@ BOOST_AUTO_TEST_CASE(testCompareNull)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1fwYCKkjANwAACA8gDg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.setDate("cre_date", d1, A);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", A);
@@ -2416,18 +2447,18 @@ BOOST_AUTO_TEST_CASE(testCompareNull)
   recTy.setDate("cre_date", d2, B);
   recTy.setChar("akid", "vTF1NDG8m01MZwAAzAGIdg", B);
   recTy.setInt32("coop_id", 1231, B);
-  BOOST_CHECK_EQUAL(0, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(0, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
   
   recTy.getFieldAddress("akid").setNull(A);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(1, lessThan.execute(B,A,&runtimeCtxt));
 
   recTy.getFieldAddress("akid").setNull(B);
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(A,B,&runtimeCtxt));
-  BOOST_CHECK_EQUAL(-1, lessThan->execute(B,A,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(A,B,&runtimeCtxt));
+  BOOST_CHECK_EQUAL(-1, lessThan.execute(B,A,&runtimeCtxt));
 
-  delete lessThan;
+  delete lessThanFun;
   recTy.getFree().free(A);
   recTy.getFree().free(B);
 }
@@ -2703,14 +2734,51 @@ BOOST_AUTO_TEST_CASE(testSortRun)
   }
 }
 
+std::pair<RuntimeGenerateOperatorType *, const RecordType *>
+make_generate_operator_type(PlanCheckContext & ctxt, const std::string & prog, uint64_t upperBound)
+{
+  // Create the state type here.
+  std::vector<RecordMember> members;
+  RecordType emptyType(ctxt, members);
+  members.push_back(RecordMember("RECORDCOUNT", Int64Type::Get(ctxt)));
+  members.push_back(RecordMember("PARTITIONCOUNT", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("PARTITION", Int32Type::Get(ctxt)));
+  RecordType stateType(ctxt, members);
+
+  std::vector<AliasedRecordType> inputAndEmpty;
+  inputAndEmpty.push_back(AliasedRecordType("input", &emptyType));
+  inputAndEmpty.push_back(AliasedRecordType("input", &emptyType));
+  TreculFunction f(ctxt, ctxt.getCodeGenerator(), "myLoopUpperBound", inputAndEmpty, 
+                   boost::lexical_cast<std::string>(upperBound));
+
+  std::vector<AliasedRecordType> inputAndState;
+  inputAndState.push_back(AliasedRecordType("input", &emptyType));
+  inputAndState.push_back(AliasedRecordType("state", &stateType));
+  TreculTransfer2 xfer(ctxt, ctxt.getCodeGenerator(), "myGenerate", inputAndState, prog);
+  auto opType = new RuntimeGenerateOperatorType("generate",
+                                                TreculFreeOperation(ctxt.getCodeGenerator(), &emptyType),
+                                                &stateType,
+                                                TreculFreeOperation(ctxt.getCodeGenerator(), &stateType),
+                                                xfer,
+                                                &f);
+  return std::make_pair(std::move(opType), xfer.getTarget());
+}
+
 BOOST_AUTO_TEST_CASE(testSimpleScheduler)
 {
-  DynamicRecordContext ctxt;
+  PlanCheckContext ctxt;
   DataflowScheduler scheduler;
-  RuntimeGenerateOperatorType opType1(ctxt, "'this is ground control...' AS a", 24);
-  RuntimeDevNullOperatorType opType2(opType1.getOutputType());
+  RuntimeGenerateOperatorType * opType1;
+  const RecordType * opType1OutputType;
+  std::tie(opType1, opType1OutputType) = make_generate_operator_type(ctxt, "'this is ground control...' AS a", 24);
 
-  RuntimeGenerateOperator op1(scheduler, opType1);
+  RuntimeDevNullOperatorType opType2(TreculFreeOperation(ctxt.getCodeGenerator(), opType1OutputType));
+
+  TreculModule module(ctxt.getCodeGenerator().takeModule());
+  opType1->loadFunctions(module);
+  opType2.loadFunctions(module);
+
+  RuntimeGenerateOperator op1(scheduler, *opType1);
   RuntimeDevNullOperator op2(scheduler, opType2);
   
   InProcessFifo fifo(scheduler, scheduler);
@@ -2728,22 +2796,30 @@ BOOST_AUTO_TEST_CASE(testSimpleScheduler)
   // Do the work
   scheduler.run();
   scheduler.cleanup();
+  delete opType1;
 }
 
 BOOST_AUTO_TEST_CASE(testSimpleSchedulerWithExpression)
 {
-  DynamicRecordContext ctxt;
+  PlanCheckContext ctxt;
   DataflowScheduler scheduler;
-  RuntimeGenerateOperatorType opType1(ctxt, "'this is ground control...' AS a", 24);
-  opType1.getOutputType()->dump();
-  RecordTypeTransfer t(ctxt, "xfer5", opType1.getOutputType(), "input.*, a+a AS b, a AS c");
+  RuntimeGenerateOperatorType * opType1;
+  const RecordType * opType1OutputType;
+  std::tie(opType1, opType1OutputType) = make_generate_operator_type(ctxt, "'this is ground control...' AS a", 24);
+  opType1OutputType->dump();
+  TreculTransfer t(ctxt, ctxt.getCodeGenerator(), "xfer5", opType1OutputType, "input.*, a+a AS b, a AS c");
   t.getTarget()->dump();
-  std::vector<const RecordTypeTransfer *> transfers;
+  std::vector<const TreculTransfer *> transfers;
   transfers.push_back(&t);
-  RuntimeCopyOperatorType opType2(*opType1.getOutputType()->GetFree(), transfers);
-  RuntimeDevNullOperatorType opType3(t.getTarget());
+  RuntimeCopyOperatorType opType2(TreculFreeOperation(ctxt.getCodeGenerator(), opType1OutputType), transfers);
+  RuntimeDevNullOperatorType opType3(TreculFreeOperation(ctxt.getCodeGenerator(), t.getTarget()));
 
-  RuntimeGenerateOperator op1(scheduler, opType1);
+  TreculModule module(ctxt.getCodeGenerator().takeModule());
+  opType1->loadFunctions(module);
+  opType2.loadFunctions(module);
+  opType3.loadFunctions(module);
+  
+  RuntimeGenerateOperator op1(scheduler, *opType1);
   RuntimeCopyOperator op2(scheduler, opType2);
   RuntimeDevNullOperator op3(scheduler, opType3);
   
@@ -2768,20 +2844,23 @@ BOOST_AUTO_TEST_CASE(testSimpleSchedulerWithExpression)
   // //Do the work
   scheduler.run();
   scheduler.cleanup();
+  delete opType1;
 }
 
 // BOOST_AUTO_TEST_CASE(testSimpleSchedulerWithHashGroupBy)
 // {
-//   DynamicRecordContext ctxt;
+//   PlanCheckContext ctxt;
 //   DataflowScheduler scheduler;
-//   RuntimeGenerateOperatorType opType1(ctxt, "'this is ground control...' AS a", 24);
-//   opType1.getOutputType()->dump();
-//   RecordTypeTransfer init(ctxt, "xfer5init", opType1.getOutputType(), "a AS a1, 0 AS cnt");
+  // RuntimeGenerateOperatorType * opType1;
+  // const RecordType * opType1OutputType;
+//   std::tie(opType1, opType1OutputType) = make_generate_operator_type(ctxt, "'this is ground control...' AS a", 24);
+//   opType1OutputType->dump();
+//   TreculTransfer init(ctxt, ctxt.getCodeGenerator(), "xfer5init", opType1OutputType, "a AS a1, 0 AS cnt");
 //   std::vector<const RecordType *> types;
-//   types.push_back(opType1.getOutputType());
+//   types.push_back(opType1OutputType);
 //   types.push_back(init.getTarget());
 //   RecordTypeInPlaceUpdate up(ctxt, "xfer5up", types, "SET cnt = cnt + 1");
-//   RuntimeHashGroupByOperatorType opType2(*opType1.getOutputType()->GetFree(), 0, &init, &up);
+//   RuntimeHashGroupByOperatorType opType2(*opType1OutputType->GetFree(), 0, &init, &up);
 //   RuntimeDevNullOperatorType opType3(init.getTarget());
 
 //   RuntimeGenerateOperator op1(scheduler, opType1);
@@ -2814,19 +2893,27 @@ BOOST_AUTO_TEST_CASE(testSimpleSchedulerWithExpression)
 template <class _OpType, class _Op>
 void simpleSchedulerWithGroupBy()
 {
-  DynamicRecordContext ctxt;
+  PlanCheckContext ctxt;
   DataflowScheduler scheduler;
-  RuntimeGenerateOperatorType opType1(ctxt, "'this is ground control...' AS a, RECORDCOUNT/5 AS b, 77 AS c", 24);
+  RuntimeGenerateOperatorType * opType1;
+  const RecordType * opType1OutputType;
+  std::tie(opType1, opType1OutputType) = make_generate_operator_type(ctxt, "'this is ground control...' AS a, RECORDCOUNT/5 AS b, 77 AS c", 24);
   std::vector<std::string> groupByKeys;
   groupByKeys.push_back("b");
   std::vector<AggregateFunctionSpec> aggs;
   aggs.push_back(AggregateFunctionSpec("*", AggregateFunctionSpec::COUNT, "cnt"));
   aggs.push_back(AggregateFunctionSpec("c", AggregateFunctionSpec::SUM, "s"));
-  GroupBy<_OpType> groupBy(ctxt, opType1.getOutputType(), groupByKeys, aggs);
-  RuntimePrintOperatorType opType3(groupBy.getOutputType(), 5, 1, nullptr, nullptr);
-  RuntimeDevNullOperatorType opType4(groupBy.getOutputType());
+  GroupBy<_OpType> groupBy(ctxt, opType1OutputType, groupByKeys, aggs);
+  RuntimePrintOperatorType opType3(groupBy.getOutputType(), TreculPrintOperation(ctxt.getCodeGenerator(), groupBy.getOutputType()), 5, 1, nullptr, nullptr, nullptr);
+  RuntimeDevNullOperatorType opType4(TreculFreeOperation(ctxt.getCodeGenerator(), groupBy.getOutputType()));
 
-  RuntimeGenerateOperator op1(scheduler, opType1);
+  TreculModule module(ctxt.getCodeGenerator().takeModule());
+  opType1->loadFunctions(module);
+  groupBy.getOpType().loadFunctions(module);
+  opType3.loadFunctions(module);
+  opType4.loadFunctions(module);
+  
+  RuntimeGenerateOperator op1(scheduler, *opType1);
   _Op op2(scheduler, groupBy.getOpType());
   RuntimePrintOperator op3(scheduler, opType3);
   RuntimeDevNullOperator op4(scheduler, opType4);
@@ -2858,6 +2945,7 @@ void simpleSchedulerWithGroupBy()
   // //Do the work
   scheduler.run();
   scheduler.cleanup();
+  delete opType1;
 }
 
 BOOST_AUTO_TEST_CASE(testSimpleSchedulerWithHashGroupBy)
@@ -2874,41 +2962,51 @@ BOOST_AUTO_TEST_CASE(testSimpleSchedulerWithSortGroupBy)
 
 BOOST_AUTO_TEST_CASE(testSimpleSchedulerWithHashJoin)
 {
-  DynamicRecordContext ctxt;
+  PlanCheckContext ctxt;
   DataflowScheduler scheduler;
   std::vector<RecordMember> emptyMembers;
   RecordType emptyTy(ctxt, emptyMembers);
-  RuntimeGenerateOperatorType opType1(ctxt, "RECORDCOUNT AS a", 24);
-  RuntimeGenerateOperatorType opType2(ctxt, "RECORDCOUNT+RECORDCOUNT AS c, RECORDCOUNT AS b", 12);
+  RuntimeGenerateOperatorType * opType1;
+  const RecordType * opType1OutputType;
+  std::tie(opType1, opType1OutputType) = make_generate_operator_type(ctxt, "RECORDCOUNT AS a", 24);
+  RuntimeGenerateOperatorType * opType2;
+  const RecordType * opType2OutputType;
+  std::tie(opType2, opType2OutputType) = make_generate_operator_type(ctxt, "RECORDCOUNT+RECORDCOUNT AS c, RECORDCOUNT AS b", 12);
   std::vector<const RecordType *> tableOnly;
-  tableOnly.push_back(opType1.getOutputType());
+  tableOnly.push_back(opType1OutputType);
   tableOnly.push_back(&emptyTy);
   std::vector<const RecordType *> probeOnly;
-  probeOnly.push_back(opType2.getOutputType());
+  probeOnly.push_back(opType2OutputType);
   probeOnly.push_back(&emptyTy);
   std::vector<const RecordType *> tableAndProbe;
-  tableAndProbe.push_back(opType1.getOutputType());
-  tableAndProbe.push_back(opType2.getOutputType());
-  RecordTypeFunction tableHash(ctxt, "tableHash", tableOnly, "#(a)");
-  RecordTypeFunction probeHash(ctxt, "probeHash", probeOnly, "#(b)");
+  tableAndProbe.push_back(opType1OutputType);
+  tableAndProbe.push_back(opType2OutputType);
+  TreculFunction tableHash(ctxt, ctxt.getCodeGenerator(), "tableHash", tableOnly, "#(a)");
+  TreculFunction probeHash(ctxt, ctxt.getCodeGenerator(), "probeHash", probeOnly, "#(b)");
   //Table is first argument in equals!
-  RecordTypeFunction equals (ctxt, "eq", tableAndProbe, "a = b");
+  TreculFunction equals (ctxt, ctxt.getCodeGenerator(), "eq", tableAndProbe, "a = b");
   std::vector<AliasedRecordType> types;
-  types.push_back(AliasedRecordType("table", opType1.getOutputType()));
-  types.push_back(AliasedRecordType("probe", opType2.getOutputType()));
-  RecordTypeTransfer2 output(ctxt, "makeoutput", types, "table.*, probe.*");
+  types.push_back(AliasedRecordType("table", opType1OutputType));
+  types.push_back(AliasedRecordType("probe", opType2OutputType));
+  TreculTransfer2 output(ctxt, ctxt.getCodeGenerator(), "makeoutput", types, "table.*, probe.*");
 
-  RuntimeHashJoinOperatorType opType3(*opType1.getOutputType()->GetFree(),
-				      *opType2.getOutputType()->GetFree(),
-				      &tableHash,
-				      &probeHash,
-				      &equals,
-				      &output);
+  RuntimeHashJoinOperatorType opType3(TreculFreeOperation(ctxt.getCodeGenerator(), opType1OutputType),
+				      TreculFreeOperation(ctxt.getCodeGenerator(), opType2OutputType),
+				      tableHash,
+				      probeHash,
+				      equals,
+				      output);
 
-  RuntimeDevNullOperatorType opType4(output.getTarget());
+  RuntimeDevNullOperatorType opType4(TreculFreeOperation(ctxt.getCodeGenerator(), output.getTarget()));
 
-  RuntimeGenerateOperator op1(scheduler, opType1);
-  RuntimeGenerateOperator op2(scheduler, opType2);
+  TreculModule module(ctxt.getCodeGenerator().takeModule());
+  opType1->loadFunctions(module);
+  opType2->loadFunctions(module);
+  opType3.loadFunctions(module);
+  opType4.loadFunctions(module);
+  
+  RuntimeGenerateOperator op1(scheduler, *opType1);
+  RuntimeGenerateOperator op2(scheduler, *opType2);
   RuntimeHashJoinOperator op3(scheduler, opType3);
   RuntimeDevNullOperator op4(scheduler, opType4);
   
@@ -2942,30 +3040,36 @@ BOOST_AUTO_TEST_CASE(testSimpleSchedulerWithHashJoin)
   //Do the work
   scheduler.run();
   scheduler.cleanup();
+  delete opType1;
+  delete opType2;
 }
 
 
 BOOST_AUTO_TEST_CASE(testSortMergeJoin)
 {
-  DynamicRecordContext ctxt;
-  RuntimeGenerateOperatorType * leftType = new RuntimeGenerateOperatorType(ctxt, "2*RECORDCOUNT AS a", 5);
+  PlanCheckContext ctxt;
+  RuntimeGenerateOperatorType * leftType;
+  const RecordType * leftOutputType;
+  std::tie(leftType, leftOutputType) = make_generate_operator_type(ctxt, "2*RECORDCOUNT AS a", 5);
   std::vector<SortKey> leftKeys;
   leftKeys.push_back(SortKey("a"));
-  RuntimeGenerateOperatorType * rightType = new RuntimeGenerateOperatorType(ctxt, "RECORDCOUNT AS b", 10);
+  RuntimeGenerateOperatorType * rightType;
+  const RecordType * rightOutputType;
+  std::tie(rightType, rightOutputType) = make_generate_operator_type(ctxt, "RECORDCOUNT AS b", 10);
   std::vector<SortKey> rightKeys;
   rightKeys.push_back(SortKey("b"));
   
   SortMergeJoin smj(ctxt, 
 		    SortMergeJoin::RIGHT_OUTER,
-		    leftType->getOutputType(),
-		    rightType->getOutputType(),
+		    leftOutputType,
+		    rightOutputType,
 		    leftKeys,
 		    rightKeys,
 		    "a=b",
 		    "a,b");
   RuntimeOperatorType * joinType = smj.create();
-  RuntimePrintOperatorType * printType = new RuntimePrintOperatorType(smj.getOutputType(), 10, 1, nullptr, nullptr);
-  RuntimeDevNullOperatorType * devNullType = new RuntimeDevNullOperatorType(smj.getOutputType());
+  RuntimePrintOperatorType * printType = new RuntimePrintOperatorType(smj.getOutputType(), TreculPrintOperation(ctxt.getCodeGenerator(), smj.getOutputType()), 10, 1, nullptr, nullptr, nullptr);
+  RuntimeDevNullOperatorType * devNullType = new RuntimeDevNullOperatorType(TreculFreeOperation(ctxt.getCodeGenerator(), smj.getOutputType()));
   RuntimeOperatorPlan plan(1,true);
   plan.addOperatorType(leftType);
   plan.addOperatorType(rightType);				
@@ -2976,6 +3080,8 @@ BOOST_AUTO_TEST_CASE(testSortMergeJoin)
   plan.connectStraight(rightType, 0, joinType, RuntimeSortMergeJoinOperatorType::RIGHT_PORT, true, true);
   plan.connectStraight(joinType, 0, printType, 0, true, true);
   plan.connectStraight(printType, 0, devNullType, 0, true, true);
+  plan.setModule(std::make_unique<TreculModule>(ctxt.getCodeGenerator().takeModule()));
+  plan.loadFunctions();
   RuntimeProcess p(0,0,1,plan);
   p.run();
 }
@@ -2983,18 +3089,22 @@ BOOST_AUTO_TEST_CASE(testSortMergeJoin)
 BOOST_AUTO_TEST_CASE(testSortMerge)
 {
   std::cout << "testSortMerge" << std::endl;
-  DynamicRecordContext ctxt;
-  RuntimeGenerateOperatorType * leftType = new RuntimeGenerateOperatorType(ctxt, "2*RECORDCOUNT AS a", 10);
-  RuntimeGenerateOperatorType * rightType = new RuntimeGenerateOperatorType(ctxt, "RECORDCOUNT AS a", 20);
+  PlanCheckContext ctxt;
+  RuntimeGenerateOperatorType * leftType;
+  const RecordType * leftOutputType;
+  std::tie(leftType, leftOutputType) = make_generate_operator_type(ctxt, "2*RECORDCOUNT AS a", 10);
+  RuntimeGenerateOperatorType * rightType;
+  const RecordType * rightOutputType;
+  std::tie(rightType, rightOutputType) = make_generate_operator_type(ctxt, "RECORDCOUNT AS a", 20);
   std::vector<std::string> leftKeys;
   leftKeys.push_back("a");
   
   SortMerge sm(ctxt, 
-	       leftType->getOutputType(),
+	       leftOutputType,
 	       leftKeys);
   RuntimeOperatorType * joinType = sm.create();
-  RuntimePrintOperatorType * printType = new RuntimePrintOperatorType(sm.getOutputType(), 30, 1, nullptr, nullptr);
-  RuntimeDevNullOperatorType * devNullType = new RuntimeDevNullOperatorType(sm.getOutputType());
+  RuntimePrintOperatorType * printType = new RuntimePrintOperatorType(sm.getOutputType(), TreculPrintOperation(ctxt.getCodeGenerator(), sm.getOutputType()), 30, 1, nullptr, nullptr, nullptr);
+  RuntimeDevNullOperatorType * devNullType = new RuntimeDevNullOperatorType(TreculFreeOperation(ctxt.getCodeGenerator(), sm.getOutputType()));
   RuntimeOperatorPlan plan(1,true);
   plan.addOperatorType(leftType);
   plan.addOperatorType(rightType);				
@@ -3005,6 +3115,8 @@ BOOST_AUTO_TEST_CASE(testSortMerge)
   plan.connectStraight(rightType, 0, joinType, 1, true, true);
   plan.connectStraight(joinType, 0, printType, 0, true, true);
   plan.connectStraight(printType, 0, devNullType, 0, true, true);
+  plan.setModule(std::make_unique<TreculModule>(ctxt.getCodeGenerator().takeModule()));
+  plan.loadFunctions();
   RuntimeProcess p(0,0,1,plan);
   p.run();
 }
@@ -3027,10 +3139,13 @@ BOOST_AUTO_TEST_CASE(testSort)
   p.run();
 }
 
-struct SerialOrganizedTableTestFixture
+struct SerialOrganizedTableTestFixtureBase
 {
+  std::array<std::string, 3> testdata_;
   std::vector<std::unique_ptr<test_gz>> files_;
-  SerialOrganizedTableTestFixture()
+  SerialOrganizedTableTestFixtureBase(const std::array<std::string, 3> & testdata)
+    :
+    testdata_(testdata)
   {
     std::filesystem::create_directory("./data", ".");
     std::filesystem::create_directory("./data/1_1", ".");
@@ -3042,14 +3157,74 @@ struct SerialOrganizedTableTestFixture
     std::filesystem::create_directory("./data/1_1/mytable/1/1/2024-01-01/13ACC820567845EB9ACB0C764F460546", ".");
     std::filesystem::create_directory("./data/1_1/mytable/1/1/2024-01-02", ".");
     std::filesystem::create_directory("./data/1_1/mytable/1/1/2024-01-02/13ACC820567845EB9ACB0C764F460546", ".");
-    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-01/7C4D89943F62499A9AF57475FB5057D5/serial_00000.gz"));
-    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-01/13ACC820567845EB9ACB0C764F460546/serial_00000.gz"));
-    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-02/13ACC820567845EB9ACB0C764F460546/serial_00000.gz"));
+    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-01/7C4D89943F62499A9AF57475FB5057D5/serial_00000.gz", testdata_[0]));
+    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-01/13ACC820567845EB9ACB0C764F460546/serial_00000.gz", testdata_[1]));
+    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-02/13ACC820567845EB9ACB0C764F460546/serial_00000.gz", testdata_[2]));
   }
-
-  ~SerialOrganizedTableTestFixture()
+  SerialOrganizedTableTestFixtureBase(const std::string & testdata)
+    :
+    SerialOrganizedTableTestFixtureBase({ testdata, testdata, testdata })
+  {
+  }
+  
+  virtual ~SerialOrganizedTableTestFixtureBase()
   {
     std::filesystem::remove_all("./data");
+  }
+
+  std::string runTableScan(std::shared_ptr<TableMetadata> metadata, const char * predicate=nullptr)
+  {
+    PlanCheckContext ctxt;
+    LogicalPlan plan(ctxt);
+    auto tablescan = new LogicalTableParser("mytable", metadata);
+    tablescan->addParam("connect", (boost::format("file://%1%") % (std::filesystem::current_path() / "data").native()).str());
+    if (nullptr != predicate) {
+      tablescan->addParam("where", predicate);
+    }
+    plan.addOperator(tablescan);
+    auto filewrite = new LogicalFileWrite();
+    filewrite->addParam("file", LogicalOperator::param_type((std::filesystem::current_path() / "data/output.txt").native()));
+    filewrite->addParam("mode", LogicalOperator::param_type("text"));
+    plan.addOperator(filewrite);
+    plan.addEdge(tablescan, filewrite);
+    auto runtimePlan = DataflowGraphBuilder::create(plan, 1);
+    RuntimeProcess p(0,0,1,*runtimePlan.get());
+    p.run();
+    std::ifstream resultFile(std::filesystem::current_path() / "data/output.txt");
+    std::stringstream result;
+    std::copy(std::istreambuf_iterator<char>(resultFile),
+              std::istreambuf_iterator<char>(),
+              std::ostreambuf_iterator<char>(result));
+    return result.str();
+  }
+};
+
+struct SerialOrganizedTableTestFixture : public SerialOrganizedTableTestFixtureBase
+{
+  SerialOrganizedTableTestFixture()
+    :
+    SerialOrganizedTableTestFixtureBase("ssdfasdfa;sdkfjals\n")
+  {
+  }
+  static std::shared_ptr<TableMetadata> getMyTableMetadata()
+  {
+    std::vector<std::string> mde_log_sort; 
+    std::string tableFormat("a VARCHAR");
+    auto m = std::make_shared<TableMetadata>("mytable",
+                                             tableFormat,
+                                             mde_log_sort);
+
+    // Create a single column group for the whole table.                                                                                                                                                             
+    TableColumnGroup * cg = m->addDefaultColumnGroup();
+    {
+      // Version 1 of the table                                                                                                                                                                                      
+      std::map<std::string, std::string> computedColumns;
+      TableFileMetadata * f = new TableFileMetadata(tableFormat,
+                                                    computedColumns);
+      cg->add(1, f);
+    }
+
+    return m;
   }
 };
 
@@ -3081,3 +3256,81 @@ BOOST_FIXTURE_TEST_CASE(testBindWithPredicate, SerialOrganizedTableTestFixture)
   }
   FileSystem::release(fs);
 }
+
+BOOST_FIXTURE_TEST_CASE(testTableOperator, SerialOrganizedTableTestFixture)
+{
+  std::stringstream expected;
+  expected << testdata_[0] << testdata_[1] << testdata_[2];
+  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata()));
+}
+
+BOOST_FIXTURE_TEST_CASE(testTableOperatorWithDatePredicate, SerialOrganizedTableTestFixture)
+{
+  std::stringstream expected;
+  expected << testdata_[0] << testdata_[1];
+  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata(), "Date = '2024-01-01'"));
+}
+
+BOOST_FIXTURE_TEST_CASE(testTableOperatorWithDatePredicate2, SerialOrganizedTableTestFixture)
+{
+  std::stringstream expected;
+  expected << testdata_[2];
+  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata(), "Date = '2024-01-02'"));
+}
+
+struct SerialOrganizedSortedTableTestFixture : public SerialOrganizedTableTestFixtureBase
+{
+  SerialOrganizedSortedTableTestFixture()
+    :
+    SerialOrganizedTableTestFixtureBase({
+        "1\tone\n"
+        "2\ttwo\n",
+        "3\tthree\n"
+        "4\tfour\n",
+        "5\tfive\n"
+        "6\tsix\n" })
+  {
+  }
+  static std::shared_ptr<TableMetadata> getMyTableMetadata()
+  {
+    std::vector<std::string> mde_log_sort( { "a" }); 
+    std::string tableFormat("a INTEGER, b VARCHAR");
+    auto m = std::make_shared<TableMetadata>("mytable",
+                                             tableFormat,
+                                             mde_log_sort);
+
+    // Create a single column group for the whole table.                                                                                                                                                          
+    TableColumnGroup * cg = m->addDefaultColumnGroup();
+    {
+      // Version 1 of the table                                                                                                                                                                                      
+      std::map<std::string, std::string> computedColumns;
+      TableFileMetadata * f = new TableFileMetadata(tableFormat,
+                                                    computedColumns);
+      cg->add(1, f);
+    }
+
+    return m;
+  }
+};
+
+BOOST_FIXTURE_TEST_CASE(testTableOperatorSorted, SerialOrganizedSortedTableTestFixture)
+{
+  std::stringstream expected;
+  expected << testdata_[0] << testdata_[1] << testdata_[2];
+  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata()));
+}
+
+BOOST_FIXTURE_TEST_CASE(testTableOperatorSortedWithDatePredicate, SerialOrganizedTableTestFixture)
+{
+  std::stringstream expected;
+  expected << testdata_[0] << testdata_[1];
+  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata(), "Date = '2024-01-01'"));
+}
+
+BOOST_FIXTURE_TEST_CASE(testTableOperatorSortedWithDatePredicate2, SerialOrganizedTableTestFixture)
+{
+  std::stringstream expected;
+  expected << testdata_[2];
+  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata(), "Date = '2024-01-02'"));
+}
+

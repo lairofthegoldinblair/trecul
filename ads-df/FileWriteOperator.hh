@@ -165,9 +165,9 @@ private:
   typedef boost::iostreams::back_insert_device<std::string> string_device;
   typedef boost::iostreams::stream<string_device> string_stream;
   string_stream mStream;
-  const RecordTypePrint& mPrint;
+  const TreculRecordPrintRuntime & mPrint;
 public:
-  RuntimePrinter(const RecordTypePrint& p)
+  RuntimePrinter(const TreculRecordPrintRuntime & p)
     :
     mStream(mBuffer),
     mPrint(p)
@@ -194,8 +194,10 @@ class RuntimeWriteOperatorType : public RuntimeOperatorType
 {
   template <typename _Compressor> friend class RuntimeWriteOperator;  
 private:
-  RecordTypePrint mPrint;
-  RecordTypeFree mFree;
+  TreculFunctionReference mPrintRef;
+  TreculRecordPrintRuntime mPrint;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   std::string mFile;
   std::string mHeader;
   std::string mHeaderFile;
@@ -205,8 +207,8 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mPrint);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mPrintRef);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mFile);
     ar & BOOST_SERIALIZATION_NVP(mHeader);
     ar & BOOST_SERIALIZATION_NVP(mHeaderFile);
@@ -216,20 +218,27 @@ private:
   }
 public:
   RuntimeWriteOperatorType(const std::string& opName,
-			   const RecordType * ty, 
+			   const RecordType * ty,
+                           const TreculPrintOperation & printOp,
+                           const TreculFreeOperation & freeOp,
 			   const std::string& file,
 			   const std::string& header,
 			   const std::string& headerFile)
     :
     RuntimeOperatorType(opName.c_str()),
-    mPrint(ty->getPrint()),
-    mFree(ty->getFree()),
+    mPrintRef(printOp.getReference()),
+    mFreeRef(freeOp.getReference()),
     mFile(file),
     mHeader(header),
     mHeaderFile(headerFile)
   {
   }
   RuntimeOperator * create(RuntimeOperator::Services& services) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mPrint = m.getFunction<TreculRecordPrintRuntime>(mPrintRef);
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }
 };
 
 // TODO: No longer HDFS specific; should replace RuntimeWriteOperatorType
@@ -238,8 +247,10 @@ class RuntimeHdfsWriteOperatorType : public RuntimeOperatorType
 {
   template <typename _Policy, typename _Compressor> friend class RuntimeHdfsWriteOperator;  
 private:
-  RecordTypePrint mPrint;
-  RecordTypeFree mFree;
+  TreculFunctionReference mPrintRef;
+  TreculRecordPrintRuntime mPrint;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   WritableFileFactory * mFileFactory;
   std::string mHeader;
   std::string mHeaderFile;
@@ -251,8 +262,8 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mPrint);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mPrintRef);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mFileFactory);
     ar & BOOST_SERIALIZATION_NVP(mHeader);
     ar & BOOST_SERIALIZATION_NVP(mHeaderFile);
@@ -267,14 +278,16 @@ private:
 public:
   RuntimeHdfsWriteOperatorType(const std::string& opName,
 			       const RecordType * ty, 
+                               const TreculPrintOperation & printOp,
+                               const TreculFreeOperation & freeOp,
 			       WritableFileFactory * fileFactory,
 			       const std::string& header,
 			       const std::string& headerFile,
 			       _FileCreationPolicy * creationPolicy)
     :
     RuntimeOperatorType(opName.c_str()),
-    mPrint(ty->getPrint()),
-    mFree(ty->getFree()),
+    mPrintRef(printOp.getReference()),
+    mFreeRef(freeOp.getReference()),
     mFileFactory(fileFactory),
     mHeader(header),
     mHeaderFile(headerFile),
@@ -294,6 +307,14 @@ public:
   }
   
   RuntimeOperator * create(RuntimeOperator::Services& services) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mPrint = m.getFunction<TreculRecordPrintRuntime>(mPrintRef);
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    if (nullptr != mCreationPolicy) {
+      mCreationPolicy->loadFunctions(m);
+    }
+  }
 };
 
 // Some hackery to keep the RuntimeHdfsWriteOperator template implementation out of the header file

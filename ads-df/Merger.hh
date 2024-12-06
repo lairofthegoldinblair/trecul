@@ -471,6 +471,7 @@ private:
   char mEscapeChar;
   std::string mCommentLine;
   const RecordType * mFormat;
+  TreculFreeOperation * mFree;
 
   void internalCreate(class RuntimePlanBuilder& plan);  
   std::string readFormatFile(const std::string& formatFile);
@@ -561,6 +562,8 @@ public:
   ~InternalFileParserOperatorType()
   {
   }
+
+  void loadFunctions(TreculModule & ) override {}
 
   RuntimeOperator * create(RuntimeOperator::Services & services) const;
 };
@@ -729,7 +732,10 @@ private:
   std::string mMode;
   std::string mHeader;
   std::string mHeaderFile;
-  RecordTypeTransfer * mFileNameExpr;
+  TreculPrintOperation * mPrint;
+  TreculFreeOperation * mFree;
+  TreculTransfer * mFileNameExpr;
+  TreculFreeOperation * mFileNameExprFree;
   int32_t mMaxRecords;
   int32_t mMaxSeconds;
 
@@ -748,7 +754,8 @@ class InternalFileWriteOperatorType : public RuntimeOperatorType
 {
 public:
   RecordTypeSerialize mSerialize;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   std::string mFile;
   // Serialization
   friend class boost::serialization::access;
@@ -757,7 +764,7 @@ public:
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
     ar & BOOST_SERIALIZATION_NVP(mSerialize);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mFile);
   }
   InternalFileWriteOperatorType()
@@ -765,34 +772,44 @@ public:
   }
 public:
   InternalFileWriteOperatorType(const std::string& opName,
-				const RecordType * ty, 
+				const RecordType * ty,
+                                const TreculFreeOperation & freeFunctor,
 				const std::string& file)
     :
     RuntimeOperatorType(opName.c_str()),
     mSerialize(ty->getSerialize()),
-    mFree(ty->getFree()),
+    mFreeRef(freeFunctor.getReference()),
     mFile(file)
   {
   }
+  // This constructor is used by the sort operator at runtime so we
+  // need the actual free function and not just the referenc (i.e.
+  // the TreculModule isn't available to load fromt the reference).
   InternalFileWriteOperatorType(const std::string& opName,
 				const RecordTypeSerialize& serialize,
-				const RecordTypeFree& freeFn,
+				const TreculFunctionReference & freeRef,
+				const TreculRecordFreeRuntime & freeFn,
 				const std::string& file)
     :
     RuntimeOperatorType(opName.c_str()),
     mSerialize(serialize),
+    mFreeRef(freeRef),
     mFree(freeFn),
     mFile(file)
   {
   }
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }  
   RuntimeOperator * create(RuntimeOperator::Services& services) const;
 };
 
 class LogicalSortMerge : public LogicalOperator
 {
 private:
-  RecordTypeFunction * mKeyPrefix;
-  RecordTypeFunction * mKeyEq;
+  TreculFunction * mKeyPrefix;
+  TreculFunction * mKeyEq;
 public:
   LogicalSortMerge();
   ~LogicalSortMerge();
@@ -804,10 +821,10 @@ class SortMerge
 {
 private:
   const RecordType * mInput;
-  RecordTypeFunction * mKeyPrefix;
-  RecordTypeFunction * mKeyEq;
+  TreculFunction * mKeyPrefix;
+  TreculFunction * mKeyEq;
 public:
-  SortMerge(DynamicRecordContext& ctxt,
+  SortMerge(PlanCheckContext& ctxt,
 	    const RecordType * input,
 	    const std::vector<std::string>& sortKeys);
   ~SortMerge();
@@ -827,54 +844,48 @@ public:
   friend class RuntimeSortMergeOperator;
 private:
   // Extract a key prefix from record
-  IQLFunctionModule * mKeyPrefix;
+  TreculFunctionReference mKeyPrefixRef;
+  TreculFunctionRuntime mKeyPrefix;
   // Compare two inputs for equality
-  IQLFunctionModule * mEqFun;
-  // Does this instance own the modules?
-  bool mOwnModules;
+  TreculFunctionReference mEqFunRef;
+  TreculFunctionRuntime mEqFun;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mKeyPrefix);
-    ar & BOOST_SERIALIZATION_NVP(mEqFun);
-    ar & BOOST_SERIALIZATION_NVP(mOwnModules);    
+    ar & BOOST_SERIALIZATION_NVP(mKeyPrefixRef);
+    ar & BOOST_SERIALIZATION_NVP(mEqFunRef);
   }
   RuntimeSortMergeOperatorType()
-    :
-    mKeyPrefix(NULL),
-    mEqFun(NULL)
   {
   }  
 public:
-  RuntimeSortMergeOperatorType(const RecordTypeFunction * keyPrefix,
-			       const RecordTypeFunction * eqFun)
+  RuntimeSortMergeOperatorType(const TreculFunction & keyPrefix,
+			       const TreculFunction & eqFun)
     :
     RuntimeOperatorType("RuntimeSortMergeOperatorType"),
-    mKeyPrefix(keyPrefix->create()),
-    mEqFun(eqFun->create()),
-    mOwnModules(true)
+    mKeyPrefixRef(keyPrefix.getReference()),
+    mEqFunRef(eqFun.getReference())
   {
   }
-  RuntimeSortMergeOperatorType(IQLFunctionModule * keyPrefix,
-			       IQLFunctionModule * eqFun)
+  RuntimeSortMergeOperatorType(const TreculFunctionRuntime & keyPrefix,
+        		       const TreculFunctionRuntime & eqFun)
     :
     RuntimeOperatorType("RuntimeSortMergeOperatorType"),
     mKeyPrefix(keyPrefix),
-    mEqFun(eqFun),
-    mOwnModules(false)
+    mEqFun(eqFun)
   {
   }
   ~RuntimeSortMergeOperatorType()
   {
-    if (mOwnModules) {
-      delete mKeyPrefix;
-      delete mEqFun;
-    }
   }
-
+  void loadFunctions(TreculModule & m) override
+  {
+    mKeyPrefix = m.getFunction<TreculFunctionRuntime>(mKeyPrefixRef);
+    mEqFun = m.getFunction<TreculFunctionRuntime>(mEqFunRef);
+  }
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
 };
 
@@ -989,9 +1000,10 @@ public:
 class LogicalSort : public LogicalOperator
 {
 private:
-  RecordTypeFunction * mKeyPrefix;
-  RecordTypeFunction * mKeyEq;
-  RecordTypeFunction * mPresortedKeyEq;
+  TreculFreeOperation * mFree;
+  TreculFunction * mKeyPrefix;
+  TreculFunction * mKeyEq;
+  TreculFunction * mPresortedKeyEq;
   std::string mTempDir;
   std::size_t mMemory;
 public:
@@ -1007,17 +1019,21 @@ public:
   friend class RuntimeSortOperator;
 private:
   // Extract a key prefix from record
-  IQLFunctionModule * mKeyPrefix;
+  TreculFunctionReference mKeyPrefixRef;
+  TreculFunctionRuntime mKeyPrefix;
   // Compare two inputs less than
-  IQLFunctionModule * mLessThanFun;
+  TreculFunctionReference mLessThanFunRef;
+  TreculFunctionRuntime mLessThanFun;
   // Compare two inputs less than for presorted keys (if any)
-  IQLFunctionModule * mPresortedEqualsFun;
+  TreculFunctionReference mPresortedEqualsFunRef;
+  TreculFunctionRuntime mPresortedEqualsFun;
   // Serialize and deserialize for on disk sort runs
   RecordTypeSerialize mSerialize;
   RecordTypeDeserialize mDeserialize;
   // Malloc and free for disk sort runs
   RecordTypeMalloc mMalloc;
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   // Directory for sort runs
   std::string mTempDir;
   // Amount of memory operator can use
@@ -1029,50 +1045,55 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mKeyPrefix);
-    ar & BOOST_SERIALIZATION_NVP(mLessThanFun);
-    ar & BOOST_SERIALIZATION_NVP(mPresortedEqualsFun);
+    ar & BOOST_SERIALIZATION_NVP(mKeyPrefixRef);
+    ar & BOOST_SERIALIZATION_NVP(mLessThanFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mPresortedEqualsFunRef);
     ar & BOOST_SERIALIZATION_NVP(mSerialize);
     ar & BOOST_SERIALIZATION_NVP(mDeserialize);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mTempDir);
     ar & BOOST_SERIALIZATION_NVP(mMemoryAllowed);
   }
   RuntimeSortOperatorType()
     :
-    mKeyPrefix(NULL),
-    mLessThanFun(NULL),
-    mPresortedEqualsFun(NULL),
     mMemoryAllowed(128*1024*1024)
   {
   }  
 public:
   RuntimeSortOperatorType(const RecordType * input,
-			  const RecordTypeFunction * keyPrefix,
-			  const RecordTypeFunction * lessFun,
-			  const RecordTypeFunction * presortedEquals,
+                          const TreculFreeOperation & freeFunctor,
+			  const TreculFunction & keyPrefix,
+			  const TreculFunction & lessFun,
+			  const TreculFunction * presortedEquals,
 			  const std::string& tempDir,
 			  std::size_t memoryAllowed)
     :
     RuntimeOperatorType("RuntimeSortOperatorType"),
-    mKeyPrefix(keyPrefix->create()),
-    mLessThanFun(lessFun->create()),
-    mPresortedEqualsFun(presortedEquals ? presortedEquals->create() : NULL),
+    mKeyPrefixRef(keyPrefix.getReference()),
+    mLessThanFunRef(lessFun.getReference()),
+    mPresortedEqualsFunRef(nullptr != presortedEquals ? presortedEquals->getReference() : TreculFunctionReference()),
     mSerialize(input->getSerialize()),
     mDeserialize(input->getDeserialize()),
     mMalloc(input->getMalloc()),
-    mFree(input->getFree()),
+    mFreeRef(freeFunctor.getReference()),
     mTempDir(tempDir),
     mMemoryAllowed(memoryAllowed)
   {
   }
   ~RuntimeSortOperatorType()
   {
-    delete mKeyPrefix;
-    delete mLessThanFun;
-    delete mPresortedEqualsFun;
   }
+
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    mKeyPrefix = m.getFunction<TreculFunctionRuntime>(mKeyPrefixRef);
+    mLessThanFun = m.getFunction<TreculFunctionRuntime>(mLessThanFunRef);
+    if (!mPresortedEqualsFunRef.empty()) {
+      mPresortedEqualsFun = m.getFunction<TreculFunctionRuntime>(mPresortedEqualsFunRef);
+    }
+  }  
 
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
 };

@@ -214,7 +214,7 @@ void RuntimeOperatorPlan::connectStraight(RuntimeOperatorType * source, int32_t 
 }
 
 void RuntimeOperatorPlan::connectCrossbar(RuntimeOperatorType * source, RuntimeOperatorType * target, const RecordType * ty,
-					  bool buffered, bool locallyBuffered)
+					  const TreculFreeOperation & freeFunctor, bool buffered, bool locallyBuffered)
 {
   if (mPartitions <= 0) {
     // The behavior of partitioners needs to be abstracted out.
@@ -241,7 +241,8 @@ void RuntimeOperatorPlan::connectCrossbar(RuntimeOperatorType * source, RuntimeO
 						      buffered,
 						      locallyBuffered,
 						      mCurrentTag,
-						      ty));
+						      ty,
+                                                      freeFunctor));
 
   // For a crossbar we are allocating a quadratic number of fifos.
   std::size_t numFifos = mOperators[sIt->second]->getPartitionCount(mPartitions) * 

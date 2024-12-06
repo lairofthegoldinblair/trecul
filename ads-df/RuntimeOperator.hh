@@ -36,6 +36,7 @@
 #define __RUNTIME_OPERATOR_HH
 
 #include <boost/assert.hpp>
+#include <boost/core/ignore_unused.hpp>
 #include "RuntimePlan.hh"
 #include "DataflowRuntime.hh"
 #include "RecordType.hh"
@@ -48,104 +49,104 @@
 class HashFunction
 {
 public:
-  static RecordTypeFunction * get(DynamicRecordContext & ctxt,
-				  const RecordType * inputType,
-				  const std::vector<std::string>& fields,
-				  const std::string& name = "hash");
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * inputType,
+                              const std::vector<std::string>& fields,
+                              const std::string& name = "hash");
 };
 
 class EqualsFunction
 {
 public:
-  static RecordTypeFunction * get(DynamicRecordContext & ctxt,
-				  const RecordType * lhs,
-				  const RecordType * rhs,
-				  const std::vector<std::string>& fields,
-				  const std::string& name = "eq",
-				  bool areNullsEqual=false);
-  static RecordTypeFunction * get(DynamicRecordContext & ctxt,
-				  const RecordType * lhs,
-				  const RecordType * rhs,
-				  const std::vector<SortKey>& fields,
-				  const std::string& name = "eq",
-				  bool areNullsEqual=false);
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * lhs,
+                              const RecordType * rhs,
+                              const std::vector<std::string>& fields,
+                              const std::string& name = "eq",
+                              bool areNullsEqual=false);
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * lhs,
+                              const RecordType * rhs,
+                              const std::vector<SortKey>& fields,
+                              const std::string& name = "eq",
+                              bool areNullsEqual=false);
 };
 
 class KeyPrefixFunction
 {
 public:
-  static RecordTypeFunction * get(DynamicRecordContext & ctxt,
-				  const RecordType * inputType,
-				  const std::string& field,
-				  const std::string& name = "keyPrefix")
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * inputType,
+                              const std::string& field,
+                              const std::string& name = "keyPrefix")
   {
     std::vector<std::string> fields;
     fields.push_back(field);
     return get(ctxt, inputType, fields, name);
   }
 
-  static RecordTypeFunction * get(DynamicRecordContext & ctxt,
-				  const RecordType * inputType,
-				  const std::vector<std::string>& fields,
-				  const std::string& name = "keyPrefix");
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * inputType,
+                              const std::vector<std::string>& fields,
+                              const std::string& name = "keyPrefix");
 };
 
 class LessThanFunction
 {
 public:
-  static RecordTypeFunction * get(DynamicRecordContext & ctxt,
-				  const RecordType * inputType,
-				  const std::string& field,
-				  const std::string& name = "lessThan")
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * inputType,
+                              const std::string& field,
+                              const std::string& name = "lessThan")
   {
     std::vector<std::string> fields;
     fields.push_back(field);
     return get(ctxt, inputType, inputType, fields, name);
   }
-  static RecordTypeFunction * get(DynamicRecordContext & ctxt,
-				  const RecordType * inputType,
-				  const std::vector<std::string>& fields,
-				  const std::string& name = "lessThan")
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * inputType,
+                              const std::vector<std::string>& fields,
+                              const std::string& name = "lessThan")
   {
     return get(ctxt, inputType, inputType, fields, name);
   }
-  static RecordTypeFunction * get(DynamicRecordContext & ctxt,
-				  const RecordType * lhs,
-				  const RecordType * rhs,
-				  const std::vector<std::string>& fields,
-				  const std::string& name = "lessThan");
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * lhs,
+                              const RecordType * rhs,
+                              const std::vector<std::string>& fields,
+                              const std::string& name = "lessThan");
   /**
    * If sortNulls is false comparisons with NULLs use SQL-like 3 valued
    * logic. If sortNulls is true NULLs are treated as either low or high values (e.g. 
    * as is necessary for sorting); by default NULLs sort low but that may
    * be tweaked by a configuration change.
    */
-  static RecordTypeFunction * get(DynamicRecordContext & ctxt,
-				  const RecordType * lhs,
-				  const RecordType * rhs,
-				  const std::vector<SortKey>& fields,
-				  bool sortNulls,
-				  const std::string& name = "lessThan");
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * lhs,
+                              const RecordType * rhs,
+                              const std::vector<SortKey>& fields,
+                              bool sortNulls,
+                              const std::string& name = "lessThan");
 };
 
 class CompareFunction
 {
 public:
-  static RecordTypeFunction * get(DynamicRecordContext & ctxt,
-				  const RecordType * lhs,
-				  const RecordType * rhs,
-				  const std::vector<SortKey>& leftFields,
-				  const std::vector<SortKey>& rightFields,
-				  const std::string& name = "compare");
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * lhs,
+                              const RecordType * rhs,
+                              const std::vector<SortKey>& leftFields,
+                              const std::vector<SortKey>& rightFields,
+                              const std::string& name = "compare");
 };
 
 class SortKeyPrefixFunction
 {
 public:
-  static RecordTypeFunction * get(DynamicRecordContext & ctxt,
-				  const RecordType * input,
-				  const std::vector<SortKey>& fields,
-				  const std::string& name = "keyPrefix");
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * input,
+                              const std::vector<SortKey>& fields,
+                              const std::string& name = "keyPrefix");
 };
 
 /**
@@ -518,7 +519,8 @@ public:
 class LogicalFilter : public LogicalOperator
 {
 private:
-  RecordTypeFunction * mPredicate;
+  TreculFreeOperation * mFree;
+  TreculFunction * mPredicate;
   int64_t mLimit;
 public:
   LogicalFilter();
@@ -531,8 +533,10 @@ class RuntimeFilterOperatorType : public RuntimeOperatorType
 {
   friend class RuntimeFilterOperator;
 private:
-  RecordTypeFree mFree;
-  IQLFunctionModule * mPredicate;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
+  TreculFunctionReference mPredicateRef;
+  TreculFunctionRuntime mPredicate;
   int64_t mLimit;
   // Serialization
   friend class boost::serialization::access;
@@ -540,13 +544,11 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
-    ar & BOOST_SERIALIZATION_NVP(mPredicate);    
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mPredicateRef);
     ar & BOOST_SERIALIZATION_NVP(mLimit);
   }
   RuntimeFilterOperatorType()
-    :
-    mPredicate(NULL)
   {
   }
 public:
@@ -554,20 +556,27 @@ public:
    * NULL predicate means TRUE.
    */
   RuntimeFilterOperatorType(const RecordType * input,
-			    const RecordTypeFunction * pred,
+			    const TreculFreeOperation & free,
+			    TreculFunction * predicate,
 			    int64_t limit)
     :
     RuntimeOperatorType("RuntimeFilterOperatorType"),
-    mFree(input->getFree()),
-    mPredicate(pred ? pred->create() : NULL),
+    mFreeRef(free.getReference()),
+    mPredicateRef(nullptr != predicate ? predicate->getReference() : TreculFunctionReference()),
     mLimit(limit)
   {
   }
   ~RuntimeFilterOperatorType() 
   {
-    delete mPredicate; 
   }
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    if (!mPredicateRef.empty()) {
+      mPredicate = m.getFunction<TreculFunctionRuntime>(mPredicateRef);
+    }
+  }
 };
 
 class RuntimeFilterOperator : public RuntimeOperatorBase<RuntimeFilterOperatorType>
@@ -590,16 +599,16 @@ public:
 class CopyOp : public LogicalOperator
 {
 private:
-  std::vector<const RecordTypeTransfer *> mTransfers;
+  TreculFreeOperation * mFree;
+  std::vector<const TreculTransfer *> mTransfers;
   class RuntimeCopyOperatorType * mOpType;
-  
-  void init(DynamicRecordContext & ctxt,
+  void init(PlanCheckContext & ctxt,
 	    const RecordType * inputType,
 	    const std::vector<std::string>& transfers,
 	    const std::vector<bool>& pics);
 public:
   CopyOp();
-  CopyOp(DynamicRecordContext & ctxt,
+  CopyOp(PlanCheckContext & ctxt,
 	  const RecordType * inputType,
 	  const std::vector<std::string>& transfers);
   ~CopyOp();
@@ -613,28 +622,39 @@ class RuntimeCopyOperatorType : public RuntimeOperatorType
 {
   friend class RuntimeCopyOperator;
 private:
-  RecordTypeFree mFree;
-  std::vector<IQLTransferModule *> mTransfers;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
+  std::vector<TreculTransferReference> mTransferRefs;
+  std::vector<TreculTransferRuntime> mTransfers;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
-    ar & BOOST_SERIALIZATION_NVP(mTransfers);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mTransferRefs);
   }
   RuntimeCopyOperatorType()
   {
   }
 public:
-  RuntimeCopyOperatorType(const RecordTypeFree & freeFunctor,
-			  const std::vector<const class RecordTypeTransfer *>& transfers);
-  RuntimeCopyOperatorType(const RecordTypeFree & freeFunctor,
-			  const std::vector<const class RecordTypeTransfer *>& transfers,
+  RuntimeCopyOperatorType(const TreculFreeOperation & freeFunctor,
+			  const std::vector<const TreculTransfer *>& transfers);
+  RuntimeCopyOperatorType(const TreculFreeOperation & freeFunctor,
+			  const std::vector<const TreculTransfer *>& transfers,
 			  const std::vector<bool>& pics);
   ~RuntimeCopyOperatorType();
   RuntimeOperator * create(RuntimeOperator::Services& s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    mTransfers.clear();
+    mTransfers.resize(mTransferRefs.size());
+    for(std::size_t i=0; i<mTransferRefs.size(); ++i) {
+      mTransfers[i] = m.getTransfer<TreculTransferRuntime>(mTransferRefs[i]);
+    }
+  }
 };
 
 class RuntimeCopyOperator : public RuntimeOperator
@@ -656,6 +676,8 @@ public:
 
 class LogicalDevNull : public LogicalOperator
 {
+private:
+  TreculFreeOperation * mFree;
 public:
   LogicalDevNull();
   ~LogicalDevNull();
@@ -667,26 +689,31 @@ class RuntimeDevNullOperatorType : public RuntimeOperatorType
 {
   friend class RuntimeDevNullOperator;
 private:
-  RecordTypeFree mFree;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
   }
   RuntimeDevNullOperatorType()
   {
   }
 public:
-  RuntimeDevNullOperatorType(const RecordType * ty)
+  RuntimeDevNullOperatorType(const TreculFreeOperation & freeFunctor)
     :
     RuntimeOperatorType("RuntimeDevNullOperatorType"),
-    mFree(ty->getFree())
+    mFreeRef(freeFunctor.getReference())
   {
   }
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+  }
 };
 
 class RuntimeDevNullOperator : public RuntimeOperator
@@ -711,8 +738,10 @@ class LogicalPrint : public LogicalOperator
 private:
   int32_t mNumToPrint;
   int32_t mPrintFrequency;
-  RecordTypeFunction * mPredicate;
-  RecordTypeTransfer * mTransfer;
+  TreculPrintOperation * mPrint;
+  TreculFunction * mPredicate;
+  TreculTransfer * mTransfer;
+  TreculFreeOperation * mFree;
 public:
   LogicalPrint();
   ~LogicalPrint();
@@ -725,12 +754,16 @@ class RuntimePrintOperatorType : public RuntimeOperatorType
   friend class RuntimePrintOperator;
 private:
   const RecordType * mRecordType;
-  RecordTypePrint mPrint;
+  TreculFunctionReference mPrintRef;
+  TreculRecordPrintRuntime mPrint;
   int32_t mNumToPrint;
   int32_t mPrintFrequency;
-  IQLFunctionModule * mPredicate;
-  IQLTransferModule * mToPrint;
-  RecordTypeFree mFree;
+  TreculFunctionReference mPredicateRef;
+  TreculFunctionRuntime mPredicate;
+  TreculTransferReference mToPrintRef;
+TreculTransferRuntime mToPrint;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
   
 
   // Serialization
@@ -739,46 +772,55 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mPrint);
+    ar & BOOST_SERIALIZATION_NVP(mPrintRef);
     ar & BOOST_SERIALIZATION_NVP(mNumToPrint);
     ar & BOOST_SERIALIZATION_NVP(mPrintFrequency);
-    ar & BOOST_SERIALIZATION_NVP(mPredicate);
-    ar & BOOST_SERIALIZATION_NVP(mToPrint);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
+    ar & BOOST_SERIALIZATION_NVP(mPredicateRef);
+    ar & BOOST_SERIALIZATION_NVP(mToPrintRef);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
   }
   RuntimePrintOperatorType()
     :
     mRecordType(NULL),
     mNumToPrint(0),
-    mPrintFrequency(1),
-    mPredicate(NULL),
-    mToPrint(NULL)
+    mPrintFrequency(1)
   {
   }
 public:
-  RuntimePrintOperatorType(const RecordType * ty, int32_t numToPrint, int32_t printFrequency,
-			   const RecordTypeFunction * pred,
-			   const RecordTypeTransfer * xfer)
+  RuntimePrintOperatorType(const RecordType * ty, const TreculPrintOperation & print, int32_t numToPrint, int32_t printFrequency,
+			   const TreculFunction * pred,
+			   const TreculTransfer * xfer,
+                           const TreculFreeOperation * freeOp)
     :
     RuntimeOperatorType("RuntimePrintOperatorType"),
     mRecordType(ty),
-    mPrint(xfer ? xfer->getTarget()->getPrint() : ty->getPrint()),
+    mPrintRef(print.getReference()),
     mNumToPrint(numToPrint),
     mPrintFrequency(printFrequency),
-    mPredicate(pred ? pred->create() : nullptr),
-    mToPrint(xfer ? xfer->create() : nullptr)
+    mPredicateRef(pred ? pred->getReference() : TreculFunctionReference()),
+    mToPrintRef(xfer ? xfer->getReference() : TreculTransferReference()),
+    mFreeRef(freeOp ? freeOp->getReference() : TreculFunctionReference())
   {
-    if (xfer) {
-      mFree = xfer->getTarget()->getFree();
-    }
+    BOOST_ASSERT((xfer != nullptr && freeOp != nullptr) || (xfer == nullptr && freeOp == nullptr));
   }
   ~RuntimePrintOperatorType()
   {
-    delete mPredicate;
-    delete mToPrint;
   }
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
   const RecordType * getOutputType() const { return mRecordType; }
+  void loadFunctions(TreculModule & m) override
+  {
+    mPrint = m.getFunction<TreculRecordPrintRuntime>(mPrintRef);
+    if (!mPredicateRef.empty()) {
+      mPredicate = m.getFunction<TreculFunctionRuntime>(mPredicateRef);
+    }
+    if (!mFreeRef.empty()) {
+      mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    }
+    if (!mToPrintRef.empty()) {
+      mToPrint = m.getTransfer<TreculTransferRuntime>(mToPrintRef);
+    }
+  }
 };
 
 class RuntimePrintOperator : public RuntimeOperator
@@ -808,9 +850,11 @@ class LogicalGenerate : public LogicalOperator
 {
 private:
   const RecordType * mInputType;
+  TreculFreeOperation * mInputFree;
   const RecordType * mStateType;
-  RecordTypeFunction * mNumRecords;
-  RecordTypeTransfer2 * mTransfer;
+  TreculFreeOperation * mStateFree;
+  TreculFunction * mNumRecords;
+  TreculTransfer2 * mTransfer;
 
 public:
   LogicalGenerate();
@@ -832,12 +876,15 @@ private:
   FieldAddress mRecordCount;
   FieldAddress mPartitionCount;
   FieldAddress mPartition;
-  IQLFunctionModule * mLoopUpperBound;
+  TreculFunctionReference mLoopUpperBoundRef;
+  TreculFunctionRuntime mLoopUpperBound;
   RecordTypeMalloc mStateMalloc;
-  RecordTypeFree mStateFree;
-  RecordTypeFree mInputFree;
-  const RecordTypeTransfer2 * mTransfer;
-  IQLTransferModule2 * mModule;
+  TreculFunctionReference mStateFreeRef;
+  TreculRecordFreeRuntime mStateFree;
+  TreculFunctionReference mInputFreeRef;
+  TreculRecordFreeRuntime mInputFree;
+  TreculTransferReference mModuleRef;
+  TreculTransfer2Runtime mModule;
 
   // Serialization
   friend class boost::serialization::access;
@@ -848,36 +895,34 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mRecordCount);
     ar & BOOST_SERIALIZATION_NVP(mPartitionCount);
     ar & BOOST_SERIALIZATION_NVP(mPartition);
-    ar & BOOST_SERIALIZATION_NVP(mLoopUpperBound);
+    ar & BOOST_SERIALIZATION_NVP(mLoopUpperBoundRef);
     ar & BOOST_SERIALIZATION_NVP(mStateMalloc);
-    ar & BOOST_SERIALIZATION_NVP(mStateFree);
-    ar & BOOST_SERIALIZATION_NVP(mInputFree);
-    ar & BOOST_SERIALIZATION_NVP(mModule);
+    ar & BOOST_SERIALIZATION_NVP(mStateFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mInputFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mModuleRef);
   }
   RuntimeGenerateOperatorType()
-    :
-    mLoopUpperBound(NULL),
-    mTransfer(NULL),
-    mModule(NULL)
   {
   }
 public:
   RuntimeGenerateOperatorType(const std::string& name,
-			      const RecordType * inputType,
+                              const TreculFreeOperation & inputFreeFunctor,
 			      const RecordType * stateType,
-			      RecordTypeTransfer2 * transfer,
-			      RecordTypeFunction * upperBound);
-  RuntimeGenerateOperatorType(DynamicRecordContext & ctxt, 
-			      const std::string & prog, 
-			      int64_t upperBound);
+                              const TreculFreeOperation & stateFreeFunctor,
+                              const TreculTransfer2 & transfer,
+			      TreculFunction * upperBound);
   ~RuntimeGenerateOperatorType();
 
-  /** 
-   * TODO: This should become part of the compile time picture.
-   */
-  const RecordType * getOutputType() const;
-
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mStateFree = m.getFunction<TreculRecordFreeRuntime>(mStateFreeRef);
+    mInputFree = m.getFunction<TreculRecordFreeRuntime>(mInputFreeRef);
+    if (!mLoopUpperBoundRef.empty()) {
+      mLoopUpperBound = m.getFunction<TreculFunctionRuntime>(mLoopUpperBoundRef);
+    } 
+    mModule = m.getTransfer<TreculTransfer2Runtime>(mModuleRef);
+ }
 };
 
 class RuntimeGenerateOperator : public RuntimeOperator
@@ -907,10 +952,12 @@ private:
   std::vector<std::string> mSortGroupKeys;
   std::vector<std::string> mHashGroupKeys;
   std::string mProgram;
-  RecordTypeAggregate * mAggregate;
-  RecordTypeFunction * mHash;
-  RecordTypeFunction * mHashEq;
-  RecordTypeFunction * mSortEq;
+  TreculFreeOperation * mFree;  
+  TreculAggregate * mAggregate;
+  TreculFreeOperation * mAggregateFree;
+  TreculFunction * mHash;
+  TreculFunction * mHashEq;
+  TreculFunction * mSortEq;
   Algorithm mAlgorithm;
   bool mIsRunningTotal;
 public:
@@ -951,13 +998,13 @@ template <class _OpType>
 class GroupBy
 {
 private:
-  RecordTypeAggregate * aggregate;
-  RecordTypeFunction * hasher;
-  RecordTypeFunction  * equals;
+  TreculAggregate * aggregate;
+  TreculFunction * hasher;
+  TreculFunction  * equals;
   _OpType * opType2;
   
 public:
-  GroupBy(DynamicRecordContext & ctxt,
+  GroupBy(PlanCheckContext & ctxt,
 	  const RecordType * inputType,
 	  const std::vector<std::string>& groupFields,
 	  const std::vector<AggregateFunctionSpec>& outputFields);
@@ -967,7 +1014,7 @@ public:
 };
 
 template <class _OpType>
-GroupBy<_OpType>::GroupBy(DynamicRecordContext & ctxt,
+GroupBy<_OpType>::GroupBy(PlanCheckContext & ctxt,
 		 const RecordType * inputType,
 		 const std::vector<std::string>& groupFields,
 		 const std::vector<AggregateFunctionSpec>& outputFields)
@@ -1001,12 +1048,13 @@ GroupBy<_OpType>::GroupBy(DynamicRecordContext & ctxt,
       throw std::runtime_error("Invalid aggregate function kind");
     }
   }  
-  aggregate = new RecordTypeAggregate(ctxt, 
-				      "groupby", 
-				      inputType,
-				      initializer,
-				      updater,
-				      groupFields);
+  aggregate = new TreculAggregate(ctxt,
+                                  ctxt.getCodeGenerator(),
+                                  "groupby", 
+                                  inputType,
+                                  initializer,
+                                  updater,
+                                  groupFields);
 
   // Hash on all of the group keys
   std::vector<const RecordType *> inputOnly;
@@ -1019,7 +1067,7 @@ GroupBy<_OpType>::GroupBy(DynamicRecordContext & ctxt,
     if (hashargs.size() > 0) hashargs += ",";
     hashargs += (boost::format("%1%") % groupFields[i]).str();
   }
-  hasher = new RecordTypeFunction(ctxt, "xfer5hash", inputOnly, (boost::format("#(%1%)") % hashargs).str());
+  hasher = new TreculFunction(ctxt, ctxt.getCodeGenerator(), "xfer5hash", inputOnly, (boost::format("#(%1%)") % hashargs).str());
 
   // This is kinda hacky.  When we compare two records to each other,
   // we need to refer to one field from each record.  Since we do this
@@ -1034,10 +1082,14 @@ GroupBy<_OpType>::GroupBy(DynamicRecordContext & ctxt,
     if (eqPred.size() > 0) eqPred += " AND ";
     eqPred += (boost::format("input1.%1% = input0.%1%") % groupFields[i]).str();
   }
-  equals = new RecordTypeFunction(ctxt, "xfer5eq", 
+  equals = new TreculFunction(ctxt, ctxt.getCodeGenerator(), "xfer5eq", 
 				  eqTypes, 
 				  eqPred);
-  opType2 = new _OpType(*inputType->GetFree(), hasher, equals, aggregate);
+  opType2 = new _OpType(TreculFreeOperation(ctxt.getCodeGenerator(), inputType),
+                        hasher,
+                        equals,
+                        *aggregate,
+                        TreculFreeOperation(ctxt.getCodeGenerator(), aggregate->getAggregate()));
 }
 
 template <class _OpType>
@@ -1051,19 +1103,25 @@ GroupBy<_OpType>::~GroupBy()
 
 struct RecordTypeHasher : std::unary_function<RecordBuffer, std::size_t>
 {
-  IQLFunctionModule::LLVMFuncType Func;
+  TreculFunctionRuntime::LLVMFuncType Func;
   class InterpreterContext * Context;
   std::size_t operator() (const RecordBuffer & val) const
   {
     int32_t ret;
-    ((*Func)((char *)val.Ptr, NULL, &ret, Context));
+    ((*Func)((char *)val.Ptr, nullptr, &ret, Context));
     return (std::size_t) ret;
   }
 
-  RecordTypeHasher(const class IQLFunctionModule * f = NULL,
-		   class InterpreterContext * ctxt = NULL)
+  RecordTypeHasher()
     :
-    Func(f != NULL ? f->getRawFunction() : NULL),
+    Context(nullptr)
+  {
+  }
+
+  RecordTypeHasher(const TreculFunctionRuntime & f,
+		   class InterpreterContext * ctxt)
+    :
+    Func(f.getRawFunction()),
     Context(ctxt)
   {
   }
@@ -1071,7 +1129,7 @@ struct RecordTypeHasher : std::unary_function<RecordBuffer, std::size_t>
 
 struct RecordTypeEquals : std::binary_function<RecordBuffer, RecordBuffer, bool>
 {
-  IQLFunctionModule::LLVMFuncType Func;
+  TreculFunctionRuntime::LLVMFuncType Func;
   class InterpreterContext * Context;
   bool operator() (const RecordBuffer & lhs, const RecordBuffer & rhs) const
   {
@@ -1080,10 +1138,16 @@ struct RecordTypeEquals : std::binary_function<RecordBuffer, RecordBuffer, bool>
     return ret != 0;
   }
 
-  RecordTypeEquals(const class IQLFunctionModule * f = NULL,
-		   class InterpreterContext * ctxt = NULL)
+  RecordTypeEquals()
     :
-    Func(f != NULL ? f->getRawFunction() : NULL),
+    Context(nullptr)
+  {
+  }
+
+  RecordTypeEquals(const TreculFunctionRuntime & f,
+		   class InterpreterContext * ctxt)
+    :
+    Func(f.getRawFunction()),
     Context(ctxt)
   {
   }
@@ -1201,9 +1265,9 @@ public:
   class insert_predicate 
   {
   public:
-    IQLFunctionModule::LLVMFuncType HashFunc;
+    TreculFunctionRuntime::LLVMFuncType HashFunc;
     RecordBuffer InsertThis;
-    insert_predicate(IQLFunctionModule::LLVMFuncType hashFunc)
+    insert_predicate(TreculFunctionRuntime::LLVMFuncType hashFunc)
       :
       HashFunc(hashFunc)
     {
@@ -1222,21 +1286,21 @@ public:
   class probe_predicate 
   {
   public:
-    IQLFunctionModule::LLVMFuncType HashFunc;
-    IQLFunctionModule::LLVMFuncType EqFunc;
+    TreculFunctionRuntime::LLVMFuncType HashFunc;
+    TreculFunctionRuntime::LLVMFuncType EqFunc;
     RecordBuffer ProbeThis;
-    probe_predicate(IQLFunctionModule::LLVMFuncType hashFunc,
-		    IQLFunctionModule::LLVMFuncType eqFunc)
+    probe_predicate(TreculFunctionRuntime::LLVMFuncType hashFunc,
+                    TreculFunctionRuntime::LLVMFuncType eqFunc)
       :
       HashFunc(hashFunc),
       EqFunc(eqFunc)
     {
     }
-    probe_predicate(const IQLFunctionModule * hashFunc,
-		    const IQLFunctionModule * eqFunc)
+    probe_predicate(const TreculFunctionRuntime & hashFunc,
+		    const TreculFunctionRuntime & eqFunc)
       :
-      HashFunc(hashFunc->getRawFunction()),
-      EqFunc(eqFunc->getRawFunction())
+      HashFunc(hashFunc.getRawFunction()),
+      EqFunc(eqFunc.getRawFunction())
     {
     }
     uint32_t hash(InterpreterContext * ctxt)
@@ -1541,7 +1605,7 @@ private:
 		     RecordBuffer tableInput,
 		     uint32_t h);
 public:
-  paged_hash_table(bool ownTableData, const IQLFunctionModule * tableHash);
+  paged_hash_table(bool ownTableData, const TreculFunctionRuntime & tableHash);
   ~paged_hash_table();
   void insert(RecordBuffer tableInput, InterpreterContext * ctxt);
   // TODO: Templatize on probe_predicate (this should also be used in insert with
@@ -1562,12 +1626,18 @@ public:
   friend class RuntimeHashGroupByOperator;
   friend class RuntimeHybridGroupByOperator;
 private:
-  RecordTypeFree mFree;
-  RecordTypeFree mAggregateFree;
-  IQLAggregateModule * mAggregate;
-  IQLFunctionModule * mHashFun;
-  IQLFunctionModule * mHashKeyEqFun;
-  IQLFunctionModule * mSortKeyEqFun;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
+  TreculFunctionReference mAggregateFreeRef;
+  TreculRecordFreeRuntime mAggregateFree;
+  TreculAggregateReference mAggregateRef;
+TreculAggregateRuntime mAggregate;
+  TreculFunctionReference mHashFunRef;
+  TreculFunctionRuntime mHashFun;
+  TreculFunctionReference mHashKeyEqFunRef;
+  TreculFunctionRuntime mHashKeyEqFun;
+  TreculFunctionReference mSortKeyEqFunRef;
+  TreculFunctionRuntime mSortKeyEqFun;
 
   // Serialization
   friend class boost::serialization::access;
@@ -1575,46 +1645,58 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
-    ar & BOOST_SERIALIZATION_NVP(mAggregateFree);
-    ar & BOOST_SERIALIZATION_NVP(mAggregate);
-    ar & BOOST_SERIALIZATION_NVP(mHashFun);
-    ar & BOOST_SERIALIZATION_NVP(mHashKeyEqFun);
-    ar & BOOST_SERIALIZATION_NVP(mSortKeyEqFun);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mAggregateFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mAggregateRef);
+    ar & BOOST_SERIALIZATION_NVP(mHashFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mHashKeyEqFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mSortKeyEqFunRef);
   }
   RuntimeHashGroupByOperatorType()
-    :
-    mAggregate(NULL),
-    mHashFun(NULL),
-    mHashKeyEqFun(NULL),
-    mSortKeyEqFun(NULL)
   {
   }  
 public:
-  RuntimeHashGroupByOperatorType(const RecordTypeFree & freeFunctor, 
-				 const RecordTypeFunction * hashFun,
-				 const RecordTypeFunction * hashEqFun,
-				 const RecordTypeAggregate * agg,
-				 const RecordTypeFunction * sortEqFun=NULL)
+  RuntimeHashGroupByOperatorType(const TreculFreeOperation & freeFunctor, 
+				 const TreculFunction & hashFun,
+				 const TreculFunction & hashEqFun,
+				 const TreculAggregate & agg,
+                                 const TreculFreeOperation & aggregateFreeFunctor, 
+				 const TreculFunction * sortEqFun=NULL)
     :
     RuntimeOperatorType("RuntimeHashGroupByOperatorType"),
-    mFree(freeFunctor),
-    mAggregateFree(agg->getAggregate()->getFree()),
-    mAggregate(agg->create()),
-    mHashFun(hashFun->create()),
-    mHashKeyEqFun(hashEqFun->create()),
-    mSortKeyEqFun(sortEqFun ? sortEqFun->create() : NULL)
+    mFreeRef(freeFunctor.getReference()),
+    mAggregateFreeRef(aggregateFreeFunctor.getReference()),
+    mAggregateRef(agg.getReference()),
+    mHashFunRef(hashFun.getReference()),
+    mHashKeyEqFunRef(hashEqFun.getReference()),
+    mSortKeyEqFunRef(sortEqFun ? sortEqFun->getReference() : TreculFunctionReference())
+  {
+  }
+  RuntimeHashGroupByOperatorType(const TreculFreeOperation & freeFunctor, 
+				 const TreculFunction * hashFun,
+				 const TreculFunction * hashEqFun,
+				 const TreculAggregate & agg,
+                                 const TreculFreeOperation & aggregateFreeFunctor)
+    :
+    RuntimeHashGroupByOperatorType(freeFunctor, *hashFun, *hashEqFun, agg, aggregateFreeFunctor, nullptr)
   {
   }
   ~RuntimeHashGroupByOperatorType()
   {
-    delete mAggregate;
-    delete mHashFun;
-    delete mHashKeyEqFun;
-    delete mSortKeyEqFun;
   }
 
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    mAggregateFree = m.getFunction<TreculRecordFreeRuntime>(mAggregateFreeRef);
+    mAggregate = m.getAggregate(mAggregateRef);
+    mHashFun = m.getFunction<TreculFunctionRuntime>(mHashFunRef);
+    mHashKeyEqFun = m.getFunction<TreculFunctionRuntime>(mHashKeyEqFunRef);
+    if (!mSortKeyEqFunRef.empty()) {
+      mSortKeyEqFun = m.getFunction<TreculFunctionRuntime>(mSortKeyEqFunRef);
+    }
+  }
 };
 
 class RuntimeHashGroupByOperator : public RuntimeOperator
@@ -1642,10 +1724,14 @@ public:
   typedef RecordTypeHasher hasher_type;
   friend class RuntimeSortGroupByOperator;
 private:
-  RecordTypeFree mFree;
-  RecordTypeFree mAggregateFree;
-  IQLAggregateModule * mAggregate;
-  IQLFunctionModule * mEqFun;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
+  TreculFunctionReference mAggregateFreeRef;
+  TreculRecordFreeRuntime mAggregateFree;
+  TreculAggregateReference mAggregateRef;
+TreculAggregateRuntime mAggregate;
+  TreculFunctionReference mEqFunRef;
+  TreculFunctionRuntime mEqFun;
 
   // Serialization
   friend class boost::serialization::access;
@@ -1653,37 +1739,43 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
-    ar & BOOST_SERIALIZATION_NVP(mAggregateFree);
-    ar & BOOST_SERIALIZATION_NVP(mAggregate);
-    ar & BOOST_SERIALIZATION_NVP(mEqFun);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mAggregateFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mAggregateRef);
+    ar & BOOST_SERIALIZATION_NVP(mEqFunRef);
   }
   RuntimeSortGroupByOperatorType()
-    :
-    mAggregate(NULL),
-    mEqFun(NULL)
   {
   }  
 public:
-  RuntimeSortGroupByOperatorType(const RecordTypeFree & freeFunctor, 
-				 const RecordTypeFunction * hashFun,
-				 const RecordTypeFunction * eqFun,
-				 const RecordTypeAggregate * agg)
+  RuntimeSortGroupByOperatorType(const TreculFreeOperation & freeFunctor, 
+				 const TreculFunction * hashFun,
+				 const TreculFunction * eqFun,
+				 const TreculAggregate & agg,
+                                 const TreculFreeOperation & aggregateFreeFunctor)
     :
     RuntimeOperatorType("RuntimeSortGroupByOperatorType"),
-    mFree(freeFunctor),
-    mAggregateFree(agg->getAggregate()->getFree()),
-    mAggregate(agg->create()),
-    mEqFun(eqFun != NULL ? eqFun->create() : NULL)
+    mFreeRef(freeFunctor.getReference()),
+    mAggregateFreeRef(aggregateFreeFunctor.getReference()),
+    mAggregateRef(agg.getReference()),
+    mEqFunRef(eqFun != nullptr ? eqFun->getReference() : TreculFunctionReference())
   {
+    boost::ignore_unused(hashFun);
   }
   ~RuntimeSortGroupByOperatorType()
   {
-    delete mAggregate;
-    delete mEqFun;
   }
 
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    mAggregateFree = m.getFunction<TreculRecordFreeRuntime>(mAggregateFreeRef);
+    mAggregate = m.getAggregate(mAggregateRef);
+    if (!mEqFunRef.empty()) {
+      mEqFun = m.getFunction<TreculFunctionRuntime>(mEqFunRef);
+    }
+  }
 };
 
 class RuntimeSortGroupByOperator : public RuntimeOperator
@@ -1710,10 +1802,14 @@ public:
   typedef RecordTypeHasher hasher_type;
   friend class RuntimeSortRunningTotalOperator;
 private:
-  RecordTypeFree mFree;
-  RecordTypeFree mAggregateFree;
-  IQLAggregateModule * mAggregate;
-  IQLFunctionModule * mEqFun;
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
+  TreculFunctionReference mAggregateFreeRef;
+  TreculRecordFreeRuntime mAggregateFree;
+  TreculAggregateReference mAggregateRef;
+TreculAggregateRuntime mAggregate;
+  TreculFunctionReference mEqFunRef;
+  TreculFunctionRuntime mEqFun;
 
   // Serialization
   friend class boost::serialization::access;
@@ -1721,37 +1817,43 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mFree);
-    ar & BOOST_SERIALIZATION_NVP(mAggregateFree);
-    ar & BOOST_SERIALIZATION_NVP(mAggregate);
-    ar & BOOST_SERIALIZATION_NVP(mEqFun);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mAggregateFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mAggregateRef);
+    ar & BOOST_SERIALIZATION_NVP(mEqFunRef);
   }
   RuntimeSortRunningTotalOperatorType()
-    :
-    mAggregate(NULL),
-    mEqFun(NULL)
   {
   }  
 public:
-  RuntimeSortRunningTotalOperatorType(const RecordTypeFree & freeFunctor, 
-				      const RecordTypeFunction * hashFun,
-				      const RecordTypeFunction * eqFun,
-				      const RecordTypeAggregate * agg)
+  RuntimeSortRunningTotalOperatorType(const TreculFreeOperation & freeFunctor, 
+				      const TreculFunction * hashFun,
+				      const TreculFunction * eqFun,
+				      const TreculAggregate & agg,
+                                      const TreculFreeOperation & aggregateFreeFunctor)
     :
     RuntimeOperatorType("RuntimeSortRunningTotalOperatorType"),
-    mFree(freeFunctor),
-    mAggregateFree(agg->getAggregate()->getFree()),
-    mAggregate(agg->create()),
-    mEqFun(eqFun != NULL ? eqFun->create() : NULL)
+    mFreeRef(freeFunctor.getReference()),
+    mAggregateFreeRef(aggregateFreeFunctor.getReference()),
+    mAggregateRef(agg.getReference()),
+    mEqFunRef(eqFun != nullptr ? eqFun->getReference() : TreculFunctionReference())
   {
+    boost::ignore_unused(hashFun);
   }
   ~RuntimeSortRunningTotalOperatorType()
   {
-    delete mAggregate;
-    delete mEqFun;
   }
 
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    mAggregateFree = m.getFunction<TreculRecordFreeRuntime>(mAggregateFreeRef);
+    mAggregate = m.getAggregate(mAggregateRef);
+    if (!mEqFunRef.empty()) {
+      mEqFun = m.getFunction<TreculFunctionRuntime>(mEqFunRef);      
+    }
+  }
 };
 
 class RuntimeSortRunningTotalOperator : public RuntimeOperator
@@ -1774,7 +1876,7 @@ public:
 class equals_func
 {
 public:
-  IQLFunctionModule::LLVMFuncType Func;
+  TreculFunctionRuntime::LLVMFuncType Func;
   bool operator() (RecordBuffer lhs, RecordBuffer rhs, class InterpreterContext * ctxt) const
   {
     int32_t ret;
@@ -1786,7 +1888,7 @@ public:
 class hash_func
 {
 public:
-  IQLFunctionModule::LLVMFuncType Func;
+  TreculFunctionRuntime::LLVMFuncType Func;
   uint32_t operator() (RecordBuffer buf, class InterpreterContext * ctxt)
   {
     int32_t ret;
@@ -1803,24 +1905,28 @@ public:
 private:
   const RecordType * mTableInput;
   const RecordType * mProbeInput;
-  RecordTypeFunction * mTableHash;
-  RecordTypeFunction * mProbeHash;
-  RecordTypeFunction * mEq;
-  RecordTypeTransfer2 * mTransfer;
-  RecordTypeTransfer * mSemiJoinTransfer;
-  RecordTypeTransfer * mProbeMakeNullableTransfer;
-  RecordTypeTransfer * mTableMakeNullableTransfer;
+  TreculFreeOperation * mTableFree;
+  TreculFreeOperation * mProbeFree;
+  TreculFunction * mTableHash;
+  TreculFunction * mProbeHash;
+  TreculFunction * mEq;
+  TreculTransfer2 * mTransfer;
+  TreculTransfer * mSemiJoinTransfer;
+  TreculTransfer * mTableMakeNullableTransfer;
+  TreculTransfer * mProbeMakeNullableTransfer;
+  TreculFreeOperation * mTableMakeNullableFree;
+  TreculFreeOperation * mProbeMakeNullableFree;
   JoinType mJoinType;
   bool mJoinOne;
 
-  void init(DynamicRecordContext & ctxt,
+  void init(PlanCheckContext & ctxt,
 	    const std::vector<std::string>& tableKeys,
 	    const std::vector<std::string>& probeKeys,
 	    const std::string& residual,
 	    const std::string& transfer);
 public:
   HashJoin(JoinType joinType);
-  HashJoin(DynamicRecordContext & ctxt,
+  HashJoin(PlanCheckContext & ctxt,
 	   const RecordType * tableInput,
 	   const RecordType * probeInput,
 	   const std::string& tableKey,
@@ -1828,7 +1934,7 @@ public:
 	   const std::string& residual,
 	   const std::string& transfer,
 	   bool joinOne=false);
-  HashJoin(DynamicRecordContext & ctxt,
+  HashJoin(PlanCheckContext & ctxt,
 	   HashJoin::JoinType joinType,
 	   const RecordType * tableInput,
 	   const RecordType * probeInput,
@@ -1836,7 +1942,7 @@ public:
 	   const std::string& probeKey,
 	   const std::string& residual,
 	   const std::string& transfer);
-  HashJoin(DynamicRecordContext & ctxt,
+  HashJoin(PlanCheckContext & ctxt,
 	   const RecordType * tableInput,
 	   const RecordType * probeInput,
 	   const std::vector<std::string>& tableKeys,
@@ -1861,134 +1967,159 @@ class RuntimeHashJoinOperatorType : public RuntimeOperatorType
 public:
   friend class RuntimeHashJoinOperator;
 private:
-  RecordTypeFree mTableFree;
-  RecordTypeFree mProbeFree;
-  IQLFunctionModule * mTableHashFun;
-  IQLFunctionModule * mProbeHashFun;
-  IQLFunctionModule * mEqFun;
-  IQLTransferModule2 * mTransferModule;
-  IQLTransferModule * mSemiJoinTransferModule;
+  TreculFunctionReference mTableFreeRef;
+  TreculRecordFreeRuntime mTableFree;
+  TreculFunctionReference mProbeFreeRef;
+  TreculRecordFreeRuntime mProbeFree;
+  TreculFunctionReference mTableHashFunRef;
+  TreculFunctionRuntime mTableHashFun;
+  TreculFunctionReference mProbeHashFunRef;
+  TreculFunctionRuntime mProbeHashFun;
+  TreculFunctionReference mEqFunRef;
+  TreculFunctionRuntime mEqFun;
+  TreculTransferReference mTransferModuleRef;
+TreculTransfer2Runtime mTransferModule;
+  TreculTransferReference mSemiJoinTransferModuleRef;
+TreculTransferRuntime mSemiJoinTransferModule;
   HashJoin::JoinType mJoinType;
   bool mJoinOne;
-  IQLTransferModule * mProbeMakeNullableTransferModule;
+  TreculTransferReference mProbeMakeNullableTransferModuleRef;
+TreculTransferRuntime mProbeMakeNullableTransferModule;
   RecordTypeMalloc mProbeNullMalloc;
-  RecordTypeFree mProbeNullFree;
-  IQLTransferModule * mTableMakeNullableTransferModule;
+  TreculFunctionReference mProbeNullFreeRef;
+  TreculRecordFreeRuntime mProbeNullFree;
+  TreculTransferReference mTableMakeNullableTransferModuleRef;
+TreculTransferRuntime mTableMakeNullableTransferModule;
   RecordTypeMalloc mTableNullMalloc;
-  RecordTypeFree mTableNullFree;
+  TreculFunctionReference mTableNullFreeRef;
+  TreculRecordFreeRuntime mTableNullFree;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mTableFree);
-    ar & BOOST_SERIALIZATION_NVP(mProbeFree);
-    ar & BOOST_SERIALIZATION_NVP(mTableHashFun);
-    ar & BOOST_SERIALIZATION_NVP(mProbeHashFun);
-    ar & BOOST_SERIALIZATION_NVP(mEqFun);
-    ar & BOOST_SERIALIZATION_NVP(mTransferModule);
-    ar & BOOST_SERIALIZATION_NVP(mSemiJoinTransferModule);
+    ar & BOOST_SERIALIZATION_NVP(mTableFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mProbeFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mTableHashFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mProbeHashFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mEqFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mTransferModuleRef);
+    ar & BOOST_SERIALIZATION_NVP(mSemiJoinTransferModuleRef);
     ar & BOOST_SERIALIZATION_NVP(mJoinType);
     ar & BOOST_SERIALIZATION_NVP(mJoinOne);
-    ar & BOOST_SERIALIZATION_NVP(mProbeMakeNullableTransferModule);
+    ar & BOOST_SERIALIZATION_NVP(mProbeMakeNullableTransferModuleRef);
     ar & BOOST_SERIALIZATION_NVP(mProbeNullMalloc);    
-    ar & BOOST_SERIALIZATION_NVP(mProbeNullFree);    
-    ar & BOOST_SERIALIZATION_NVP(mTableMakeNullableTransferModule);
+    ar & BOOST_SERIALIZATION_NVP(mProbeNullFreeRef);    
+    ar & BOOST_SERIALIZATION_NVP(mTableMakeNullableTransferModuleRef);
     ar & BOOST_SERIALIZATION_NVP(mTableNullMalloc);    
-    ar & BOOST_SERIALIZATION_NVP(mTableNullFree);    
+    ar & BOOST_SERIALIZATION_NVP(mTableNullFreeRef);    
   }
   RuntimeHashJoinOperatorType()
     :
-    mTableHashFun(NULL),
-    mProbeHashFun(NULL),
-    mEqFun(NULL),
-    mTransferModule(NULL),
-    mSemiJoinTransferModule(NULL),
     mJoinType(HashJoin::INNER),
-    mJoinOne(false),
-    mProbeMakeNullableTransferModule(NULL),
-    mTableMakeNullableTransferModule(NULL)
+    mJoinOne(false)
   {
   }
 public:
-  RuntimeHashJoinOperatorType(const RecordTypeFree & tableFreeFunctor, 
-			      const RecordTypeFree & probeFreeFunctor,
-			      const RecordTypeFunction * tableHashFun,
-			      const RecordTypeFunction * probeHashFun,
-			      const RecordTypeFunction * eqFun,
-			      const RecordTypeTransfer2 * transferFun,
+  RuntimeHashJoinOperatorType(const TreculFreeOperation & tableFreeFunctor, 
+			      const TreculFreeOperation & probeFreeFunctor,
+			      const TreculFunction & tableHashFun,
+			      const TreculFunction & probeHashFun,
+			      const TreculFunction & eqFun,
+			      const TreculTransfer2 & transferFun,
 			      bool joinOne=false)
     :
     RuntimeOperatorType("RuntimeHashJoinOperatorType"),
-    mTableFree(tableFreeFunctor),
-    mProbeFree(probeFreeFunctor),
-    mTableHashFun(tableHashFun->create()),
-    mProbeHashFun(probeHashFun->create()),
-    mEqFun(eqFun->create()),
-    mTransferModule(transferFun->create()),
-    mSemiJoinTransferModule(NULL),
+    mTableFreeRef(tableFreeFunctor.getReference()),
+    mProbeFreeRef(probeFreeFunctor.getReference()),
+    mTableHashFunRef(tableHashFun.getReference()),
+    mProbeHashFunRef(probeHashFun.getReference()),
+    mEqFunRef(eqFun.getReference()),
+    mTransferModuleRef(transferFun.getReference()),
     mJoinType(HashJoin::INNER),
-    mJoinOne(joinOne),
-    mProbeMakeNullableTransferModule(NULL),
-    mTableMakeNullableTransferModule(NULL)    
+    mJoinOne(joinOne)
   {
   }
-  RuntimeHashJoinOperatorType(const RecordTypeFree & tableFreeFunctor, 
-			      const RecordTypeFree & probeFreeFunctor,
-			      const RecordTypeFunction * tableHashFun,
-			      const RecordTypeFunction * probeHashFun,
-			      const RecordTypeFunction * eqFun,
-			      const RecordTypeTransfer * transferFun,
+  RuntimeHashJoinOperatorType(const TreculFreeOperation & tableFreeFunctor, 
+			      const TreculFreeOperation & probeFreeFunctor,
+			      const TreculFunction & tableHashFun,
+			      const TreculFunction & probeHashFun,
+			      const TreculFunction & eqFun,
+			      const TreculTransfer * transferFun,
 			      HashJoin::JoinType joinType)
     :
     RuntimeOperatorType("RuntimeHashJoinOperatorType"),
-    mTableFree(tableFreeFunctor),
-    mProbeFree(probeFreeFunctor),
-    mTableHashFun(tableHashFun->create()),
-    mProbeHashFun(probeHashFun->create()),
-    mEqFun(eqFun->create()),
-    mTransferModule(NULL),
-    mSemiJoinTransferModule(transferFun && !transferFun->isIdentity() ? 
-			    transferFun->create() : NULL),
+    mTableFreeRef(tableFreeFunctor.getReference()),
+    mProbeFreeRef(probeFreeFunctor.getReference()),
+    mTableHashFunRef(tableHashFun.getReference()),
+    mProbeHashFunRef(probeHashFun.getReference()),
+    mEqFunRef(eqFun.getReference()),
+    mSemiJoinTransferModuleRef(transferFun && !transferFun->isIdentity() ? 
+                               transferFun->getReference() : TreculTransferReference()),
     mJoinType(joinType),
-    mJoinOne(false),
-    mProbeMakeNullableTransferModule(NULL),
-    mTableMakeNullableTransferModule(NULL)
+    mJoinOne(false)
   {
   }
   RuntimeHashJoinOperatorType(HashJoin::JoinType joinType,
-			      const RecordTypeFree & tableFreeFunctor, 
-			      const RecordTypeFree & probeFreeFunctor,
-			      const RecordTypeFunction * tableHashFun,
-			      const RecordTypeFunction * probeHashFun,
-			      const RecordTypeFunction * eqFun,
-			      const RecordTypeTransfer2 * transfer2Fun,
-			      const RecordTypeTransfer * tableNullableTransferFun,
-			      const RecordTypeTransfer * probeNullableTransferFun)
+			      const TreculFreeOperation & tableFreeFunctor, 
+			      const TreculFreeOperation & probeFreeFunctor,
+			      const TreculFunction & tableHashFun,
+			      const TreculFunction & probeHashFun,
+			      const TreculFunction & eqFun,
+			      const TreculTransfer2 & transfer2Fun,
+			      const TreculTransfer & tableNullableTransferFun,
+			      const TreculTransfer & probeNullableTransferFun,
+                              const TreculFreeOperation & tableNullableFreeFunctor,
+                              const TreculFreeOperation & probeNullableFreeFunctor)
     :
     RuntimeOperatorType("RuntimeHashJoinOperatorType"),
-    mTableFree(tableFreeFunctor),
-    mProbeFree(probeFreeFunctor),
-    mTableHashFun(tableHashFun->create()),
-    mProbeHashFun(probeHashFun->create()),
-    mEqFun(eqFun->create()),
-    mTransferModule(transfer2Fun->create()),
-    mSemiJoinTransferModule(NULL),
+    mTableFreeRef(tableFreeFunctor.getReference()),
+    mProbeFreeRef(probeFreeFunctor.getReference()),
+    mTableHashFunRef(tableHashFun.getReference()),
+    mProbeHashFunRef(probeHashFun.getReference()),
+    mEqFunRef(eqFun.getReference()),
+    mTransferModuleRef(transfer2Fun.getReference()),
     mJoinType(joinType),
     mJoinOne(false),
-    mProbeMakeNullableTransferModule(probeNullableTransferFun->create()),
-    mProbeNullMalloc(probeNullableTransferFun->getTarget()->getMalloc()),
-    mProbeNullFree(probeNullableTransferFun->getTarget()->getFree()),
-    mTableMakeNullableTransferModule(tableNullableTransferFun->create()),
-    mTableNullMalloc(tableNullableTransferFun->getTarget()->getMalloc()),
-    mTableNullFree(tableNullableTransferFun->getTarget()->getFree())
+    mProbeMakeNullableTransferModuleRef(probeNullableTransferFun.getReference()),
+    mProbeNullMalloc(probeNullableTransferFun.getTarget()->getMalloc()),
+    mProbeNullFreeRef(probeNullableFreeFunctor.getReference()),
+    mTableMakeNullableTransferModuleRef(tableNullableTransferFun.getReference()),
+    mTableNullMalloc(tableNullableTransferFun.getTarget()->getMalloc()),
+    mTableNullFreeRef(tableNullableFreeFunctor.getReference())
   {
   }
   
   ~RuntimeHashJoinOperatorType();
 
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mTableFree = m.getFunction<TreculRecordFreeRuntime>(mTableFreeRef);
+    mProbeFree = m.getFunction<TreculRecordFreeRuntime>(mProbeFreeRef);
+    if (!mTableNullFreeRef.empty()) {
+      mTableNullFree = m.getFunction<TreculRecordFreeRuntime>(mTableNullFreeRef);
+    }
+    if (!mProbeNullFreeRef.empty()) {
+      mProbeNullFree = m.getFunction<TreculRecordFreeRuntime>(mProbeNullFreeRef);
+    }
+    mTableHashFun = m.getFunction<TreculFunctionRuntime>(mTableHashFunRef);
+    mProbeHashFun = m.getFunction<TreculFunctionRuntime>(mProbeHashFunRef);
+    mEqFun = m.getFunction<TreculFunctionRuntime>(mEqFunRef);
+    if (!mTransferModuleRef.empty()) {
+      mTransferModule = m.getTransfer<TreculTransfer2Runtime>(mTransferModuleRef);
+    }
+    if (!mSemiJoinTransferModuleRef.empty()) {
+      mSemiJoinTransferModule = m.getTransfer<TreculTransferRuntime>(mSemiJoinTransferModuleRef);
+    }
+    if (!mProbeMakeNullableTransferModuleRef.empty()) {
+      mProbeMakeNullableTransferModule = m.getTransfer<TreculTransferRuntime>(mProbeMakeNullableTransferModuleRef);
+    }
+    if (!mTableMakeNullableTransferModuleRef.empty()) {
+      mTableMakeNullableTransferModule = m.getTransfer<TreculTransferRuntime>(mTableMakeNullableTransferModuleRef);
+    }
+  }
 };
 
 class RuntimeHashJoinOperator : public RuntimeOperator
@@ -2022,44 +2153,54 @@ class RuntimeCrossJoinOperatorType : public RuntimeOperatorType
 public:
   friend class RuntimeCrossJoinOperator;
 private:
-  RecordTypeFree mTableFree;
-  RecordTypeFree mProbeFree;
-  IQLFunctionModule * mEqFun;
-  IQLTransferModule2 * mTransferModule;
+  TreculFunctionReference mTableFreeRef;
+  TreculRecordFreeRuntime mTableFree;
+  TreculFunctionReference mProbeFreeRef;
+  TreculRecordFreeRuntime mProbeFree;
+  TreculFunctionReference mEqFunRef;
+  TreculFunctionRuntime mEqFun;
+  TreculTransferReference mTransferModuleRef;
+TreculTransfer2Runtime mTransferModule;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mTableFree);
-    ar & BOOST_SERIALIZATION_NVP(mProbeFree);
-    ar & BOOST_SERIALIZATION_NVP(mEqFun);
-    ar & BOOST_SERIALIZATION_NVP(mTransferModule);
+    ar & BOOST_SERIALIZATION_NVP(mTableFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mProbeFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mEqFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mTransferModuleRef);
   }
   RuntimeCrossJoinOperatorType()
-    :
-    mEqFun(NULL),
-    mTransferModule(NULL)
   {
   }
 public:
-  RuntimeCrossJoinOperatorType(const RecordTypeFree & tableFreeFunctor, 
-			       const RecordTypeFree & probeFreeFunctor,
-			       const RecordTypeFunction * eqFun,
-			       const RecordTypeTransfer2 * transferFun)
+  RuntimeCrossJoinOperatorType(const TreculFreeOperation & tableFreeFunctor, 
+			       const TreculFreeOperation & probeFreeFunctor,
+			       const TreculFunction * eqFun,
+			       const TreculTransfer2 & transferFun)
     :
     RuntimeOperatorType("RuntimeCrossJoinOperatorType"),
-    mTableFree(tableFreeFunctor),
-    mProbeFree(probeFreeFunctor),
-    mEqFun(eqFun ? eqFun->create() : NULL),
-    mTransferModule(transferFun->create())
+    mTableFreeRef(tableFreeFunctor.getReference()),
+    mProbeFreeRef(probeFreeFunctor.getReference()),
+    mEqFunRef(eqFun ? eqFun->getReference() : TreculFunctionReference()),
+    mTransferModuleRef(transferFun.getReference())
   {
   }
   
   ~RuntimeCrossJoinOperatorType();
 
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mTableFree = m.getFunction<TreculRecordFreeRuntime>(mTableFreeRef);
+    mProbeFree = m.getFunction<TreculRecordFreeRuntime>(mProbeFreeRef);
+    if (!mEqFunRef.empty()) {
+      mEqFun = m.getFunction<TreculFunctionRuntime>(mEqFunRef);
+    }
+    mTransferModule = m.getTransfer<TreculTransfer2Runtime>(mTransferModuleRef);
+  }
 };
 
 class RuntimeCrossJoinOperator : public RuntimeOperator
@@ -2085,29 +2226,32 @@ class RuntimeHashPartitionerOperatorType : public RuntimeOperatorType
 public:
   friend class RuntimeHashPartitionerOperator;
 private:
-  IQLFunctionModule * mHashFun;
+  TreculFunctionReference mHashFunRef;
+  TreculFunctionRuntime mHashFun;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mHashFun);
+    ar & BOOST_SERIALIZATION_NVP(mHashFunRef);
   }
   RuntimeHashPartitionerOperatorType()
-    :
-    mHashFun(NULL)
   {
   }
 public:
-  RuntimeHashPartitionerOperatorType(IQLFunctionModule * hashFun)
+  RuntimeHashPartitionerOperatorType(const TreculFunction & hashFun)
     :
     RuntimeOperatorType("RuntimeHashPartitionerOperatorType"),
-    mHashFun(hashFun)
+    mHashFunRef(hashFun.getReference())
   {
   }
   ~RuntimeHashPartitionerOperatorType();
   bool isPartitioner() const { return true; }
+  void loadFunctions(TreculModule & m) override
+  {
+    mHashFun = m.getFunction<TreculFunctionRuntime>(mHashFunRef);
+  }
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
 };
 
@@ -2132,27 +2276,32 @@ class RuntimeBroadcastPartitionerOperatorType : public RuntimeOperatorType
 public:
   friend class RuntimeBroadcastPartitionerOperator;
 private:
-  IQLTransferModule * mTransfer;
+  TreculTransferReference mTransferRef;
+TreculTransferRuntime mTransfer;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mTransfer);
+    ar & BOOST_SERIALIZATION_NVP(mTransferRef);
   }
   RuntimeBroadcastPartitionerOperatorType()
   {
   }
 public:
-  RuntimeBroadcastPartitionerOperatorType(const RecordTypeTransfer * xfer)
+  RuntimeBroadcastPartitionerOperatorType(const TreculTransfer & xfer)
     :
     RuntimeOperatorType("RuntimeBroadcastPartitionerOperatorType"),
-    mTransfer(xfer->create())
+    mTransferRef(xfer.getReference())
   {
   }
   ~RuntimeBroadcastPartitionerOperatorType();
   bool isPartitioner() const { return true; }
+  void loadFunctions(TreculModule & m) override
+  {
+    mTransfer = m.getTransfer<TreculTransferRuntime>(mTransferRef);
+  }
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
 };
 
@@ -2203,29 +2352,33 @@ class SortMergeJoin : public LogicalOperator
 public:
   enum JoinType { INNER, FULL_OUTER, LEFT_OUTER, RIGHT_OUTER, RIGHT_SEMI, RIGHT_ANTI_SEMI };
   static bool isInnerOrOuter(JoinType joinType);
-  static RecordTypeTransfer * makeNullableTransfer(DynamicRecordContext& ctxt,
+  static TreculTransfer * makeNullableTransfer(PlanCheckContext& ctxt,
 						   const RecordType * input);
 
 private:
   JoinType mJoinType;
   const RecordType * mLeftInput;
   const RecordType * mRightInput;
-  RecordTypeFunction * mLeftKeyCompare;
-  RecordTypeFunction * mRightKeyCompare;
-  RecordTypeFunction * mLeftRightKeyCompare;
-  RecordTypeFunction * mResidual;
-  RecordTypeTransfer2 * mMatchTransfer;
-  RecordTypeTransfer * mLeftMakeNullableTransfer;
-  RecordTypeTransfer * mRightMakeNullableTransfer;
+  TreculFreeOperation * mLeftFree;
+  TreculFreeOperation * mRightFree;
+  TreculFunction * mLeftKeyCompare;
+  TreculFunction * mRightKeyCompare;
+  TreculFunction * mLeftRightKeyCompare;
+  TreculFunction * mResidual;
+  TreculTransfer2 * mMatchTransfer;
+  TreculTransfer * mLeftMakeNullableTransfer;
+  TreculTransfer * mRightMakeNullableTransfer;
+  TreculFreeOperation * mLeftMakeNullableFree;
+  TreculFreeOperation * mRightMakeNullableFree;
 
-  void init(DynamicRecordContext & ctxt,
+  void init(PlanCheckContext & ctxt,
 	    const std::vector<SortKey>& leftKeys,
 	    const std::vector<SortKey>& rightKeys,
 	    const std::string& residual,
 	    const std::string& matchTransfer);
 public:
   SortMergeJoin(JoinType joinType);
-  SortMergeJoin(DynamicRecordContext & ctxt,
+  SortMergeJoin(PlanCheckContext & ctxt,
 		JoinType joinType,
 		const RecordType * leftInput,
 		const RecordType * rightInput,
@@ -2250,38 +2403,48 @@ private:
   SortMergeJoin::JoinType mJoinType;
   // Compare keys in two records from the
   // left input.
-  IQLFunctionModule * mLeftKeyCompareFun;
+  TreculFunctionReference mLeftKeyCompareFunRef;
+  TreculFunctionRuntime mLeftKeyCompareFun;
   // Compare keys in two records from the
   // right input.
-
-  IQLFunctionModule * mRightKeyCompareFun;
+  TreculFunctionReference mRightKeyCompareFunRef;
+  TreculFunctionRuntime mRightKeyCompareFun;
   // Compare keys in one record from the left
   // with one from the right input. Do we need this?
-  IQLFunctionModule * mLeftRightKeyCompareFun;
+  TreculFunctionReference mLeftRightKeyCompareFunRef;
+  TreculFunctionRuntime mLeftRightKeyCompareFun;
   // Compare record from the left
   // with one from the right input.  
-  IQLFunctionModule * mEqFun;
+  TreculFunctionReference mEqFunRef;
+  TreculFunctionRuntime mEqFun;
   // What to do when we have a match.
-  IQLTransferModule2 * mMatchTransfer;
+  TreculTransferReference mMatchTransferRef;
+TreculTransfer2Runtime mMatchTransfer;
   // For right/full outer joins, coerce left inputs
   // to be nullable as needed.
   // For (anti) semi joins we use this to transfer.
-  IQLTransferModule * mLeftMakeNullableTransfer;
+  TreculTransferReference mLeftMakeNullableTransferRef;
+TreculTransferRuntime mLeftMakeNullableTransfer;
   // For left/full outer joins, coerce right inputs
   // to be nullable as needed.
-  IQLTransferModule * mRightMakeNullableTransfer;
+  TreculTransferReference mRightMakeNullableTransferRef;
+TreculTransferRuntime mRightMakeNullableTransfer;
   // How to create new records.
   // How to free
-  RecordTypeFree mLeftFree;
-  RecordTypeFree mRightFree;
+  TreculFunctionReference mLeftFreeRef;
+  TreculRecordFreeRuntime mLeftFree;
+  TreculFunctionReference mRightFreeRef;
+  TreculRecordFreeRuntime mRightFree;
   // Create and delete nullable left records
   // for outer joins.
   RecordTypeMalloc mLeftNullMalloc;
-  RecordTypeFree mLeftNullFree;
+  TreculFunctionReference mLeftNullFreeRef;
+  TreculRecordFreeRuntime mLeftNullFree;
   // Create and delete nullable right records
   // for outer joins.
   RecordTypeMalloc mRightNullMalloc;
-  RecordTypeFree mRightNullFree;
+  TreculFunctionReference mRightNullFreeRef;
+  TreculRecordFreeRuntime mRightNullFree;
 
   // Serialization
   friend class boost::serialization::access;
@@ -2290,71 +2453,90 @@ private:
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
     ar & BOOST_SERIALIZATION_NVP(mJoinType);
-    ar & BOOST_SERIALIZATION_NVP(mLeftKeyCompareFun);
-    ar & BOOST_SERIALIZATION_NVP(mRightKeyCompareFun);
-    ar & BOOST_SERIALIZATION_NVP(mLeftRightKeyCompareFun);
-    ar & BOOST_SERIALIZATION_NVP(mEqFun);    
-    ar & BOOST_SERIALIZATION_NVP(mMatchTransfer);    
-    ar & BOOST_SERIALIZATION_NVP(mLeftMakeNullableTransfer);    
-    ar & BOOST_SERIALIZATION_NVP(mRightMakeNullableTransfer);    
-    ar & BOOST_SERIALIZATION_NVP(mLeftFree);    
-    ar & BOOST_SERIALIZATION_NVP(mRightFree);    
+    ar & BOOST_SERIALIZATION_NVP(mLeftKeyCompareFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mRightKeyCompareFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mLeftRightKeyCompareFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mEqFunRef);    
+    ar & BOOST_SERIALIZATION_NVP(mMatchTransferRef);    
+    ar & BOOST_SERIALIZATION_NVP(mLeftMakeNullableTransferRef);    
+    ar & BOOST_SERIALIZATION_NVP(mRightMakeNullableTransferRef);    
+    ar & BOOST_SERIALIZATION_NVP(mLeftFreeRef);    
+    ar & BOOST_SERIALIZATION_NVP(mRightFreeRef);    
     ar & BOOST_SERIALIZATION_NVP(mLeftNullMalloc);    
-    ar & BOOST_SERIALIZATION_NVP(mLeftNullFree);    
+    ar & BOOST_SERIALIZATION_NVP(mLeftNullFreeRef);    
     ar & BOOST_SERIALIZATION_NVP(mRightNullMalloc);    
-    ar & BOOST_SERIALIZATION_NVP(mRightNullFree);    
+    ar & BOOST_SERIALIZATION_NVP(mRightNullFreeRef);    
   }
   RuntimeSortMergeJoinOperatorType()
     :
     RuntimeOperatorType("RuntimeSortMergeJoinOperatorType"),
-    mJoinType(SortMergeJoin::INNER),
-    mLeftKeyCompareFun(NULL),
-    mRightKeyCompareFun(NULL),
-    mLeftRightKeyCompareFun(NULL),
-    mEqFun(NULL),
-    mMatchTransfer(NULL),
-    mLeftMakeNullableTransfer(NULL),
-    mRightMakeNullableTransfer(NULL)
+    mJoinType(SortMergeJoin::INNER)
   {
   }
 public:
   RuntimeSortMergeJoinOperatorType(SortMergeJoin::JoinType joinType,
 				   const RecordType* leftInput,
 				   const RecordType * rightInput,
-				   const RecordTypeFunction * leftKeyCompare,
-				   const RecordTypeFunction * rightKeyCompare,
-				   const RecordTypeFunction * leftRightKeyCompare,
-				   const RecordTypeFunction * eqFun,
-				   const RecordTypeTransfer2 * matchTransfer,
-				   const RecordTypeTransfer * leftMakeNullableTransfer,
-				   const RecordTypeTransfer * rightMakeNullableTransfer)
+                                   const TreculFreeOperation & leftFreeFunctor,
+                                   const TreculFreeOperation & rightFreeFunctor,
+				   const TreculFunction & leftKeyCompare,
+				   const TreculFunction & rightKeyCompare,
+				   const TreculFunction & leftRightKeyCompare,
+				   const TreculFunction * eqFun,
+				   const TreculTransfer2 * matchTransfer,
+				   const TreculTransfer * leftMakeNullableTransfer,
+				   const TreculTransfer * rightMakeNullableTransfer,
+                                   const TreculFreeOperation & leftNullableFreeFunctor,
+                                   const TreculFreeOperation & rightNullableFreeFunctor)
     :
     RuntimeOperatorType("RuntimeSortMergeJoinOperatorType"),
     mJoinType(joinType),
-    mLeftKeyCompareFun(leftKeyCompare->create()),
-    mRightKeyCompareFun(rightKeyCompare->create()),
-    mLeftRightKeyCompareFun(leftRightKeyCompare->create()),
-    mEqFun(eqFun ? eqFun->create() : NULL),
-    mMatchTransfer(matchTransfer ? matchTransfer->create() : NULL),
-    mLeftMakeNullableTransfer(leftMakeNullableTransfer && 
+    mLeftKeyCompareFunRef(leftKeyCompare.getReference()),
+    mRightKeyCompareFunRef(rightKeyCompare.getReference()),
+    mLeftRightKeyCompareFunRef(leftRightKeyCompare.getReference()),
+    mEqFunRef(eqFun ? eqFun->getReference() : TreculFunctionReference()),
+    mMatchTransferRef(matchTransfer ? matchTransfer->getReference() : TreculTransferReference()),
+    mLeftMakeNullableTransferRef(leftMakeNullableTransfer && 
 			  (joinType==SortMergeJoin::FULL_OUTER ||
 			   joinType==SortMergeJoin::RIGHT_OUTER ||
 			   !leftMakeNullableTransfer->isIdentity()) ? 
-			  leftMakeNullableTransfer->create() : NULL),
-    mRightMakeNullableTransfer(rightMakeNullableTransfer && 
+			  leftMakeNullableTransfer->getReference() : TreculTransferReference()),
+    mRightMakeNullableTransferRef(rightMakeNullableTransfer && 
 			  (joinType==SortMergeJoin::FULL_OUTER ||
 			   joinType==SortMergeJoin::LEFT_OUTER) ? 
-			  rightMakeNullableTransfer->create() : NULL),
-    mLeftFree(leftInput->getFree()),
-    mRightFree(rightInput->getFree()),
+			  rightMakeNullableTransfer->getReference() : TreculTransferReference()),
+    mLeftFreeRef(leftFreeFunctor.getReference()),
+    mRightFreeRef(rightFreeFunctor.getReference()),
     mLeftNullMalloc(leftMakeNullableTransfer->getTarget()->getMalloc()),
-    mLeftNullFree(leftMakeNullableTransfer->getTarget()->getFree()),
+    mLeftNullFreeRef(leftNullableFreeFunctor.getReference()),
     mRightNullMalloc(rightMakeNullableTransfer->getTarget()->getMalloc()),
-    mRightNullFree(rightMakeNullableTransfer->getTarget()->getFree())
+    mRightNullFreeRef(rightNullableFreeFunctor.getReference())
   {
   }
   ~RuntimeSortMergeJoinOperatorType();
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mLeftFree = m.getFunction<TreculRecordFreeRuntime>(mLeftFreeRef);
+    mRightFree = m.getFunction<TreculRecordFreeRuntime>(mRightFreeRef);
+    mLeftNullFree = m.getFunction<TreculRecordFreeRuntime>(mLeftNullFreeRef);
+    mRightNullFree = m.getFunction<TreculRecordFreeRuntime>(mRightNullFreeRef);
+    mLeftKeyCompareFun = m.getFunction<TreculFunctionRuntime>(mLeftKeyCompareFunRef);
+    mRightKeyCompareFun = m.getFunction<TreculFunctionRuntime>(mRightKeyCompareFunRef);
+    mLeftRightKeyCompareFun = m.getFunction<TreculFunctionRuntime>(mLeftRightKeyCompareFunRef);
+    if (!mEqFunRef.empty()) {
+      mEqFun = m.getFunction<TreculFunctionRuntime>(mEqFunRef);
+    }
+    if (!mMatchTransferRef.empty()) {
+      mMatchTransfer = m.getTransfer<TreculTransfer2Runtime>(mMatchTransferRef);
+    }
+    if (!mLeftMakeNullableTransferRef.empty()) {
+      mLeftMakeNullableTransfer = m.getTransfer<TreculTransferRuntime>(mLeftMakeNullableTransferRef);
+    }
+    if (!mRightMakeNullableTransferRef.empty()) {
+      mRightMakeNullableTransfer = m.getTransfer<TreculTransferRuntime>(mRightMakeNullableTransferRef);
+    }
+  }
 };
 
 class RuntimeSortMergeJoinOperator : public RuntimeOperatorBase<RuntimeSortMergeJoinOperatorType>
@@ -2464,6 +2646,7 @@ public:
   {
   }
   ~RuntimeUnionAllOperatorType();
+  void loadFunctions(TreculModule & ) override {}
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
 };
 
@@ -2482,7 +2665,7 @@ public:
 class LogicalSwitch : public LogicalOperator
 {
 private:
-  RecordTypeFunction * mSwitcher;
+  TreculFunction * mSwitcher;
 public:
   LogicalSwitch();
   ~LogicalSwitch();
@@ -2494,31 +2677,33 @@ class RuntimeSwitchOperatorType : public RuntimeOperatorType
 {
   friend class RuntimeSwitchOperator;
 private:
-  IQLFunctionModule * mSwitcher;
+  TreculFunctionReference mSwitcherRef;
+  TreculFunctionRuntime mSwitcher;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mSwitcher);    
+    ar & BOOST_SERIALIZATION_NVP(mSwitcherRef);
   }
   RuntimeSwitchOperatorType()
-    :
-    mSwitcher(NULL)
   {
   }
 public:
   RuntimeSwitchOperatorType(const RecordType * input,
-			    const RecordTypeFunction * switcher)
+			    const TreculFunction & switcher)
     :
     RuntimeOperatorType("RuntimeSwitchOperatorType"),
-    mSwitcher(switcher->create())
+    mSwitcherRef(switcher.getReference())
   {
   }
   ~RuntimeSwitchOperatorType() 
   {
-    delete mSwitcher; 
+  }
+  void loadFunctions(TreculModule & m) override
+  {
+    mSwitcher = m.getFunction<TreculFunctionRuntime>(mSwitcherRef);
   }
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
 };
