@@ -37,6 +37,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/regex.hpp>
 #include "RuntimeOperator.hh"
+#include "Merger.hh"
 #include "IQLInterpreter.hh"
 #include "TypeCheckContext.hh"
 
@@ -352,7 +353,7 @@ void LogicalFilter::check(PlanCheckContext& log)
     } else if (boost::algorithm::iequals(it->Name, "limit")) {
       mLimit = boost::get<int32_t>(it->Value);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(log, *it);
     }
   }
 
@@ -549,7 +550,7 @@ void CopyOp::check(PlanCheckContext& log)
 	pics.back() = false;
       }
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(log, *it);
     }
   }
 
@@ -717,6 +718,11 @@ LogicalDevNull::~LogicalDevNull()
 
 void LogicalDevNull::check(PlanCheckContext& log)
 {
+  for(const_param_iterator it = begin_params();
+      it != end_params();
+      ++it) {
+    checkDefaultParam(log, *it);
+  }
   mFree = new TreculFreeOperation(log.getCodeGenerator(), getInput(0)->getRecordType());
 }
 
@@ -813,7 +819,7 @@ void LogicalPrint::check(PlanCheckContext& log)
     } else if (boost::algorithm::iequals(it->Name, "where")) {
       predicate = boost::get<std::string>(it->Value);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(log, *it);
     }
   }
 
@@ -867,8 +873,10 @@ RuntimePrintOperator::RuntimePrintOperator(RuntimeOperator::Services& services, 
   mNumToPrint(getPrintType().mNumToPrint),
   mPrintFrequency(getPrintType().mPrintFrequency),
   mNumProcessed(0),
+  mStream(STDOUT_FILENO, boost::iostreams::never_close_handle),
   mRuntimeContext(new InterpreterContext())
 {
+  getPrintType().mPrint.imbue(mStream);
 }
 
 RuntimePrintOperator::~RuntimePrintOperator()
@@ -881,7 +889,6 @@ void RuntimePrintOperator::start()
   mState = START;
   mNumPrinted = 0;
   mNumProcessed = 0;
-  getPrintType().mPrint.imbue(std::cout);
   onEvent(NULL);
 }
 
@@ -919,10 +926,10 @@ void RuntimePrintOperator::onEvent(RuntimePort * port)
 	    if (!!getPrintType().mToPrint) {
 	      RecordBuffer tmp;
 	      getPrintType().mToPrint.execute(mInput, tmp, mRuntimeContext, false);
-	      getPrintType().mPrint.print(tmp, std::cout);
+	      getPrintType().mPrint.print(tmp, mStream);
 	      getPrintType().mFree.free(tmp);
 	    } else {
-	      getPrintType().mPrint.print(mInput, std::cout);
+	      getPrintType().mPrint.print(mInput, mStream);
 	    }
 	  }
 	  mNumProcessed += 1;
@@ -1024,7 +1031,7 @@ void LogicalGenerate::check(PlanCheckContext& ctxt)
 	}
       }
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(ctxt, *it);
     }
   }
 
@@ -1098,7 +1105,6 @@ RuntimeGenerateOperator::RuntimeGenerateOperator(RuntimeOperator::Services& serv
 
 RuntimeGenerateOperator::~RuntimeGenerateOperator()
 {
-  getGenerateType().mStateFree.free(mStateRecord);
   delete mRuntimeContext;
 }
 
@@ -1168,6 +1174,8 @@ void RuntimeGenerateOperator::onEvent(RuntimePort * port)
 
 void RuntimeGenerateOperator::shutdown()
 {
+  getGenerateType().mStateFree.free(mStateRecord);
+  mStateRecord = RecordBuffer();
 }
 
 LogicalGroupBy::LogicalGroupBy(LogicalGroupBy::Algorithm a)
@@ -1253,7 +1261,7 @@ void LogicalGroupBy::check(PlanCheckContext& log)
     } else if (boost::algorithm::iequals(it->Name, "update")) {
       update = boost::get<std::string>(it->Value);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(log, *it);
     }
   }
 
@@ -2054,7 +2062,7 @@ void HashJoin::check(PlanCheckContext& ctxt)
     } else if (boost::algorithm::iequals(it->Name, "output")) {
       transfer = boost::get<std::string>(it->Value);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(ctxt, *it);
     }
   }
   mTableInput = getInput(TABLE_PORT)->getRecordType();
@@ -2789,6 +2797,111 @@ void RuntimeCrossJoinOperator::shutdown()
 {
 }
 
+LogicalExchange::LogicalExchange()
+  :
+  LogicalOperator(1,1,1,1),
+  mHashFunction(nullptr),
+  mFree(nullptr),
+  mKeyPrefix(nullptr),
+  mKeyEq(nullptr)  
+{
+}
+
+LogicalExchange::~LogicalExchange()
+{
+  delete mHashFunction;
+  delete mFree;
+  delete mKeyPrefix;
+  delete mKeyEq;
+}
+
+void LogicalExchange::check(PlanCheckContext& log)
+{
+  std::vector<SortKey> sortKeys;
+  std::vector<std::string> hashKeys;
+  for(const_param_iterator it = begin_params();
+      it != end_params();
+      ++it) {
+    if (it->equals("sortkey")) {
+      sortKeys.push_back(getSortKeyValue(log, *it));
+    } else if (it->equals("hashkey")) {
+      hashKeys.push_back(boost::get<std::string>(it->Value));
+    } else {
+      checkDefaultParam(log, *it);
+    }
+  }
+  const RecordType * input = getInput(0)->getRecordType();
+  getOutput(0)->setRecordType(input);
+  if (sortKeys.size() > 0) {
+    // Validate that the keys exist and are sortable.
+    checkFieldsExist(log, sortKeys, 0);
+    
+    // Build key prefix extraction and less than predicate
+    // for sorting.  Make sure less than has proper NULL handling.
+    mKeyPrefix = SortKeyPrefixFunction::get(log, input, sortKeys);
+    mKeyEq = LessThanFunction::get(log, input, input, sortKeys, true, "sort_merge_less");
+  }
+  mHashFunction = HashFunction::get(log, 
+                                    input,
+                                    hashKeys);
+  mFree = new TreculFreeOperation(log.getCodeGenerator(), input);
+}
+
+void LogicalExchange::create(class RuntimePlanBuilder& plan)
+{
+  auto partitionType = new RuntimeHashPartitionerOperatorType(*mHashFunction);
+  RuntimeOperatorType * collectorType = nullptr == mKeyPrefix ?
+    static_cast<RuntimeOperatorType *>(new RuntimeNondeterministicCollectorOperatorType()) :
+    static_cast<RuntimeOperatorType *>(new RuntimeSortMergeCollectorType(*mKeyPrefix, *mKeyEq));
+  plan.addOperatorType(partitionType);
+  plan.addOperatorType(collectorType);
+  plan.connect(partitionType, 0, collectorType, 0, getInput(0)->getRecordType(), *mFree);
+  plan.mapInputPort(this, 0, partitionType, 0);
+  plan.mapOutputPort(this, 0, collectorType, 0);
+  
+}
+
+LogicalPartition::LogicalPartition()
+  :
+  LogicalOperator(1,1,1,1),
+  mHashFunction(nullptr),
+  mFree(nullptr)
+{
+}
+
+LogicalPartition::~LogicalPartition()
+{
+  delete mHashFunction;
+  delete mFree;
+}
+
+void LogicalPartition::check(PlanCheckContext& log)
+{
+  std::vector<std::string> hashKeys;
+  for(const_param_iterator it = begin_params();
+      it != end_params();
+      ++it) {
+    if (it->equals("hashkey")) {
+      hashKeys.push_back(boost::get<std::string>(it->Value));
+    } else {
+      checkDefaultParam(log, *it);
+    }
+  }
+  const RecordType * input = getInput(0)->getRecordType();
+  getOutput(0)->setRecordType(input);
+  mHashFunction = HashFunction::get(log, 
+                                    input,
+                                    hashKeys);
+  mFree = new TreculFreeOperation(log.getCodeGenerator(), input);
+}
+
+void LogicalPartition::create(class RuntimePlanBuilder& plan)
+{
+  auto partitionType = new RuntimeHashPartitionerOperatorType(*mHashFunction);
+  plan.addOperatorType(partitionType);
+  plan.mapInputPort(this, 0, partitionType, 0);
+  plan.mapOutputPort(this, 0, partitionType, 0);  
+}
 
 RuntimeHashPartitionerOperatorType::~RuntimeHashPartitionerOperatorType()
 {
@@ -3009,6 +3122,56 @@ void RuntimeConcatenationOperator<OpType>::onEvent(RuntimePort * port)
 template <class OpType>
 void RuntimeConcatenationOperator<OpType>::shutdown()
 {
+}
+
+LogicalCollect::LogicalCollect()
+  :
+  LogicalOperator(1,1,1,1),
+  mKeyPrefix(nullptr),
+  mKeyEq(nullptr)  
+{
+}
+
+LogicalCollect::~LogicalCollect()
+{
+  delete mKeyPrefix;
+  delete mKeyEq;
+}
+
+void LogicalCollect::check(PlanCheckContext& log)
+{
+  std::vector<SortKey> sortKeys;
+  for(const_param_iterator it = begin_params();
+      it != end_params();
+      ++it) {
+    if (it->equals("sortkey")) {
+      sortKeys.push_back(getSortKeyValue(log, *it));
+    } else {
+      checkDefaultParam(log, *it);
+    }
+  }
+
+  const RecordType * input = getInput(0)->getRecordType();
+  getOutput(0)->setRecordType(input);
+  if (sortKeys.size() > 0) {
+    // Validate that the keys exist and are sortable.
+    checkFieldsExist(log, sortKeys, 0);
+    
+    // Build key prefix extraction and less than predicate
+    // for sorting.  Make sure less than has proper NULL handling.
+    mKeyPrefix = SortKeyPrefixFunction::get(log, input, sortKeys);
+    mKeyEq = LessThanFunction::get(log, input, input, sortKeys, true, "sort_merge_less");
+  }
+}
+
+void LogicalCollect::create(class RuntimePlanBuilder& plan)
+{
+  RuntimeOperatorType * collectorType = nullptr == mKeyPrefix ?
+    static_cast<RuntimeOperatorType *>(new RuntimeNondeterministicCollectorOperatorType()) :
+    static_cast<RuntimeOperatorType *>(new RuntimeSortMergeCollectorType(*mKeyPrefix, *mKeyEq));
+  plan.addOperatorType(collectorType);
+  plan.mapInputPort(this, 0, collectorType, 0);
+  plan.mapOutputPort(this, 0, collectorType, 0);
 }
 
 template <class OpType>
@@ -3294,7 +3457,7 @@ void SortMergeJoin::check(PlanCheckContext& ctxt)
     } else if (boost::algorithm::iequals(it->Name, "output")) {
       transfer = boost::get<std::string>(it->Value);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(ctxt, *it);
     }
   }
   mLeftInput = getInput(0)->getRecordType();
@@ -3769,7 +3932,7 @@ void LogicalUnionAll::check(PlanCheckContext& log)
 	mConcat = false;
       }
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(log, *it);
     }
   }
 
@@ -3852,7 +4015,7 @@ void LogicalUnpivot::check(PlanCheckContext& ctxt)
     } else if (boost::algorithm::iequals(it->Name, "valuecolumn")) {
       valueColumn = boost::get<std::string>(it->Value);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(ctxt, *it);
     }
   }
 
@@ -3980,7 +4143,7 @@ void LogicalSwitch::check(PlanCheckContext& log)
     if (boost::algorithm::iequals(it->Name, "on")) {
       predicate = boost::get<std::string>(it->Value);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(log, *it);
     }
   }
 

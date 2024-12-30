@@ -1,0 +1,7 @@
+g1 = generate[output="RECORDCOUNT as a, PARTITION as b", limit=20];
+
+c = collect[sortKey="a", sortKey="b", sequential="true"];
+g1-> c;
+
+w = write[file="output.txt", mode="text", sequential="true"];
+c -> w;

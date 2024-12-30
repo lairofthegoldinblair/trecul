@@ -706,7 +706,7 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
     } else if (boost::algorithm::iequals(it->Name, "table")) {
       mTable = boost::get<std::string>(it->Value);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(ctxt, *it);
     }
   }
   

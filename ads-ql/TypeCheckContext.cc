@@ -659,6 +659,9 @@ void TypeCheckContext::loadBuiltinFunctions()
 			     FunctionType::Get(drc, 
 					       CharType::Get(drc, 16),
 					       Int32Type::Get(drc)));
+  mTypeCheckSymbolTable->add(fnPrefix, "getcwd", 
+			     FunctionType::Get(drc, 
+					       VarcharType::Get(drc)));
 }
 
 const RecordType * TypeCheckContext::getAggregateRecord() 

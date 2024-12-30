@@ -216,6 +216,12 @@ void RuntimeOperatorPlan::connectStraight(RuntimeOperatorType * source, int32_t 
 void RuntimeOperatorPlan::connectCrossbar(RuntimeOperatorType * source, RuntimeOperatorType * target, const RecordType * ty,
 					  const TreculFreeOperation & freeFunctor, bool buffered, bool locallyBuffered)
 {
+  connectCrossbar(source, target, ty, freeFunctor.getReference(), buffered, locallyBuffered);
+}
+
+void RuntimeOperatorPlan::connectCrossbar(RuntimeOperatorType * source, RuntimeOperatorType * target, const RecordType * ty,
+					  const TreculFunctionReference & freeRef, bool buffered, bool locallyBuffered)
+{
   if (mPartitions <= 0) {
     // The behavior of partitioners needs to be abstracted out.
     // When running under a map reduce runtime, we do not set up 
@@ -242,11 +248,11 @@ void RuntimeOperatorPlan::connectCrossbar(RuntimeOperatorType * source, RuntimeO
 						      locallyBuffered,
 						      mCurrentTag,
 						      ty,
-                                                      freeFunctor));
+                                                      freeRef));
 
   // For a crossbar we are allocating a quadratic number of fifos.
   std::size_t numFifos = mOperators[sIt->second]->getPartitionCount(mPartitions) * 
-    mOperators[sIt->second]->getPartitionCount(mPartitions);
+    mOperators[tIt->second]->getPartitionCount(mPartitions);
   if (numFifos > std::size_t(std::numeric_limits<int32_t>::max() - mCurrentTag)) {
     throw std::runtime_error((boost::format("InternalError: Can only create %1% interprocess channels") % std::numeric_limits<int32_t>::max()).str());
   }
@@ -254,13 +260,80 @@ void RuntimeOperatorPlan::connectCrossbar(RuntimeOperatorType * source, RuntimeO
 }
 
 void RuntimeOperatorPlan::connectBroadcast(RuntimeOperatorType * source, RuntimeOperatorType * target, int32_t targetPort,
+                                           const RecordType * ty, const TreculFunctionReference & freeRef,
 					   bool buffered, bool locallyBuffered)
 {
-  throw std::runtime_error("TODO: RuntimeOperatorPlan::connectBroadcast not yet implemented");
+  if (mPartitions <= 0) {
+    // The behavior of partitioners needs to be abstracted out.
+    // When running under a map reduce runtime, we do not set up 
+    // the channels as is done here (or as we would when running
+    // multithreaded on an SMP or with MPI).
+    // TODO: encapsulate this logic
+    throw std::runtime_error("May not use partitioners "
+			     "under map reduce");
+  }
+
+  std::map<RuntimeOperatorType *, std::size_t>::const_iterator sIt = mOperatorIndex.find(source);
+  std::map<RuntimeOperatorType *, std::size_t>::const_iterator tIt = mOperatorIndex.find(target);
+  if (sIt == mOperatorIndex.end()) throw std::runtime_error("Attempted to connect operator prior to adding to plan");
+  if (tIt == mOperatorIndex.end()) throw std::runtime_error("Attempted to connect operator prior to adding to plan");
+
+  if (!source->isPartitioner() || mOperators[sIt->second]->getPartitionCount(mPartitions) != 1) 
+    throw std::runtime_error("Can only make broadcast connection from sequential partitioners");
+
+  mBroadcastConnections.push_back(InterProcessFifoSpec(mOperators[sIt->second].get(),
+                                                       0,
+                                                       mOperators[tIt->second].get(),
+                                                       targetPort,
+                                                       buffered,
+                                                       locallyBuffered,
+                                                       mCurrentTag,
+                                                       ty,
+                                                       freeRef));
+
+  std::size_t numFifos = mOperators[sIt->second]->getPartitionCount(mPartitions);
+  if (numFifos > std::size_t(std::numeric_limits<int32_t>::max() - mCurrentTag)) {
+    throw std::runtime_error((boost::format("InternalError: Can only create %1% interprocess channels") % std::numeric_limits<int32_t>::max()).str());
+  }
+  mCurrentTag += (int32_t) numFifos;
 }
 
 void RuntimeOperatorPlan::connectCollect(RuntimeOperatorType * source, int32_t sourcePort, RuntimeOperatorType * target,
+                                         const RecordType * ty, const TreculFunctionReference & freeRef,
 					 bool buffered, bool locallyBuffered)
 {
-  throw std::runtime_error("TODO: RuntimeOperatorPlan::connectCollect not yet implemented");
+  if (mPartitions <= 0) {
+    // The behavior of partitioners needs to be abstracted out.
+    // When running under a map reduce runtime, we do not set up 
+    // the channels as is done here (or as we would when running
+    // multithreaded on an SMP or with MPI).
+    // TODO: encapsulate this logic
+    throw std::runtime_error("May not use partitioners "
+			     "under map reduce");
+  }
+
+  std::map<RuntimeOperatorType *, std::size_t>::const_iterator sIt = mOperatorIndex.find(source);
+  std::map<RuntimeOperatorType *, std::size_t>::const_iterator tIt = mOperatorIndex.find(target);
+  if (sIt == mOperatorIndex.end()) throw std::runtime_error("Attempted to connect operator prior to adding to plan");
+  if (tIt == mOperatorIndex.end()) throw std::runtime_error("Attempted to connect operator prior to adding to plan");
+
+  if (!target->isCollector() || mOperators[tIt->second]->getPartitionCount(mPartitions) != 1) 
+    throw std::runtime_error("Can only make collect connection to sequential collectors");
+
+  mCollectConnections.push_back(InterProcessFifoSpec(mOperators[sIt->second].get(),
+                                                     sourcePort,
+                                                     mOperators[tIt->second].get(),
+                                                     0,
+                                                     buffered,
+                                                     locallyBuffered,
+                                                     mCurrentTag,
+                                                     ty,
+                                                     freeRef));
+
+  // For a crossbar we are allocating a quadratic number of fifos.
+  std::size_t numFifos = mOperators[tIt->second]->getPartitionCount(mPartitions);
+  if (numFifos > std::size_t(std::numeric_limits<int32_t>::max() - mCurrentTag)) {
+    throw std::runtime_error((boost::format("InternalError: Can only create %1% interprocess channels") % std::numeric_limits<int32_t>::max()).str());
+  }
+  mCurrentTag += (int32_t) numFifos;
 }

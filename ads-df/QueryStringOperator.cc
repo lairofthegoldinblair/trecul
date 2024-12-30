@@ -300,7 +300,7 @@ void LogicalQueryString::check(PlanCheckContext& log)
     } else if (it->equals("output")) {
       output = getStringValue(log, *it);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(log, *it);
     }
   }
 

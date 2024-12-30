@@ -36,6 +36,11 @@ private:
    */
   std::size_t mCommits;
 
+  /*
+   * Mutex to protect all member variables/methods
+   */
+  std::mutex mMutex;
+
   // TODO: Don't use a singleton here, have the dataflow
   // manage the lifetime.
   static HdfsFileCommitter * sCommitter;

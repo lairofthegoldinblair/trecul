@@ -263,12 +263,20 @@ bool LogicalOperator::getBooleanValue(PlanCheckContext& log,
   return false;
 }
 
-void LogicalOperator::checkDefaultParam(const LogicalOperatorParam& p)
+void LogicalOperator::checkDefaultParam(PlanCheckContext& log,
+                                        const LogicalOperatorParam& p)
 {
-  // No defaults in place yet
-  throw std::runtime_error((boost::format("Unknown argument %1% on operator %2%") %
-			    p.Name %
-			    mName).str());
+  if (p.equals("sequential")) {
+    if (getBooleanValue(log, p)) {
+      mPartitions = {0};
+    } else {
+      mPartitions.clear();
+    }
+  } else {
+    throw std::runtime_error((boost::format("Unknown argument %1% on operator %2%") %
+                              p.Name %
+                              mName).str());
+  }
 }
 
 void LogicalOperator::checkFieldsExist(PlanCheckContext& ctxt,

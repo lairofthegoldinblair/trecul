@@ -849,6 +849,8 @@ private:
   // Compare two inputs for equality
   TreculFunctionReference mEqFunRef;
   TreculFunctionRuntime mEqFun;
+
+protected:
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
@@ -862,12 +864,18 @@ private:
   {
   }  
 public:
+  RuntimeSortMergeOperatorType(const char * name, const TreculFunction & keyPrefix,
+			       const TreculFunction & eqFun)
+    :
+    RuntimeOperatorType(name),
+    mKeyPrefixRef(keyPrefix.getReference()),
+    mEqFunRef(eqFun.getReference())
+  {
+  }
   RuntimeSortMergeOperatorType(const TreculFunction & keyPrefix,
 			       const TreculFunction & eqFun)
     :
-    RuntimeOperatorType("RuntimeSortMergeOperatorType"),
-    mKeyPrefixRef(keyPrefix.getReference()),
-    mEqFunRef(eqFun.getReference())
+    RuntimeSortMergeOperatorType("RuntimeSortMergeOperatorType", keyPrefix, eqFun)
   {
   }
   RuntimeSortMergeOperatorType(const TreculFunctionRuntime & keyPrefix,
@@ -887,6 +895,34 @@ public:
     mEqFun = m.getFunction<TreculFunctionRuntime>(mEqFunRef);
   }
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
+};
+
+class RuntimeSortMergeCollectorType : public RuntimeSortMergeOperatorType
+{
+  // Serialization
+  friend class boost::serialization::access;
+  template <class Archive>
+  void serialize(Archive & ar, const unsigned int version)
+  {
+    ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeSortMergeOperatorType);
+  }
+  RuntimeSortMergeCollectorType()
+  {
+  }  
+public:
+  RuntimeSortMergeCollectorType(const TreculFunction & keyPrefix,
+			       const TreculFunction & eqFun)
+    :
+    RuntimeSortMergeOperatorType("RuntimeSortMergeCollectorType", keyPrefix, eqFun)
+  {
+  }
+  ~RuntimeSortMergeCollectorType()
+  {
+  }
+  bool isCollector() const override
+  {
+    return true;
+  }
 };
 
 class RuntimeSortMergeOperator : public RuntimeOperatorBase<RuntimeSortMergeOperatorType>

@@ -84,7 +84,7 @@ void LogicalInputQueue::check(PlanCheckContext& ctxt)
     } else if (boost::algorithm::iequals(it->Name, "formatfile")) {
       mStringFormat = FileSystem::readFile(boost::get<std::string>(it->Value));
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(ctxt, *it);
     }
   }
 

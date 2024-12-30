@@ -1,0 +1,10 @@
+g = generate[output="RECORDCOUNT as a, PARTITION as b", limit=20];
+
+p = partition[hashKey="a"];
+g -> p;
+
+c = collect[sortKey="a", sortKey="b"];
+p -> c;
+
+w = write[connect="file:///", file="getcwd() + '/output'", mode="text"];
+c -> w;

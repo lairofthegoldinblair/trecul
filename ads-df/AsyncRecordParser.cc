@@ -244,7 +244,7 @@ void LogicalAsyncParser::check(PlanCheckContext& ctxt)
       } else if (it->equals("skipheader")) {
 	mSkipHeader = getBooleanValue(ctxt, *it);
       } else {
-	checkDefaultParam(*it);
+	checkDefaultParam(ctxt, *it);
       }
     } catch(std::runtime_error& ex) {
       ctxt.logError(*this, *it, ex.what());
@@ -679,7 +679,7 @@ void LogicalBlockRead::check(PlanCheckContext& ctxt)
       } else if (it->equals("blocksize")) {
 	mBufferCapacity = getInt32Value(ctxt, *it);
       } else {
-	checkDefaultParam(*it);
+	checkDefaultParam(ctxt, *it);
       }
     } catch(std::runtime_error& ex) {
       ctxt.logError(*this, *it, ex.what());

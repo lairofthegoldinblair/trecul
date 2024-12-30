@@ -90,6 +90,14 @@ endif (HADOOP_FOUND)
 #
 find_package(LLVM REQUIRED)
 
+#
+# MPI
+#
+find_package(MPI) 
+if (MPI_FOUND)
+   include_directories(${MPI_INCLUDE_DIR})
+endif (MPI_FOUND)
+
 # What version of LLVM?  We only support LLVM 18.1.8
 execute_process(
 COMMAND ${LLVM_CONFIG} --version
@@ -187,5 +195,10 @@ add_test(ads-df-unit-test ${CMAKE_CURRENT_BINARY_DIR}/ads-df/test/ads-df-test)
 add_test(ads-df-parser-test ${CMAKE_CURRENT_BINARY_DIR}/ads-df/test/parser-test)
 add_test(http-operator-test ${CMAKE_CURRENT_BINARY_DIR}/ads-df/test/http-operator-test)
 add_test(http-parser-test ${CMAKE_CURRENT_BINARY_DIR}/ads-df/test/http-parser-test)
-add_test(ads-df-core-scripts perl ${CMAKE_CURRENT_SOURCE_DIR}/ads-df/test/testDriver.pl ${CMAKE_CURRENT_SOURCE_DIR}/ads-df/test ${CMAKE_CURRENT_BINARY_DIR}/ads-df/ads-df)
+if (MPI_FOUND)
+  add_test(ads-df-core-scripts perl ${CMAKE_CURRENT_SOURCE_DIR}/ads-df/test/testDriver.pl ${CMAKE_CURRENT_SOURCE_DIR}/ads-df/test ${CMAKE_CURRENT_BINARY_DIR}/ads-df/ads-df ${MPIEXEC_EXECUTABLE})
+else()
+  add_test(ads-df-core-scripts perl ${CMAKE_CURRENT_SOURCE_DIR}/ads-df/test/testDriver.pl ${CMAKE_CURRENT_SOURCE_DIR}/ads-df/test ${CMAKE_CURRENT_BINARY_DIR}/ads-df/ads-df)
+endif (MPI_FOUND)
+
 

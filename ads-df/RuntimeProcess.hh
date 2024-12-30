@@ -55,47 +55,7 @@ class DataflowScheduler;
 class IntraProcessFifoSpec;
 class InterProcessFifoSpec;
 class InProcessFifo;
-// The following are all MPI specific (or at least related
-// to the simple flow control protocol we layer on top of MPI).
-class RuntimeMessageDemuxOperatorType;
-class RuntimeBufferPoolOperatorType;
-class RuntimeDataAvailableOperatorType;
-class RuntimeMessageReceiverOperatorType;
-class RuntimeSendAvailableOperatorType;
-class RuntimeMessageSendOperatorType;
-class RemoteReceiveFifo;
 class RuntimeProcess;
-
-/**
- * The following methods are implemented for a remoting strategy.
- * Default implementation is to throw an exception
- * since the default doesn't support remoting.
- */
-class ProcessRemoting
-{
-public:
-  virtual ~ProcessRemoting() {}
-  virtual void addSource(const InterProcessFifoSpec& spec, 
-			 int32_t sourcePartition, 
-			 int32_t sourcePartitionConstraintIndex);
-  virtual void addTarget(const InterProcessFifoSpec& spec, 
-			 int32_t targetPartition, 
-			 int32_t targetPartitionConstraintIndex);
-  virtual void runRemote(std::vector<std::shared_ptr<std::thread> >& threads) {}
-};
-
-/**
- * Virtual constructor for remoting strategy
- */
-class ProcessRemotingFactory
-{
-public:
-  virtual ~ProcessRemotingFactory() {}
-  virtual ProcessRemoting* create(RuntimeProcess& p)
-  {
-    return new ProcessRemoting();
-  }
-};
 
 /**
  * A runtime operator process contains a collection of partitions that
@@ -119,8 +79,6 @@ private:
   std::vector<RuntimeOperator * > mAllOperators;
   // Channels connecting operators that both live in this process
   std::vector<InProcessFifo *> mChannels;
-  // State for remote execution
-  std::shared_ptr<ProcessRemoting> mRemoteExecution;
   // Service Completion Channels
   std::vector<class ServiceCompletionFifo *> mServiceChannels;
 
@@ -133,32 +91,33 @@ private:
 
   void connectStraightLine(const IntraProcessFifoSpec& spec);
   void connectCrossbar(const InterProcessFifoSpec& spec);
+  void connectBroadcast(const InterProcessFifoSpec& spec);
+  void connectCollect(const InterProcessFifoSpec& spec);
 
-  void init(int32_t partitionStart, 
-	    int32_t partitionEnd,
-	    int32_t numPartitions,
-	    const RuntimeOperatorPlan& plan,
-	    ProcessRemotingFactory& remoting);
-
-  // Helper shim for running a scheduler.
-  // TODO: Extra stuff to get any exceptions back.
-  static void run(DataflowScheduler& s);
+  // Add repartitioning sources and targets
+  void addSource(const InterProcessFifoSpec& spec, 
+                 int32_t sourcePartition, 
+                 int32_t sourcePartitionConstraintIndex);
+  void addTarget(const InterProcessFifoSpec& spec, 
+                 int32_t targetPartition, 
+                 int32_t targetPartitionConstraintIndex);
   /**
    * Validate graph prior to running.
    */
   void validateGraph();
+protected:
+  // Helper shim for running a scheduler.
+  // TODO: Extra stuff to get any exceptions back.
+  static void run(DataflowScheduler& s);
+  
 public:
-  RuntimeProcess(int32_t partitionStart, 
-		 int32_t partitionEnd,
-		 int32_t numPartitions,
-		 const RuntimeOperatorPlan& plan,
-		 ProcessRemotingFactory& remoting);
-  RuntimeProcess(int32_t partitionStart, 
-		 int32_t partitionEnd,
-		 int32_t numPartitions,
-		 const RuntimeOperatorPlan& plan);
+  RuntimeProcess();
   virtual ~RuntimeProcess();
 
+  void init(int32_t partitionStart, 
+	    int32_t partitionEnd,
+	    int32_t numPartitions,
+	    const RuntimeOperatorPlan& plan);
   /**
    * Get all operators of a particular type.
    */
@@ -242,6 +201,27 @@ public:
    * Get the dataflow scheduler for a partition.
    */
   DataflowScheduler& getScheduler(int32_t partition);
+
+  /**
+   * The following methods are implemented for a remoting strategy.
+   * Default implementation is to throw an exception
+   * since the default doesn't support remoting.
+   */
+  virtual void addRemoteSource(const InterProcessFifoSpec& spec,
+                               RuntimeOperator & sourceOp,
+                               int32_t sourcePartition,
+                               int32_t sourcePartitionConstraintIndex,
+                               int32_t targetPartition,
+                               int32_t targetPartitionConstraintIndex,
+                               int32_t tag);
+  virtual void addRemoteTarget(const InterProcessFifoSpec& spec,
+                               RuntimeOperator & targetOp,
+                               int32_t targetPartition,
+                               int32_t targetPartitionConstraintIndex,
+                               int32_t sourcePartition,
+                               int32_t sourcePartitionConstraintIndex,
+                               int32_t tag);
+  virtual void runRemote(std::vector<std::shared_ptr<std::thread> >& threads) {}
 };
 
 class PlanRunner

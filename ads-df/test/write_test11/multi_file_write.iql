@@ -1,0 +1,4 @@
+g = generate[output="RECORDCOUNT AS a", limit=10];
+
+w = write[connect="file:///", file="getcwd() + '/output' + CAST(a%2 AS VARCHAR)", mode="text"];
+g -> w;

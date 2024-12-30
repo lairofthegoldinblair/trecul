@@ -1543,6 +1543,12 @@ CodeGenerationContext::CodeGenerationContext()
   funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
   libFunVal = LoadAndValidateExternalFunction("InternalArrayException", funTy);
 
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
+  argumentTypes[numArguments++] = this->LLVMDecContextPtrType;
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  LoadAndValidateExternalFunction("getcwd", "InternalGetCwd", funTy);
+
   // LLVM intrinsics we want to use
   CreateMemcpyIntrinsic();
   CreateMemsetIntrinsic();

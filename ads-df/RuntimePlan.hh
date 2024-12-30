@@ -41,6 +41,7 @@
 #include <boost/serialization/string.hpp>
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/map.hpp>
+#include <boost/serialization/shared_ptr.hpp>
 #include <boost/serialization/unique_ptr.hpp>
 #include <boost/dynamic_bitset.hpp>
 #include <boost/iterator/filter_iterator.hpp>
@@ -105,13 +106,32 @@ private:
   }
 public:
   RuntimePartitionConstraint();
+  RuntimePartitionConstraint(const std::vector<int32_t> & partitions)
+    :
+    mPartitions(partitions)
+  {
+  }
+  RuntimePartitionConstraint(std::vector<int32_t> && partitions)
+    :
+    mPartitions(std::move(partitions))
+  {
+  }
+  RuntimePartitionConstraint(const RuntimePartitionConstraint & ) = default;
+  RuntimePartitionConstraint(RuntimePartitionConstraint && ) = default;
   ~RuntimePartitionConstraint();
+
+  RuntimePartitionConstraint & operator=(const RuntimePartitionConstraint & ) = default;
+  RuntimePartitionConstraint & operator=(RuntimePartitionConstraint && ) = default;
   
   bool isDefault() const { return mPartitions.size() == 0; }
   
   typedef std::vector<int32_t>::const_iterator const_iterator;
   const_iterator partition_begin() const { return mPartitions.begin(); }
   const_iterator partition_end() const { return mPartitions.end(); }
+  std::size_t size() const
+  {
+    return mPartitions.size();
+  }
 };
 
 class RuntimeOperatorType {
@@ -143,6 +163,14 @@ public:
   const RuntimePartitionConstraint& getPartitionConstraint() const 
   {
     return mConstraint;
+  }
+  void setPartitionConstraint(const RuntimePartitionConstraint& constraint) 
+  {
+    mConstraint = constraint;
+  }
+  void setPartitionConstraint(RuntimePartitionConstraint && constraint) 
+  {
+    mConstraint = std::move(constraint);
   }
   const std::string& getName() const
   {
@@ -236,30 +264,30 @@ public:
   /**
    * Check whether a partition is assigned to an operator.
    */
-  bool test(int32_t partition) const;
+  bool test(int32_t partition) const override;
 
   /**
    * Get the total number of partitions assigned to an operator.
    */
-  std::size_t getPartitionCount(int32_t numPartitions) const;
+  std::size_t getPartitionCount(int32_t numPartitions) const override;
 
   /**
    * Get the partitions assigned to this operator.
    */
   void getPartitions(int32_t numPartitions,
-		     boost::dynamic_bitset<>& result) const;
+		     boost::dynamic_bitset<>& result) const override;
 
   /**
    * Get the partitions assigned within the interval [partitionStart, partitionEnd].
    */
   void getPartitions(int32_t partitionStart, int32_t partitionEnd,
-		     std::vector<int32_t>& result) const;
+		     std::vector<int32_t>& result) const override;
 
   /**
    * Get the position of the partition within the order list of partitions
    * this operator is assigned to.
    */
-  int32_t getPartitionPosition(int32_t partition) const;
+  int32_t getPartitionPosition(int32_t partition) const override;
 
   // Serialization
   friend class boost::serialization::access;
@@ -374,13 +402,13 @@ public:
 		       AssignedOperatorType * targetOperator, int32_t targetPort,
 		       bool buffered, bool locallyBuffered, int32_t tag, 
 		       const RecordType * ty,
-                       const TreculFreeOperation & freeFunctor)
+                       const TreculFunctionReference & freeRef)
     :
     IntraProcessFifoSpec(sourceOperator, sourcePort, targetOperator, targetPort, locallyBuffered, buffered),
     mTag(tag),
     mDeserialize(ty->getDeserialize()),
     mSerialize(ty->getSerialize()),
-    mFreeRef(freeFunctor.getReference()),
+    mFreeRef(freeRef),
     mMalloc(ty->getMalloc())
   {
   }
@@ -392,6 +420,7 @@ public:
   const RecordTypeDeserialize& getDeserialize() const { return mDeserialize; }
   const RecordTypeSerialize& getSerialize() const { return mSerialize; }
   const TreculRecordFreeRuntime& getFree() const { return mFree; }
+  const TreculFunctionReference& getFreeRef() const { return mFreeRef; }
   const RecordTypeMalloc& getMalloc() const { return mMalloc; }
   void loadFunctions(TreculModule & m)
   {
@@ -509,17 +538,21 @@ public:
    */
   void connectCrossbar(RuntimeOperatorType * source, RuntimeOperatorType * target, const RecordType * ty,
 		       const TreculFreeOperation & freeFunctor, bool buffered, bool locallyBuffered);
+  void connectCrossbar(RuntimeOperatorType * source, RuntimeOperatorType * target, const RecordType * ty,
+		       const TreculFunctionReference & freeRef, bool buffered, bool locallyBuffered);
   /**
    * Connect a partitioner running on a single partition with an operator running
    * on 1 or more partitions.
    */
   void connectBroadcast(RuntimeOperatorType * source, RuntimeOperatorType * target, int32_t targetPort,
+                        const RecordType * ty, const TreculFunctionReference & freeRef,
 			bool buffered, bool locallyBuffered);
   /**
    * Connect a partitioner an operator running on 1 or more partitions with a collector
    * running on a single partition.
    */
   void connectCollect(RuntimeOperatorType * source, int32_t sourcePort, RuntimeOperatorType * target,
+                      const RecordType * ty, const TreculFunctionReference & freeRef,
 		      bool buffered, bool locallyBuffered);
 
   /**
@@ -540,6 +573,9 @@ public:
         cxn.loadFunctions(*mModule.get());
       }
       for(auto & cxn : mBroadcastConnections) {
+        cxn.loadFunctions(*mModule.get());
+      }
+      for(auto & cxn : mCollectConnections) {
         cxn.loadFunctions(*mModule.get());
       }
     }
@@ -573,6 +609,11 @@ public:
       if (tmp != NULL)
 	ret.push_back(tmp);
     }
+  }
+
+  int32_t getNumPartitions() const
+  {
+    return mPartitions;
   }
 };
 

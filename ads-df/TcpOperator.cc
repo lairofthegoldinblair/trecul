@@ -169,7 +169,7 @@ void LogicalTcpRead::check(PlanCheckContext& ctxt)
 	  mPort = (unsigned short) tmp;
 	}
       } else {
-	checkDefaultParam(*it);
+	checkDefaultParam(ctxt, *it);
       }
     } catch(std::runtime_error& ex) {
       ctxt.logError(*this, *it, ex.what());
@@ -371,7 +371,7 @@ void LogicalTcpWrite::check(PlanCheckContext& ctxt)
 	  mPort = (unsigned short) tmp;
 	}
       } else {
-	checkDefaultParam(*it);
+	checkDefaultParam(ctxt, *it);
       }
     } catch(std::runtime_error& ex) {
       ctxt.logError(*this, *it, ex.what());

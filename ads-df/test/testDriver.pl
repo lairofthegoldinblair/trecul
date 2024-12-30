@@ -34,10 +34,14 @@
 
 use strict;
 
+use Cwd qw(abs_path);
+use File::Path;
+use File::Spec;
 use File::Temp;
 use IO::File;
 
 my $AdsDf="";
+my $MpiExec="";
 
 #
 # Run a script as a compile/plan pair to
@@ -63,12 +67,72 @@ sub runScript {
 }
 
 #
+# Run script without serialization and with intra process parallelism
+#
+sub runScriptIntraProcessParallel {
+    my $testScript = shift;
+    my $partitions = shift;
+    my @args = ("$AdsDf", "--partitions", "$partitions", "--file", "$testScript");
+    system(@args);
+}
+
+sub runScriptInterProcessParallel {
+    my $testScript = shift;
+    my $partitions = shift;
+    my ($volume,$directories,$file) = File::Spec->splitpath(File::Spec->rel2abs($AdsDf));
+    my @hosts = ("localhost") x $partitions;
+    my @args = ("mpiexec", "-hosts", join(",", @hosts), "$file", "--file", "$testScript");
+    system(@args);
+}
+
+#
+# Compare an expected output
+#
+sub checkExpected {
+    my $expectedOutput = shift;
+    my $expectedBaseDirectory = shift;
+    my $failed = 0;
+    # Find generated matching output by removing trailing .expected.
+    my $generatedOutput = $expectedOutput;
+    # Now we only want to use the proper relative path to expected output, so
+    # concatenate
+    $expectedOutput = "$expectedBaseDirectory/$expectedOutput";
+    $generatedOutput =~ s/.expected$//;
+    if (-f $expectedOutput) {
+        my @args =("diff", "$generatedOutput", "$expectedOutput");
+        system(@args);
+        if ($? != 0) {
+            $failed = 1;
+        } else {
+            # Cleanup file if success
+            unlink($generatedOutput);
+        }
+    } elsif (-d $expectedOutput) {
+        opendir(DIR, $expectedOutput);
+        my @contents = readdir(DIR);
+        closedir(DIR);
+        my $expectedFile;
+        foreach $expectedFile (@contents) {
+            if (-f "$expectedOutput/$expectedFile") {
+                my @args =("diff", "$generatedOutput/$expectedFile", "$expectedOutput/$expectedFile");
+                system(@args);
+                if ($? != 0) {
+                    $failed = 1;
+                }
+            }
+        }
+        rmtree($generatedOutput) unless $failed;
+    }
+    return $failed;
+}
+
+#
 # Run all tests
 #
 sub runTests {
     my $testDirs = shift;
     my $failedTests = shift;
-    my $runSerialized = shift;
+    my $runMode = shift;
     #
     # foreach test
     #
@@ -85,35 +149,53 @@ sub runTests {
 	closedir(DIR);
 	my @testScripts = grep(/.iql$/, @contents);
 	my $testScript;
-	foreach $testScript (@testScripts) {
-	    if ($runSerialized) {
-		&runScriptSerializedPlan($testScript);
-	    } else {
-		&runScript($testScript);
-	    }
-	}
-	my @expectedOutputs = grep(/expected$/, @contents);
-	my $expectedOutput;
-	foreach $expectedOutput (@expectedOutputs) {
-	    # Find generated matching output by removing trailing .expected.
-	    my $generatedOutput = $expectedOutput;
-	    $generatedOutput =~ s/.expected$//;
-	    my @args =("diff", "$generatedOutput", "$expectedOutput");
-	    system(@args);
-	    if ($? != 0) {
-		$failed = 1;
-	    } else {
-		# Cleanup file if success
-		unlink($generatedOutput);
-	    }
-	}
+        my @partitions = grep(/^[0-9]+$/, @contents);
+        if (@partitions == 0 && $runMode <= 1) {
+            foreach $testScript (@testScripts) {
+                if ($runMode) {
+                    &runScriptSerializedPlan($testScript);
+                } else {
+                    &runScript($testScript);
+                }
+            }
+            my @expectedOutputs = grep(/expected$/, @contents);
+            my $expectedOutput;
+            foreach $expectedOutput (@expectedOutputs) {
+                $failed += checkExpected($expectedOutput, ".");
+            }
+            if ($failed>0) {
+                push(@$failedTests, $testDir);
+                $nFailed++;
+            } else {
+                $nPassed++;
+            }
+        } elsif ($runMode != 1) {
+            my $partition;
+            foreach $partition (@partitions) {
+                foreach $testScript (@testScripts) {
+                    if ($runMode == 2) {
+                        &runScriptInterProcessParallel($testScript, $partition);
+                    } else {
+                        &runScriptIntraProcessParallel($testScript, $partition);
+                    }
+                }
+                opendir(DIR, $partition);
+                my @partitionContents = readdir(DIR);
+                closedir(DIR);
+                my @expectedOutputs = grep(/expected$/, @partitionContents);
+                my $expectedOutput;
+                foreach $expectedOutput (@expectedOutputs) {
+                    $failed += checkExpected($expectedOutput, $partition);
+                }
+                if ($failed>0) {
+                    push(@$failedTests, "$testDir#$partition");
+                    $nFailed++;
+                } else {
+                    $nPassed++;
+                }
+            }
+        }
 	chdir "..";
-	if ($failed==1) {
-	    push(@$failedTests, $testDir);
-	    $nFailed++;
-	} else {
-	    $nPassed++;
-	}
     }
     return ($nPassed, $nFailed);
 }
@@ -127,9 +209,31 @@ closedir(DIR);
 
 $AdsDf = $ARGV[1];
 
+# Need ads-df on path for MPI to work
+my ($volume,$directories,$file) = File::Spec->splitpath(File::Spec->rel2abs($AdsDf));
+$ENV{PATH} = $ENV{PATH} . ":$directories";
+
+if (@ARGV > 2) {
+    # If using MPI, prepend to the path to make sure we use the desired mpiexec
+    $MpiExec = $ARGV[2];
+    ($volume,$directories,$file) = File::Spec->splitpath(File::Spec->rel2abs($MpiExec));
+    $ENV{PATH} =  "$directories:" . $ENV{PATH};
+}
+
+print "Checking environment variables\n";
+system("printenv");
+
+my $testModes = $MpiExec ? 2 : 1;
+
 my $totalFailures = 0;
-for (my $i = 0; $i < 2; ++$i) {
-    print "Running tests with serialized=$i\n";
+for (my $i = 0; $i <= $testModes; ++$i) {
+    if ($i == 0) {        
+        print "Running single and multi-partition tests in process\n";
+    } elsif ($i == 1) {        
+        print "Running single partition tests with serialized plans\n";
+    } else {
+        print "Running multi-partition tests with mpiexec at $MpiExec\n";
+    }
     my @failedTests;
     my ($nPassed, $nFailed) = runTests(\@testDirs, \@failedTests, $i);
     

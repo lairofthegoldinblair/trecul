@@ -527,7 +527,7 @@ void LogicalFileRead::check(PlanCheckContext& ctxt)
       } else if (it->equals("skipheader")) {
 	mSkipHeader = getBooleanValue(ctxt, *it);
       } else {
-	checkDefaultParam(*it);
+	checkDefaultParam(ctxt, *it);
       }
     } catch(std::runtime_error& ex) {
       ctxt.logError(*this, *it, ex.what());
@@ -729,7 +729,7 @@ void LogicalFileWrite::check(PlanCheckContext& ctxt)
     } else if (it->equals("mode")) {
       mMode = getStringValue(ctxt, *it);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(ctxt, *it);
     }
   }
   if (!boost::algorithm::iequals("binary", mMode) &&
@@ -829,7 +829,7 @@ void LogicalSortMerge::check(PlanCheckContext& ctxt)
     if (it->equals("key")) {
       sortKeys.push_back(getSortKeyValue(ctxt, *it));
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(ctxt, *it);
     }
   }
 
@@ -1034,7 +1034,7 @@ void LogicalSort::check(PlanCheckContext& ctxt)
     } else if (it->equals("tempdir")) {
       mTempDir = getStringValue(ctxt, *it);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(ctxt, *it);
     }
   }
 

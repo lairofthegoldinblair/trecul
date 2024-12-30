@@ -1100,7 +1100,7 @@ void LogicalHttpRead::check(PlanCheckContext& ctxt)
       } else if (it->equals("aliveresource")) {
 	mAliveResource = getStringValue(ctxt, *it);
       } else {
-	checkDefaultParam(*it);
+	checkDefaultParam(ctxt, *it);
       }
     } catch(std::runtime_error& ex) {
       ctxt.logError(*this, *it, ex.what());

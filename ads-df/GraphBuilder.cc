@@ -55,6 +55,10 @@
 #include "HdfsOperator.hh"
 #endif
 
+#if defined(TRECUL_HAS_MPI)
+#include "MessagePassing.hh"
+#endif
+
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 #include <boost/iostreams/copy.hpp>
@@ -104,6 +108,7 @@ BOOST_CLASS_EXPORT(RuntimeBroadcastPartitionerOperatorType);
 BOOST_CLASS_EXPORT(RuntimeNondeterministicCollectorOperatorType);
 BOOST_CLASS_EXPORT(RuntimeCopyOperatorType);
 BOOST_CLASS_EXPORT(RuntimeFilterOperatorType);
+BOOST_CLASS_EXPORT(RuntimeSortMergeCollectorType);
 BOOST_CLASS_EXPORT(RuntimeSortMergeOperatorType);
 BOOST_CLASS_EXPORT(RuntimeSortOperatorType);
 BOOST_CLASS_EXPORT(RuntimeSwitchOperatorType);
@@ -128,6 +133,15 @@ BOOST_CLASS_EXPORT(RuntimeConstantScanOperatorType);
 #if defined(TRECUL_HAS_HADOOP)
 BOOST_CLASS_EXPORT(HdfsWritableFileFactory);
 BOOST_CLASS_EXPORT(RuntimeHadoopEmitOperatorType);
+#endif
+
+#if defined(TRECUL_HAS_MPI)
+BOOST_CLASS_EXPORT(RuntimeMessageDemuxOperatorType);
+BOOST_CLASS_EXPORT(RuntimeBufferPoolOperatorType);
+BOOST_CLASS_EXPORT(RuntimeDataAvailableOperatorType);
+BOOST_CLASS_EXPORT(RuntimeMessageReceiverOperatorType);
+BOOST_CLASS_EXPORT(RuntimeSendAvailableOperatorType);
+BOOST_CLASS_EXPORT(RuntimeMessageSendOperatorType);
 #endif
 
 /* 
@@ -356,7 +370,9 @@ void DataflowGraphBuilder::nodeStart(const char * type,
   if (mOps.find(name) != mOps.end()) {
     throw std::runtime_error((boost::format("Operator with name %1% already defined") % name).str());
   }
-  if (boost::algorithm::iequals("constant_sink", type)) {
+  if (boost::algorithm::iequals("collect", type)) {
+    mCurrentOp = new LogicalCollect();
+  } else if (boost::algorithm::iequals("constant_sink", type)) {
     mCurrentOp = new LogicalConstantSink();
   } else if (boost::algorithm::iequals("copy", type)) {
     mCurrentOp = new CopyOp();
@@ -364,6 +380,8 @@ void DataflowGraphBuilder::nodeStart(const char * type,
 #if defined(TRECUL_HAS_HADOOP)
     mCurrentOp = new LogicalEmit();
 #endif
+  } else if (boost::algorithm::iequals("exchange", type)) {
+    mCurrentOp = new LogicalExchange();
   } else if (boost::algorithm::iequals("filter", type)) {
     mCurrentOp = new LogicalFilter();
   } else if (boost::algorithm::iequals("generate", type)) {
@@ -412,6 +430,8 @@ void DataflowGraphBuilder::nodeStart(const char * type,
     mCurrentOp = new LogicalAsyncParser();
   } else if (boost::algorithm::iequals("parse_query_string", type)) {
     mCurrentOp = new LogicalQueryString();
+  } else if (boost::algorithm::iequals("partition", type)) {
+    mCurrentOp = new LogicalPartition();
   } else if (boost::algorithm::iequals("print", type)) {
     mCurrentOp = new LogicalPrint();
   } else if (boost::algorithm::iequals("sort", type)) {
@@ -491,6 +511,7 @@ std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(LogicalPlan & 
   for(std::vector<LogicalPlan::vertex_descriptor>::iterator it = logicalPlan.begin_operators();
       it != logicalPlan.end_operators();
       ++it) {
+    bld.setPartitionConstraint((*it)->getPartitions());
     (*it)->create(bld);
   }
   
@@ -512,14 +533,66 @@ std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(LogicalPlan & 
     std::pair<RuntimeOperatorType*, std::size_t> t =
       bld.mapInputPort((*it)->target(), (*it)->getTargetPort());
 
-    plan->connectStraight(s.first, s.second, t.first, t.second, true, true);
+    if (s.first->isPartitioner()) {
+      if(t.first->isCollector()) {
+        plan->connectCrossbar(s.first,
+                              t.first,
+                              (*it)->getRecordType(), TreculFreeOperation(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                              true, true);
+      } else {
+        if (s.first->getPartitionConstraint().size() != 1) {
+          throw std::runtime_error("Parallel partitioner must be connected to a downstream collector");
+        }
+        plan->connectBroadcast(s.first,
+                               t.first, t.second, 
+                               (*it)->getRecordType(), TreculFreeOperation(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                               true, true);
+      }
+    } else if(!t.first->isCollector()) {
+      plan->connectStraight(s.first, s.second, 
+                            t.first, t.second, 
+                            true, true);
+    } else {
+      if (t.first->getPartitionConstraint().size() != 1) {
+        throw std::runtime_error("Parallel collector must be connected to am upstream partitioner");
+      }
+      plan->connectCollect(s.first, s.second, 
+                           t.first, 
+                           (*it)->getRecordType(), TreculFreeOperation(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                           true, true);
+    }
   }
   for(RuntimePlanBuilder::internal_edge_iterator it = bld.begin_internal_edges();
       it != bld.end_internal_edges();
       ++it) {
-    plan->connectStraight(it->Source.OpType, it->Source.Index, 
-			  it->Target.OpType, it->Target.Index, 
-			  it->Buffered, true);
+    if (it->Source.OpType->isPartitioner()) {
+      if(it->Target.OpType->isCollector()) {
+        plan->connectCrossbar(it->Source.OpType,
+                              it->Target.OpType,
+                              it->Type, it->Free,
+                              it->Buffered, true);
+      } else {
+        if (it->Source.OpType->getPartitionConstraint().size() != 1) {
+          throw std::runtime_error("Parallel partitioner must be connected to a downstream collector");
+        }
+        plan->connectBroadcast(it->Source.OpType,
+                               it->Target.OpType, it->Target.Index, 
+                               it->Type, it->Free,
+                               it->Buffered, true);
+      }
+    } else if(!it->Target.OpType->isCollector()) {
+      plan->connectStraight(it->Source.OpType, it->Source.Index, 
+                            it->Target.OpType, it->Target.Index, 
+                            it->Buffered, true);
+    } else {
+      if (it->Target.OpType->getPartitionConstraint().size() != 1) {
+        throw std::runtime_error("Parallel collector must be connected to am upstream partitioner");
+      }
+      plan->connectCollect(it->Source.OpType, it->Source.Index, 
+                           it->Target.OpType, 
+                           it->Type, it->Free,
+                           it->Buffered, true);
+    }
   }
 
   // Set all the module level JIT compiled stuff in the plan

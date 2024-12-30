@@ -498,7 +498,8 @@ BOOST_AUTO_TEST_CASE(testInputQueueOperator)
 		"b -> c;\n"
 		);
   std::shared_ptr<RuntimeOperatorPlan> plan = gb.create(1);
-  RuntimeProcess p(0,0,1,*plan.get());
+  RuntimeProcess p;
+  p.init(0,0,1,*plan.get());
   std::vector<NativeInputQueueOperator*> ops;
   p.getOperatorOfType<>(ops);
   BOOST_CHECK_EQUAL(1U, ops.size());
@@ -3082,7 +3083,8 @@ BOOST_AUTO_TEST_CASE(testSortMergeJoin)
   plan.connectStraight(printType, 0, devNullType, 0, true, true);
   plan.setModule(std::make_unique<TreculModule>(ctxt.getCodeGenerator().takeModule()));
   plan.loadFunctions();
-  RuntimeProcess p(0,0,1,plan);
+  RuntimeProcess p;
+  p.init(0,0,1,plan);
   p.run();
 }
 
@@ -3117,7 +3119,8 @@ BOOST_AUTO_TEST_CASE(testSortMerge)
   plan.connectStraight(printType, 0, devNullType, 0, true, true);
   plan.setModule(std::make_unique<TreculModule>(ctxt.getCodeGenerator().takeModule()));
   plan.loadFunctions();
-  RuntimeProcess p(0,0,1,plan);
+  RuntimeProcess p;
+  p.init(0,0,1,plan);
   p.run();
 }
 
@@ -3135,7 +3138,8 @@ BOOST_AUTO_TEST_CASE(testSort)
 		"c -> d;\n"
 		);
   std::shared_ptr<RuntimeOperatorPlan> plan = gb.create(1);
-  RuntimeProcess p(0,0,1,*plan.get());
+  RuntimeProcess p;
+  p.init(0,0,1,*plan.get());
   p.run();
 }
 
@@ -3188,7 +3192,8 @@ struct SerialOrganizedTableTestFixtureBase
     plan.addOperator(filewrite);
     plan.addEdge(tablescan, filewrite);
     auto runtimePlan = DataflowGraphBuilder::create(plan, 1);
-    RuntimeProcess p(0,0,1,*runtimePlan.get());
+    RuntimeProcess p;
+    p.init(0,0,1,*runtimePlan.get());
     p.run();
     std::ifstream resultFile(std::filesystem::current_path() / "data/output.txt");
     std::stringstream result;

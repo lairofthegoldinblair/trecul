@@ -1,0 +1,13 @@
+g1 = generate[output="RECORDCOUNT as a, PARTITION as b", limit=20];
+
+s = switch[on="CAST(a AS INTEGER)"];
+g1 -> s;
+
+d = devNull[];
+s -> d;
+
+c = collect[sortKey="a", sortKey="b", sequential="true"];
+s -> c;
+
+w = write[file="output.txt", mode="text", sequential="true"];
+c -> w;

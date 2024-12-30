@@ -1,0 +1,15 @@
+g1 = generate[output="RECORDCOUNT AS a", limit=20, sequential="true"];
+
+p = partition[hashKey="a", sequential="true"];
+
+g1 -> p;
+
+g2 = generate[output="RECORDCOUNT AS a", limit=20];
+
+j = merge_join[leftKey="a", rightKey="a", output="l.a"];
+g2 -> j;
+p -> j;
+
+w = write[connect="file:///", file="getcwd() + '/output'", mode="text"];
+
+j -> w;

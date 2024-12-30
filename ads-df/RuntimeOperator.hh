@@ -37,6 +37,8 @@
 
 #include <boost/assert.hpp>
 #include <boost/core/ignore_unused.hpp>
+#include <boost/iostreams/stream.hpp>
+#include <boost/iostreams/device/file_descriptor.hpp>
 #include "RuntimePlan.hh"
 #include "DataflowRuntime.hh"
 #include "RecordType.hh"
@@ -178,6 +180,8 @@ public:
   {
     OpTypePort Source;
     OpTypePort Target;
+    const RecordType * Type;
+    TreculFunctionReference Free;
     bool Buffered;
     InternalEdge()
       :
@@ -192,6 +196,22 @@ public:
       :
       Source(sourceOpType, sourcePort),
       Target(targetOpType, targetPort),
+      Type(nullptr),
+      Buffered(buffered)
+    {
+    }
+    InternalEdge(RuntimeOperatorType * sourceOpType,
+		 std::size_t sourcePort,
+		 RuntimeOperatorType * targetOpType,
+		 std::size_t targetPort,
+                 const RecordType * ty,
+                 const TreculFreeOperation & freeFunctor,
+		 bool buffered)
+      :
+      Source(sourceOpType, sourcePort),
+      Target(targetOpType, targetPort),
+      Type(ty),
+      Free(freeFunctor.getReference()),
       Buffered(buffered)
     {
     }
@@ -201,7 +221,8 @@ private:
   std::map<LogicalOperator*, std::vector<OpTypePort> > mInputPortMap;
   std::map<LogicalOperator*, std::vector<OpTypePort> > mOutputPortMap;
   std::vector<InternalEdge> mInternalEdges;
-
+  RuntimePartitionConstraint mPartitions;
+  
   static void mapPort(LogicalOperator * op, std::size_t port,
 		      RuntimeOperatorType * opType, std::size_t opTypePort,
 		      std::map<LogicalOperator*, std::vector<OpTypePort> >& portMap)
@@ -215,8 +236,16 @@ private:
 public:
   RuntimePlanBuilder();
 
+  void setPartitionConstraint(RuntimePartitionConstraint && partitions)
+  {
+    mPartitions = std::move(partitions);
+  }
+  
   void addOperatorType(RuntimeOperatorType * opType)
   {
+    if (!mPartitions.isDefault()) {
+      opType->setPartitionConstraint(mPartitions);
+    }
     mOpTypes.push_back(opType);
   }
   /**
@@ -243,6 +272,16 @@ public:
   {
     mInternalEdges.push_back(InternalEdge(sourceType, sourcePort,
 					  targetType, targetPort, 
+					  buffered));
+  }
+  void connect(RuntimeOperatorType * sourceType, std::size_t sourcePort,
+	       RuntimeOperatorType * targetType, std::size_t targetPort,
+               const RecordType * ty, const TreculFreeOperation & freeFunctor,
+	       bool buffered=true)
+  {
+    mInternalEdges.push_back(InternalEdge(sourceType, sourcePort,
+					  targetType, targetPort,
+                                          ty, freeFunctor,
 					  buffered));
   }
   typedef std::vector<RuntimeOperatorType *>::iterator optype_iterator;
@@ -833,6 +872,7 @@ private:
   int32_t mPrintFrequency;
   int64_t mNumProcessed;
   RecordBuffer mInput;
+  boost::iostreams::stream<boost::iostreams::file_descriptor_sink> mStream;
   class InterpreterContext * mRuntimeContext;
   const RuntimePrintOperatorType &  getPrintType()
   {
@@ -2221,6 +2261,32 @@ public:
   void shutdown();
 };
 
+class LogicalExchange : public LogicalOperator
+{  
+private:
+  TreculFunction * mHashFunction;
+  TreculFreeOperation * mFree;
+  TreculFunction * mKeyPrefix;
+  TreculFunction * mKeyEq;
+public:
+  LogicalExchange();
+  ~LogicalExchange();
+  void check(PlanCheckContext& log);
+  void create(class RuntimePlanBuilder& plan);  
+};
+
+class LogicalPartition : public LogicalOperator
+{  
+private:
+  TreculFunction * mHashFunction;
+  TreculFreeOperation * mFree;
+public:
+  LogicalPartition();
+  ~LogicalPartition();
+  void check(PlanCheckContext& log);
+  void create(class RuntimePlanBuilder& plan);  
+};
+
 class RuntimeHashPartitionerOperatorType : public RuntimeOperatorType
 {
 public:
@@ -2321,6 +2387,18 @@ public:
   void shutdown();
 };
 
+class LogicalCollect : public LogicalOperator
+{
+private:
+  TreculFunction * mKeyPrefix;
+  TreculFunction * mKeyEq;
+public:
+  LogicalCollect();
+  ~LogicalCollect();
+  void check(PlanCheckContext& log);
+  void create(class RuntimePlanBuilder& plan);  
+};
+
 template <class OpType>
 class RuntimeNondeterministicCollectorOperator;
 
@@ -2344,6 +2422,9 @@ public:
   }
   ~RuntimeNondeterministicCollectorOperatorType();
   bool isCollector() const { return true; }
+  void loadFunctions(TreculModule & m) override
+  {
+  }
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
 };
 

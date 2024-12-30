@@ -1,0 +1,7 @@
+g = generate[output="RECORDCOUNT as a, PARTITION as b", limit=20];
+
+e = exchange[hashKey="a", sortKey="a", sortKey="b"];
+g -> e;
+
+w = write[connect="file:///", file="getcwd() + '/output'", mode="text"];
+e -> w;

@@ -64,7 +64,8 @@ void CompileTimeLogicalOperator::create(class RuntimePlanBuilder& plan)
     tmpPlan.addOperatorType(sink);
     tmpPlan.connectStraight(*tmpBld.begin_operator_types(),
 			    0, sink, 0, true, true);
-    RuntimeProcess p(0,0,1,tmpPlan);
+    RuntimeProcess p;
+    p.init(0,0,1,tmpPlan);
     p.run();
     // OK.  Now we can create the constant scan and
     // insert into the plan.

@@ -942,7 +942,7 @@ void LogicalEmit::check(PlanCheckContext& log)
     } else if (it->equals("partition")) {
       partitioner = getStringValue(log, *it);
     } else {
-      checkDefaultParam(*it);
+      checkDefaultParam(log, *it);
     }
   }
 

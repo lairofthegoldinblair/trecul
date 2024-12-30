@@ -42,6 +42,12 @@ if (HADOOP_FOUND)
    add_definitions(-DTRECUL_HAS_HADOOP)
 endif (HADOOP_FOUND)
 
+if (MPI_FOUND) 
+   set (EXTRA_SOURCE ${EXTRA_SOURCE} MessagePassing.cc MessagePassingRemoting.cc)
+   set (EXTRA_LIBS ${EXTRA_LIBS} ${MPI_LIBRARIES})
+   add_definitions(-DTRECUL_HAS_MPI)
+endif (MPI_FOUND)
+
 add_library(ads-df 
 http_parser.c
 AsyncRecordParser.cc 

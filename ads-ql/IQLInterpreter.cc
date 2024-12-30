@@ -1689,6 +1689,16 @@ extern "C" void InternalArrayException() {
   throw std::runtime_error("Array Bounds Exception");
 }
 
+extern "C" void InternalGetCwd(Varchar* result, InterpreterContext * ctxt) {
+  char buf[PATH_MAX+1];
+  char * ret = ::getcwd(buf, PATH_MAX+1);
+  if (ret == &buf[0]) {
+    copyFromString(ret, ::strlen(ret), result, ctxt);
+  } else {
+    copyFromString("", 0, result, ctxt);
+  }
+}
+
 template <class _T>
 class ANTLR3AutoPtr : boost::noncopyable {
 private:

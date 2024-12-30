@@ -47,6 +47,10 @@
 #include "MapReduceJob.hh"
 #endif
 
+#if defined(TRECUL_HAS_MPI)
+#include "MessagePassingRemoting.hh"
+#endif
+
 #include <fstream>
 #include <memory>
 #include <thread>
@@ -128,53 +132,44 @@ std::filesystem::path Executable::getPath()
 #endif
 }
 
-void ProcessRemoting::addSource(const InterProcessFifoSpec& spec, 
-				int32_t sourcePartition, 
-				int32_t sourcePartitionConstraintIndex)
+void RuntimeProcess::addRemoteSource(const InterProcessFifoSpec& spec,
+                                     RuntimeOperator & sourceOp,
+                                     int32_t sourcePartition,
+                                     int32_t sourcePartitionConstraintIndex,
+                                     int32_t targetPartition,
+                                     int32_t targetPartitionConstraintIndex,
+                                     int32_t tag)
 {
-  throw std::runtime_error("Standard dataflow process does not support repartitioning/shuffle");
+  throw std::runtime_error("Standard dataflow process does not support remote repartitioning/shuffle");
 }
 
-void ProcessRemoting::addTarget(const InterProcessFifoSpec& spec, 
-				int32_t targetPartition, 
-				int32_t targetPartitionConstraintIndex)
+void RuntimeProcess::addRemoteTarget(const InterProcessFifoSpec& spec,
+                                     RuntimeOperator & targetOp,
+                                     int32_t targetPartition,
+                                     int32_t targetPartitionConstraintIndex,
+                                     int32_t sourcePartition,
+                                     int32_t sourcePartitionConstraintIndex,
+                                     int32_t tag)
 {
-  throw std::runtime_error("Standard dataflow process does not support repartitioning/shuffle");
+  throw std::runtime_error("Standard dataflow process does not support remote repartitioning/shuffle");
 }
 
-RuntimeProcess::RuntimeProcess(int32_t partitionStart, 
-			       int32_t partitionEnd,
-			       int32_t numPartitions,
-			       const RuntimeOperatorPlan& plan)
+RuntimeProcess::RuntimeProcess()
   :
-  mPartitionStart(partitionStart),
-  mPartitionEnd(partitionEnd),
-  mNumPartitions(numPartitions)
+  mPartitionStart(0),
+  mPartitionEnd(0),
+  mNumPartitions(0)
 {
-  ProcessRemotingFactory remoting;
-  init(partitionStart, partitionEnd, numPartitions, plan, remoting);
-}
-
-RuntimeProcess::RuntimeProcess(int32_t partitionStart, 
-			       int32_t partitionEnd,
-			       int32_t numPartitions,
-			       const RuntimeOperatorPlan& plan,
-			       ProcessRemotingFactory& remoting)
-  :
-  mPartitionStart(partitionStart),
-  mPartitionEnd(partitionEnd),
-  mNumPartitions(numPartitions)
-{
-  init(partitionStart, partitionEnd, numPartitions, plan, remoting);
 }
 
 void RuntimeProcess::init(int32_t partitionStart, 
 			  int32_t partitionEnd,
 			  int32_t numPartitions,
-			  const RuntimeOperatorPlan& plan,
-			  ProcessRemotingFactory& remoting)
+			  const RuntimeOperatorPlan& plan)
 {
-  mRemoteExecution = std::shared_ptr<ProcessRemoting>(remoting.create(*this));
+  mPartitionStart = partitionStart;
+  mPartitionEnd = partitionEnd;
+  mNumPartitions = numPartitions;
   if (partitionStart < 0 || partitionEnd >= numPartitions)
     throw std::runtime_error("Invalid partition allocation to process");
   for(int32_t i=partitionStart; i<=partitionEnd; i++) {
@@ -195,6 +190,16 @@ void RuntimeProcess::init(int32_t partitionStart,
       it != plan.crossbar_end();
       ++it) {
     connectCrossbar(*it);
+  }
+  for(RuntimeOperatorPlan::interprocess_fifo_const_iterator it = plan.broadcast_begin();
+      it != plan.broadcast_end();
+      ++it) {
+    connectBroadcast(*it);
+  }
+  for(RuntimeOperatorPlan::interprocess_fifo_const_iterator it = plan.collect_begin();
+      it != plan.collect_end();
+      ++it) {
+    connectCollect(*it);
   }
 
   for(std::vector<InProcessFifo *>::iterator channel = mChannels.begin();
@@ -245,12 +250,18 @@ void RuntimeProcess::connectInProcess(RuntimeOperator & source,
 				      DataflowScheduler & targetScheduler,
 				      bool buffered)
 {
+  // Check that we haven't already connected things up
+  if (source.getNumOutputs() > outputPort && nullptr != *(source.output_port_begin() + outputPort)) {
+    throw std::runtime_error("RuntimeProcess::connectInProcess source operator is already connected");
+  }
+  if (target.getNumInputs() > inputPort && nullptr != *(target.input_port_begin() + inputPort)) {
+    throw std::runtime_error("RuntimeProcess::connectInProcess target operator is already connected");
+  }
   mChannels.push_back(new InProcessFifo(sourceScheduler, targetScheduler, buffered));
   source.setOutputPort(mChannels.back()->getSource(), outputPort);
   mChannels.back()->getSource()->setOperator(source);
   target.setInputPort(mChannels.back()->getTarget(), inputPort);
-  mChannels.back()->getTarget()->setOperator(target);    
-  
+  mChannels.back()->getTarget()->setOperator(target);
 }
 
 void RuntimeProcess::connectStraightLine(const IntraProcessFifoSpec& spec)
@@ -290,15 +301,166 @@ void RuntimeProcess::connectCrossbar(const InterProcessFifoSpec& spec)
   for(std::vector<int32_t>::const_iterator i=spartitions.begin();
       i != spartitions.end();
       ++i) {
-    mRemoteExecution->addSource(spec, *i, 
-				spec.getSourceOperator()->getPartitionPosition(*i));
+    addSource(spec, *i, 
+              spec.getSourceOperator()->getPartitionPosition(*i));
   } 
   for(std::vector<int32_t>::const_iterator i=tpartitions.begin();
       i != tpartitions.end();
       ++i) {
-    mRemoteExecution->addTarget(spec, *i, 
-				spec.getTargetOperator()->getPartitionPosition(*i));
+    addTarget(spec, *i, 
+              spec.getTargetOperator()->getPartitionPosition(*i));
   } 
+}
+
+void RuntimeProcess::connectBroadcast(const InterProcessFifoSpec& spec)
+{
+  // Get the partitions within this process for each operator.
+  std::vector<int32_t> spartitions;
+  spec.getSourceOperator()->getPartitions(mPartitionStart, mPartitionEnd, spartitions);
+  std::vector<int32_t> tpartitions;
+  spec.getTargetOperator()->getPartitions(mPartitionStart, mPartitionEnd, tpartitions);
+
+  if (spartitions.size() > 1) {
+    throw std::runtime_error("INTERNAL_ERROR: connectBroadcast has more than 1 source partition");
+  }
+
+  // To calculate MPI tags in crossbars, we need to know the index/position
+  // of a partition within the vector of partitions the operator lives on.
+  if (spartitions.size() > 0) {
+    if (0 != spec.getSourceOperator()->getPartitionPosition(spartitions[0])) {
+      throw std::runtime_error("INTERNAL_ERROR: connectBroadcast has more than 1 source partition");
+    }
+    addSource(spec, spartitions[0], 0);
+  } 
+  for(std::vector<int32_t>::const_iterator i=tpartitions.begin();
+
+      i != tpartitions.end();
+      ++i) {
+    addTarget(spec, *i, 
+              spec.getTargetOperator()->getPartitionPosition(*i));
+  } 
+}
+
+void RuntimeProcess::connectCollect(const InterProcessFifoSpec& spec)
+{
+  // Get the partitions within this process for each operator.
+  std::vector<int32_t> spartitions;
+  spec.getSourceOperator()->getPartitions(mPartitionStart, mPartitionEnd, spartitions);
+  std::vector<int32_t> tpartitions;
+  spec.getTargetOperator()->getPartitions(mPartitionStart, mPartitionEnd, tpartitions);
+
+  if (tpartitions.size() > 1) {
+    throw std::runtime_error("INTERNAL_ERROR: connectCollect has more than 1 target partition");
+  }
+
+  // To calculate MPI tags in crossbars, we need to know the index/position
+  // of a partition within the vector of partitions the operator lives on.
+  for(std::vector<int32_t>::const_iterator i=spartitions.begin();
+      i != spartitions.end();
+      ++i) {
+    addSource(spec, *i, 
+              spec.getSourceOperator()->getPartitionPosition(*i));
+  } 
+  if (tpartitions.size() > 0) {
+    if (0 != spec.getTargetOperator()->getPartitionPosition(tpartitions[0])) {
+      throw std::runtime_error("INTERNAL_ERROR: connectCollect has more than 1 target partition");
+    }
+    addTarget(spec, tpartitions[0], 0);
+  } 
+}
+
+void RuntimeProcess::addSource(const InterProcessFifoSpec& spec,
+                               int32_t sourcePartition,
+                               int32_t sourcePartitionConstraintIndex)
+{
+  if (!spec.getSourceOperator()->Operator->isPartitioner() &&
+      !spec.getTargetOperator()->Operator->isCollector()) {
+    throw std::runtime_error("RuntimeProcess::addSource called without partitioner or collector");
+  }
+  
+  // Get the source operator we are connecting.
+  RuntimeOperator * sourceOp = getOperator(spec.getSourceOperator()->Operator, sourcePartition);
+  if (sourceOp==NULL) throw std::runtime_error("Operator not created");
+
+  // TODO: Sanity checking about either doing a full crossbar between ports 0,0 or
+  // allowing sequential partitioner to go to an arbitrary port, sequential collector
+  // from an arbitrary port.
+
+  int tagBase = spec.getTag() + sourcePartitionConstraintIndex*spec.getTargetOperator()->getPartitionCount(mNumPartitions);
+  // Iterate over all the target partitions we are going to connect to.
+  int numSet = 0;
+  boost::dynamic_bitset<> targetPartitions;
+  getPartitions(spec.getTargetOperator(), targetPartitions);
+  for(std::size_t pos = targetPartitions.find_first();
+      pos != boost::dynamic_bitset<>::npos;
+      pos = targetPartitions.find_next(pos)) {
+    int32_t sourcePort = spec.getSourceOperator()->Operator->isPartitioner() ? numSet : spec.getSourcePort();
+    if (hasPartition(pos)) {
+      // Target partition is in this process.
+      // Both operators must have been instantiated in this context already.
+      RuntimeOperator * targetOp = getOperator(spec.getTargetOperator()->Operator, (int32_t) pos);
+      if (targetOp==NULL) throw std::runtime_error("Operator not created");
+
+      // Here is where crossbar vs. sequential partition vs. sequential collector differ.
+      // In the latter two cases, one of these port ids actually comes from the fifo spec.
+      int32_t targetPort = spec.getTargetOperator()->Operator->isCollector() ? sourcePartitionConstraintIndex : spec.getTargetPort();
+      connectInProcess(*sourceOp, sourcePort, sourcePartition,
+                       *targetOp, targetPort, (int32_t) pos, true);
+    } else {
+      addRemoteSource(spec,
+                      *sourceOp,
+                      sourcePartition,
+                      sourcePartitionConstraintIndex,
+                      pos,
+                      sourcePort,
+                      tagBase + numSet);
+    }
+    numSet += 1;
+  }
+  // If not connecting from a partitioner then the target must be sequential
+  BOOST_ASSERT(spec.getSourceOperator()->Operator->isPartitioner() || 1 == numSet);
+}
+
+void RuntimeProcess::addTarget(const InterProcessFifoSpec& spec,
+                               int32_t targetPartition,
+                               int32_t targetPartitionConstraintIndex)
+{
+  if (!spec.getSourceOperator()->Operator->isPartitioner() &&
+      !spec.getTargetOperator()->Operator->isCollector()) {
+    throw std::runtime_error("RuntimeProcess::addSource called without partitioner or collector");
+  }
+
+  // Get the source operator we are connecting.
+  RuntimeOperator * targetOp = getOperator(spec.getTargetOperator()->Operator, targetPartition);
+  if (targetOp==NULL) throw std::runtime_error("Operator not created");
+
+  int tagBase = spec.getTag() + targetPartitionConstraintIndex;
+  // Iterate over all the source partitions we are going to connect to.
+  int numSet = 0;
+  boost::dynamic_bitset<> sourcePartitions;
+  getPartitions(spec.getSourceOperator(), sourcePartitions);
+  for(std::size_t pos = sourcePartitions.find_first();
+      pos != boost::dynamic_bitset<>::npos;
+      pos = sourcePartitions.find_next(pos)) {
+    int32_t targetPort = spec.getTargetOperator()->Operator->isCollector() ? numSet : spec.getTargetPort();
+    if (hasPartition(pos)) {
+      // Both operators must have been instantiated in this context already.
+      RuntimeOperator * sourceOp = getOperator(spec.getSourceOperator()->Operator, pos);
+      if (sourceOp==NULL) throw std::runtime_error("Operator not created");
+      // Don't create an in-process channel as that has/will be done in addSource.
+    } else {
+      addRemoteTarget(spec,
+                      *targetOp,
+                      targetPartition,
+                      targetPartitionConstraintIndex,
+                      pos,
+                      targetPort,
+                      tagBase + spec.getTargetOperator()->getPartitionCount(mNumPartitions)*numSet);
+    }
+    numSet += 1;
+  }
+  // If not connecting to a collector then the source must be sequential
+  BOOST_ASSERT(spec.getTargetOperator()->Operator->isCollector() || 1 == numSet);
 }
 
 RuntimeOperator * RuntimeProcess::createOperator(const RuntimeOperatorType * ty, int32_t partition)
@@ -461,7 +623,7 @@ void RuntimeProcess::run()
   std::vector<std::shared_ptr<DataflowSchedulerThreadRunner> > runners;
 
   // Start any threads necessary for remote execution
-  mRemoteExecution->runRemote(threads);
+  runRemote(threads);
 
   // Now start schedulers for each partition.
   for(std::map<int32_t, DataflowScheduler*>::iterator it = mSchedulers.begin();
@@ -674,7 +836,8 @@ int PlanRunner::run(int argc, char ** argv)
 
     std::shared_ptr<RuntimeOperatorPlan> tmp = PlanGenerator::deserialize64(&encoded[0] ,
 									      encoded.size());
-    RuntimeProcess p(partition,partition,partitions,*tmp.get());
+    RuntimeProcess p;
+    p.init(partition,partition,partitions,*tmp.get());
     p.run();
     return 0;
 #if defined(TRECUL_HAS_HADOOP)
@@ -734,6 +897,10 @@ int PlanRunner::run(int argc, char ** argv)
 						speculative,
 						timeout);
 #endif
+#if defined(TRECUL_HAS_MPI)
+  } else if (MessagePassingRemoting::isMPI()) {
+    return MessagePassingRemoting::runMPI(vm);
+#endif
   } else {
     std::string inputFile(vm["file"].as<std::string>());
     if (!boost::algorithm::equals(inputFile, "-")) {
@@ -743,7 +910,7 @@ int PlanRunner::run(int argc, char ** argv)
     if (vm.count("partitions")) {
       partitions = vm["partitions"].as<int32_t>();
     }
-    int32_t partition=0;
+    int32_t partition=-1;
     if (vm.count("serial")) {
       partition = vm["serial"].as<int32_t>();
     }
@@ -754,7 +921,12 @@ int PlanRunner::run(int argc, char ** argv)
     DataflowGraphBuilder gb(ctxt);
     gb.buildGraphFromFile(inputFile);
     std::shared_ptr<RuntimeOperatorPlan> plan = gb.create(partitions);
-    RuntimeProcess p(partition,partition,partitions,*plan.get());
+    RuntimeProcess p;
+    if (partition < 0) {
+      p.init(0,partitions-1,partitions,*plan.get());
+    } else {
+      p.init(partition,partition,partitions,*plan.get());
+    }
     p.run();
     return 0;
   }

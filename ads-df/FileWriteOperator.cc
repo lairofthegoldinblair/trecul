@@ -318,11 +318,13 @@ void HdfsFileCommitter::track (PathPtr from,
 			       PathPtr to,
 			       FileSystem * fileSystem)
 {
+  std::unique_lock<std::mutex> lock(mMutex);
   mActions.push_back(std::shared_ptr<HdfsFileRename>(new HdfsFileRename(from, to, fileSystem)));
 }
 
 bool HdfsFileCommitter::commit()
 {
+  std::unique_lock<std::mutex> lock(mMutex);
   std::cout << "HdfsFileCommitter::commit; mCommits = " << mCommits << std::endl;
   if (++mCommits == mActions.size()) {      
     // Sort the actions to make a deterministic order.

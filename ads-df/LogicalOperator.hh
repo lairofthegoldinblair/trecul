@@ -137,6 +137,7 @@ private:
   uint32_t mMaxInputs;
   uint32_t mMinOutputs;
   uint32_t mMaxOutputs;
+  std::vector<int32_t> mPartitions;
 protected:
   typedef std::vector<LogicalOperatorParam>::const_iterator const_param_iterator;
   const_param_iterator begin_params() const
@@ -162,7 +163,8 @@ protected:
 			  const LogicalOperatorParam& p);  
   bool getBooleanValue(PlanCheckContext& log,
 		       const LogicalOperatorParam& p);  
-  void checkDefaultParam(const LogicalOperatorParam& p);
+  void checkDefaultParam(PlanCheckContext& log,
+                         const LogicalOperatorParam& p);
 
   // Type checking helpers
   /**
@@ -238,6 +240,10 @@ public:
   std::size_t size_outputs() const 
   {
     return mOutputs.size();
+  }
+  const std::vector<int32_t> & getPartitions() const
+  {
+    return mPartitions;
   }
 };
 
