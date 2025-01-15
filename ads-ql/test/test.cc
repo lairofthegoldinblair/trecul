@@ -7721,6 +7721,7 @@ void testDatetimeCast(bool isNullable)
   members.push_back(RecordMember("c", VarcharType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("f", DatetimeType::Get(ctxt, isNullable)));
   members.push_back(RecordMember("g", DateType::Get(ctxt, isNullable)));
+  members.push_back(RecordMember("h", VarcharType::Get(ctxt, isNullable)));
   RecordType recTy(ctxt, members);
 
   RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
@@ -7731,9 +7732,11 @@ void testDatetimeCast(bool isNullable)
   recTy.setDatetime("f", dt, inputBuf);
   boost::gregorian::date d = boost::gregorian::from_string("2011-02-22");
   recTy.setDate("g", d, inputBuf);
+  recTy.setVarchar("h", "2012-01-30 12:22:45.84327", inputBuf);
   pt::ptime expected1 = pt::time_from_string("2011-03-16 23:22:59");
   pt::ptime expected2 = pt::time_from_string("2012-01-30 12:22:45");
   pt::ptime expected3 = pt::time_from_string("2012-01-30 00:00:00");
+  pt::ptime expected4 = pt::time_from_string("2012-01-30 12:22:45.84327");
   {
     RecordTypeTransfer t1(ctxt, "xfer1", &recTy, 
 			  "CAST(b AS DATETIME) AS varcharToDatetime"
@@ -7742,8 +7745,10 @@ void testDatetimeCast(bool isNullable)
 			  ",CAST('2012-01-30' AS DATETIME) AS varcharToDateLiteral"
 			  ",CAST(c AS DATETIME) AS varcharToDateVariable"
 			  ",CAST(f AS DATETIME) AS datetimeToDatetime"
+			  ",CAST(h AS DATETIME) AS varcharToDatetimeFractionalSeconds"
+			  ",CAST('2012-01-30 12:22:45.84327' AS DATETIME) AS varcharToDatetimeLiteralFractionalSeconds"
 			  );
-    BOOST_CHECK_EQUAL(6U, t1.getTarget()->size());
+    BOOST_CHECK_EQUAL(8U, t1.getTarget()->size());
     for(RecordType::const_member_iterator m = t1.getTarget()->begin_members(),
 	  e = t1.getTarget()->end_members();
 	m != e; ++m) {
@@ -7758,6 +7763,8 @@ void testDatetimeCast(bool isNullable)
     BOOST_CHECK_EQUAL(expected3, t1.getTarget()->getMemberOffset("varcharToDateLiteral").getDatetime(outputBuf));
     BOOST_CHECK_EQUAL(expected3, t1.getTarget()->getMemberOffset("varcharToDateVariable").getDatetime(outputBuf));
     BOOST_CHECK_EQUAL(dt, t1.getTarget()->getMemberOffset("datetimeToDatetime").getDatetime(outputBuf));
+    BOOST_CHECK_EQUAL(expected4, t1.getTarget()->getMemberOffset("varcharToDatetimeFractionalSeconds").getDatetime(outputBuf));
+    BOOST_CHECK_EQUAL(expected4, t1.getTarget()->getMemberOffset("varcharToDatetimeLiteralFractionalSeconds").getDatetime(outputBuf));
     t1.getTarget()->getFree().free(outputBuf);
   }
   recTy.getFree().free(inputBuf);

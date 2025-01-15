@@ -919,11 +919,42 @@ private:
     typedef boost::posix_time::ptime ptime;
     typedef boost::posix_time::time_duration time_duration;
     typedef boost::gregorian::date date;
+
+    // Handle fractional seconds if any, ignoring any specified digits
+    // beyond the compiled in precision.
+    int64_t fractional_seconds = 0;
+    s = source.open(1);
+    if ('.' == *s) {
+      int precision = time_duration::num_fractional_digits();
+      int digits = 0;
+      source.consume(1);
+      while(true) {
+        s = source.open(1);
+        if (s == NULL) {
+          return false;
+        }
+        if (*s > '9' || *s < '0')  {
+          break;
+        }
+        if (digits < precision) {
+          // TODO: Right now assuming and not validating a single delimiter character
+          // TODO: Protect against overflow
+          fractional_seconds = fractional_seconds * 10LL + (*s - '0');
+          ++digits;
+        }
+        source.consume(1);
+      }
+
+      while(digits++ < precision) {
+        fractional_seconds = fractional_seconds * 10LL;
+      }
+    }
+
     // This call profiles to be pretty slow.
     // Can this be improved without losing too much
     // safety?
     ptime t(date(nums[0], nums[1], nums[2]),
-    	    time_duration(nums[3],nums[4],nums[5]));
+    	    time_duration(nums[3],nums[4],nums[5], fractional_seconds));
     mTargetOffset.setDatetime(t, target);
     return true;    
   }
@@ -1037,7 +1068,7 @@ private:
       val = val * 10LL + (*s - '0');
       source.consume(1);
     }
-  }
+ }
   
   template <ImportFunc PMF>
   bool ImportNullableField(DataBlock & source, RecordBuffer target) const

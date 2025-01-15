@@ -2146,7 +2146,7 @@ void TreculRecordPrintRuntime::imbue(std::ostream& ostr)
 {
   // stream takes ownership of the facet.
   boost::posix_time::time_facet * facet =
-    new boost::posix_time::time_facet("%Y-%m-%d %H:%M:%S");
+    new boost::posix_time::time_facet("%Y-%m-%d %H:%M:%S%F");
   boost::gregorian::date_facet * dateFacet =
     new boost::gregorian::date_facet("%Y-%m-%d");
   ostr.imbue(std::locale(std::locale(ostr.getloc(), facet), dateFacet));
