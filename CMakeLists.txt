@@ -201,4 +201,10 @@ else()
   add_test(ads-df-core-scripts perl ${CMAKE_CURRENT_SOURCE_DIR}/ads-df/test/testDriver.pl ${CMAKE_CURRENT_SOURCE_DIR}/ads-df/test ${CMAKE_CURRENT_BINARY_DIR}/ads-df/ads-df)
 endif (MPI_FOUND)
 
-
+#
+# Only require source packaging at this point 
+#
+set(CPACK_PACKAGE_NAME "trecul")
+set(CMake_VERSION "0.9.0")
+set (CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CMake_VERSION}.src")
+include(CPack)
