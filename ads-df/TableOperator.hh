@@ -37,6 +37,7 @@
 
 #include "LogicalOperator.hh"
 
+class TreculFreeOperation;
 class SerialOrganizedTable;
 
 class LogicalTableParser : public LogicalOperator
