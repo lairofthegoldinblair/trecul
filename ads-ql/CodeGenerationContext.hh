@@ -60,8 +60,11 @@ namespace llvm {
 }
 class CodeGenerationContext;
 class FieldType;
+class CharType;
 class SequentialType;
 class StructType;
+class FixedArrayType;
+class RecordType;
 class FieldAddress;
 class BitcpyOp;
 class BitsetOp;
@@ -77,6 +80,8 @@ IQLRecordTypeRef wrap(const class RecordType * r);
 
 class IQLToLLVMValue
 {
+protected:
+  static std::vector<IQLToLLVMValue *> & getValueFactory(CodeGenerationContext * ctxt);
 public:
   enum ValueType { eGlobal, eLocal };
   virtual ~IQLToLLVMValue() {}
@@ -379,8 +384,10 @@ public:
   llvm::Function * Function;
   IQLToLLVMRecordMapRef RecordArguments;
   IQLRecordTypeRef OutputRecord;
-  void * AllocaCache;
+  std::map<const FieldType*, 
+           std::vector<llvm::Value *> > * AllocaCache;
   CodeGenerationFunctionContext();
+  void clear();
 };
 
 // TODO: Should have just made this whole thing opaque rather
@@ -389,6 +396,8 @@ public:
 class CodeGenerationContext {
 public:
   friend class NullInitializedAggregate;
+  friend class MaxMinAggregate;
+  friend class IQLToLLVMValue;
   /**
    * Type of the cache of alloca'd locals
    * that we can reuse.  Keeping the number
@@ -440,6 +449,20 @@ private:
   llvm::Value * LLVMMemsetIntrinsic;
   // Memcmp
   llvm::Value * LLVMMemcmpIntrinsic;
+  // For aggregate function these
+  // are for update operations
+  CodeGenerationFunctionContext Update;
+  // For aggregate function these
+  // are for initialize operations
+  CodeGenerationFunctionContext Initialize;
+  // For aggregate function these
+  // are for transfer operations
+  CodeGenerationFunctionContext Transfer;
+  // Value factory
+  std::vector<IQLToLLVMValue *> ValueFactory;
+  // This is set by the code generator not by the caller
+  llvm::Function * LLVMFunction;
+  llvm::legacy::FunctionPassManager * mFPM;
 
   /**
    * Private Interface to the variable length datatype (including VARCHAR)
@@ -576,35 +599,38 @@ private:
   void ConstructFunction(const std::string& funName, 
                          const std::vector<std::string> & argumentNames,
                          const std::vector<llvm::Type *> & argumentTypes);
-public:
+  /**
+   * Handle the changes between compilation contexts for aggregates
+   */
+  void restoreAggregateContext(CodeGenerationFunctionContext * fCtxt);
+
+  /**
+   * Save the Aggregate function state.
+   */
+  void saveAggregateContext(CodeGenerationFunctionContext * fCtxt);
+
   llvm::LLVMContext * LLVMContext;
   llvm::Module * LLVMModule;
+public:
   llvm::IRBuilder<> * LLVMBuilder;
+  llvm::Type * LLVMInt8Type;
+  llvm::Type * LLVMInt16Type;
+  llvm::Type * LLVMInt32Type;
+  llvm::Type * LLVMInt64Type;
+  llvm::Type * LLVMFloatType;
+  llvm::Type * LLVMDoubleType;
   llvm::Type * LLVMDecContextPtrType;
   llvm::Type * LLVMDecimal128Type;
   llvm::Type * LLVMVarcharType;
   llvm::Type * LLVMDatetimeType;
   llvm::Type * LLVMCidrV4Type;
-  llvm::Type * LLVMInt32Type;
-  // This is set by the code generator not by the caller
-  llvm::Function * LLVMFunction;
+  llvm::Type * LLVMIPV6Type;
+  llvm::Type * LLVMCidrV6Type;
   // Move or copy semantics
   int32_t IQLMoveSemantics;
   // Indicator whether we have generated an
   // identity transfer
   bool IsIdentity;
-  // For aggregate function these
-  // are for update operations
-  CodeGenerationFunctionContext Update;
-  // For aggregate function these
-  // are for initialize operations
-  CodeGenerationFunctionContext Initialize;
-  // For aggregate function these
-  // are for transfer operations
-  CodeGenerationFunctionContext Transfer;
-  // Value factory
-  std::vector<IQLToLLVMValue *> ValueFactory;
-  llvm::legacy::FunctionPassManager * mFPM;
   CodeGenerationContext();
   ~CodeGenerationContext();
   /**
@@ -615,6 +641,10 @@ public:
   void disownModule();
 
   std::unique_ptr<llvm::Module> takeModule();
+
+  llvm::Type * getType(const RecordType * ty);
+  llvm::Type * getType(const CharType * ty);
+  llvm::Type * getType(const FixedArrayType * ty);
 
   /**
    * Define a variable
@@ -697,16 +727,6 @@ public:
    * Dump contents of symbol table.
    */
   void dumpSymbolTable();
-
-  /**
-   * Handle the changes between compilation contexts for aggregates
-   */
-  void restoreAggregateContext(CodeGenerationFunctionContext * fCtxt);
-
-  /**
-   * Save the Aggregate function state.
-   */
-  void saveAggregateContext(CodeGenerationFunctionContext * fCtxt);
 
   /**
    * Add addresses of the members of the input record into the symbol table.
@@ -1535,6 +1555,7 @@ public:
   /**
    * Aggregate function support
    */
+  void beginAggregateFunction();
   const IQLToLLVMValue * buildAggregateFunction(const char * fn,
 						const IQLToLLVMValue * e,
                                                 const FieldType * exprTy,
@@ -1602,6 +1623,33 @@ public:
   void createUpdate(const std::vector<const RecordType *>& mSources,
 		    const std::vector<boost::dynamic_bitset<> >& masks,
                     std::string & suggestedFunName);
+  void completeFunctionContext();
+  void createAggregateContexts(const class TypeCheckConfiguration & typeCheckConfig);
+  void completeAggregateContexts();
+  void saveAggregateInitializeContext()
+  {
+    saveAggregateContext(&Initialize);
+  }
+  void saveAggregateUpdateContext()
+  {
+    saveAggregateContext(&Update);
+  }
+  void saveAggregateTransferContext()
+  {
+    saveAggregateContext(&Transfer);
+  }
+  void restoreAggregateInitializeContext()
+  {
+    restoreAggregateContext(&Initialize);
+  }
+  void restoreAggregateUpdateContext()
+  {
+    restoreAggregateContext(&Update);
+  }
+  void restoreAggregateTransferContext()
+  {
+    restoreAggregateContext(&Transfer);
+  }
 };
 
 class AggregateFunction

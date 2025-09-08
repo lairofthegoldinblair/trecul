@@ -10928,6 +10928,266 @@ BOOST_AUTO_TEST_CASE(testIQLRecordPrintModuleNullable)
   testRecordPrintModuleNullable(false, false);
 }
 
+BOOST_AUTO_TEST_CASE(testTreculAggregateAndTreculTransfer)
+{
+  DynamicRecordContext ctxt;
+  ContextTester codeGen;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  TreculAggregate agg(ctxt, *codeGen.getContext(), "agg", &recTy, "a, SUM(1) AS this_is_a_very_long_variable_name", std::vector<std::string>{"a"});
+  TreculAggregateReference aggRef(agg.getReference());
+
+  TreculTransfer xfer(ctxt, *codeGen.getContext(), "xfer", agg.getTarget(), "input.*");
+  TreculTransferReference xferRef(xfer.getReference());
+
+  TreculModule module(*codeGen.getContext());
+  TreculAggregateRuntime aggRuntime(module.getAggregate(aggRef));
+  BOOST_CHECK(!!aggRuntime);
+  TreculTransferRuntime xferRuntime(module.getTransfer<TreculTransferRuntime>(xferRef));
+  BOOST_CHECK(!!xferRuntime);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setInt32("a", 1, inputBuf);
+  RecordBuffer aggregateBuf;
+  aggRuntime.executeInit(inputBuf, aggregateBuf, &runtimeCtxt);
+  aggRuntime.executeUpdate(inputBuf, aggregateBuf, &runtimeCtxt);
+  aggRuntime.executeUpdate(inputBuf, aggregateBuf, &runtimeCtxt);
+  RecordBuffer aggOutputBuf;
+  aggRuntime.executeTransfer(aggregateBuf, aggOutputBuf, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(1, agg.getTarget()->getInt32("a", aggOutputBuf));
+  BOOST_CHECK_EQUAL(2, agg.getTarget()->getInt32("this_is_a_very_long_variable_name", aggOutputBuf));
+
+  RecordBuffer xferOutputBuf;
+  xferRuntime.execute(aggOutputBuf, xferOutputBuf, &runtimeCtxt, false);
+  BOOST_CHECK_EQUAL(1, xfer.getTarget()->getInt32("a", xferOutputBuf));
+  BOOST_CHECK_EQUAL(2, xfer.getTarget()->getInt32("this_is_a_very_long_variable_name", xferOutputBuf));
+  
+  agg.getAggregate()->getFree().free(aggregateBuf);
+  recTy.getFree().free(inputBuf);
+  agg.getTarget()->getFree().free(aggOutputBuf);
+  xfer.getTarget()->getFree().free(xferOutputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testTreculAggregateAndTreculFunction)
+{
+  DynamicRecordContext ctxt;
+  ContextTester codeGen;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  RecordType emptyTy(ctxt, {});
+  TreculAggregate agg(ctxt, *codeGen.getContext(), "agg", &recTy, "a, SUM(1) AS this_is_a_very_long_variable_name", std::vector<std::string>{"a"});
+  TreculAggregateReference aggRef(agg.getReference());
+
+  TreculFunction fun(ctxt, *codeGen.getContext(), "fun", { agg.getTarget(), &emptyTy }, "a*this_is_a_very_long_variable_name");
+  TreculFunctionReference funRef(fun.getReference());
+
+  TreculModule module(*codeGen.getContext());
+  TreculAggregateRuntime aggRuntime(module.getAggregate(aggRef));
+  BOOST_CHECK(!!aggRuntime);
+  TreculFunctionRuntime funRuntime(module.getFunction<TreculFunctionRuntime>(funRef));
+  BOOST_CHECK(!!funRuntime);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setInt32("a", 1, inputBuf);
+  RecordBuffer aggregateBuf;
+  aggRuntime.executeInit(inputBuf, aggregateBuf, &runtimeCtxt);
+  aggRuntime.executeUpdate(inputBuf, aggregateBuf, &runtimeCtxt);
+  aggRuntime.executeUpdate(inputBuf, aggregateBuf, &runtimeCtxt);
+  RecordBuffer aggOutputBuf;
+  aggRuntime.executeTransfer(aggregateBuf, aggOutputBuf, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(1, agg.getTarget()->getInt32("a", aggOutputBuf));
+  BOOST_CHECK_EQUAL(2, agg.getTarget()->getInt32("this_is_a_very_long_variable_name", aggOutputBuf));
+
+  int32_t ret = funRuntime.execute(aggOutputBuf, RecordBuffer(), &runtimeCtxt);
+  BOOST_CHECK_EQUAL(2, ret);
+  
+  agg.getAggregate()->getFree().free(aggregateBuf);
+  recTy.getFree().free(inputBuf);
+  agg.getTarget()->getFree().free(aggOutputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testTreculTransferAndTreculAggregate)
+{
+  DynamicRecordContext ctxt;
+  ContextTester codeGen;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+
+  TreculTransfer xfer(ctxt, *codeGen.getContext(), "xfer", &recTy, "input.*");
+  TreculTransferReference xferRef(xfer.getReference());
+
+  TreculAggregate agg(ctxt, *codeGen.getContext(), "agg", xfer.getTarget(), "a, SUM(1) AS this_is_a_very_long_variable_name", std::vector<std::string>{"a"});
+  TreculAggregateReference aggRef(agg.getReference());
+
+  TreculModule module(*codeGen.getContext());
+  TreculTransferRuntime xferRuntime(module.getTransfer<TreculTransferRuntime>(xferRef));
+  BOOST_CHECK(!!xferRuntime);
+  TreculAggregateRuntime aggRuntime(module.getAggregate(aggRef));
+  BOOST_CHECK(!!aggRuntime);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setInt32("a", 1, inputBuf);
+  RecordBuffer xferOutputBuf;
+  xferRuntime.execute(inputBuf, xferOutputBuf, &runtimeCtxt, false);
+  BOOST_CHECK_EQUAL(1, xfer.getTarget()->getInt32("a", xferOutputBuf));
+  RecordBuffer aggregateBuf;
+  aggRuntime.executeInit(xferOutputBuf, aggregateBuf, &runtimeCtxt);
+  aggRuntime.executeUpdate(xferOutputBuf, aggregateBuf, &runtimeCtxt);
+  aggRuntime.executeUpdate(xferOutputBuf, aggregateBuf, &runtimeCtxt);
+  RecordBuffer aggOutputBuf;
+  aggRuntime.executeTransfer(aggregateBuf, aggOutputBuf, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(1, agg.getTarget()->getInt32("a", aggOutputBuf));
+  BOOST_CHECK_EQUAL(2, agg.getTarget()->getInt32("this_is_a_very_long_variable_name", aggOutputBuf));
+
+  agg.getAggregate()->getFree().free(aggregateBuf);
+  recTy.getFree().free(inputBuf);
+  agg.getTarget()->getFree().free(aggOutputBuf);
+  xfer.getTarget()->getFree().free(xferOutputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testTreculFunctionAndTreculAggregate)
+{
+  DynamicRecordContext ctxt;
+  ContextTester codeGen;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  RecordType emptyTy(ctxt, {});
+  TreculFunction fun(ctxt, *codeGen.getContext(), "fun", std::vector<const RecordType*>({ &recTy, &emptyTy }), "a+a");
+  TreculFunctionReference funRef(fun.getReference());
+
+  TreculAggregate agg(ctxt, *codeGen.getContext(), "agg", &recTy, "a, SUM(1) AS this_is_a_very_long_variable_name", std::vector<std::string>{"a"});
+  TreculAggregateReference aggRef(agg.getReference());
+
+  TreculModule module(*codeGen.getContext());
+  TreculAggregateRuntime aggRuntime(module.getAggregate(aggRef));
+  BOOST_CHECK(!!aggRuntime);
+  TreculFunctionRuntime funRuntime(module.getFunction<TreculFunctionRuntime>(funRef));
+  BOOST_CHECK(!!funRuntime);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setInt32("a", 1, inputBuf);
+
+  int32_t ret = funRuntime.execute(inputBuf, RecordBuffer(), &runtimeCtxt);
+  BOOST_CHECK_EQUAL(2, ret);
+  
+  RecordBuffer aggregateBuf;
+  aggRuntime.executeInit(inputBuf, aggregateBuf, &runtimeCtxt);
+  aggRuntime.executeUpdate(inputBuf, aggregateBuf, &runtimeCtxt);
+  aggRuntime.executeUpdate(inputBuf, aggregateBuf, &runtimeCtxt);
+  RecordBuffer aggOutputBuf;
+  aggRuntime.executeTransfer(aggregateBuf, aggOutputBuf, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(1, agg.getTarget()->getInt32("a", aggOutputBuf));
+  BOOST_CHECK_EQUAL(2, agg.getTarget()->getInt32("this_is_a_very_long_variable_name", aggOutputBuf));
+
+  agg.getAggregate()->getFree().free(aggregateBuf);
+  recTy.getFree().free(inputBuf);
+  agg.getTarget()->getFree().free(aggOutputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testTreculAggregateAndTreculAggregate)
+{
+  DynamicRecordContext ctxt;
+  ContextTester codeGen;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", Int32Type::Get(ctxt, false));
+  members.emplace_back("b", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  TreculAggregate agg1(ctxt, *codeGen.getContext(), "agg", &recTy, "a, b, SUM(1) AS this_is_a_very_long_variable_name", std::vector<std::string>{"a", "b"});
+  TreculAggregateReference aggRef1(agg1.getReference());
+
+  TreculAggregate agg2(ctxt, *codeGen.getContext(), "agg", agg1.getTarget(), "a, SUM(this_is_a_very_long_variable_name) AS this_is_a_very_long_variable_name", std::vector<std::string>{"a"});
+  TreculAggregateReference aggRef2(agg2.getReference());
+
+  TreculModule module(*codeGen.getContext());
+  TreculAggregateRuntime aggRuntime1(module.getAggregate(aggRef1));
+  BOOST_CHECK(!!aggRuntime1);
+  TreculAggregateRuntime aggRuntime2(module.getAggregate(aggRef2));
+  BOOST_CHECK(!!aggRuntime2);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setInt32("a", 1, inputBuf);
+  recTy.setInt32("b", 1, inputBuf);
+  RecordBuffer aggregateBuf1;
+  aggRuntime1.executeInit(inputBuf, aggregateBuf1, &runtimeCtxt);
+  aggRuntime1.executeUpdate(inputBuf, aggregateBuf1, &runtimeCtxt);
+  aggRuntime1.executeUpdate(inputBuf, aggregateBuf1, &runtimeCtxt);
+  RecordBuffer aggOutputBuf1;
+  aggRuntime1.executeTransfer(aggregateBuf1, aggOutputBuf1, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(1, agg1.getTarget()->getInt32("a", aggOutputBuf1));
+  BOOST_CHECK_EQUAL(1, agg1.getTarget()->getInt32("b", aggOutputBuf1));
+  BOOST_CHECK_EQUAL(2, agg1.getTarget()->getInt32("this_is_a_very_long_variable_name", aggOutputBuf1));
+
+  recTy.setInt32("b", 2, inputBuf);
+  RecordBuffer aggregateBuf2;
+  aggRuntime1.executeInit(inputBuf, aggregateBuf2, &runtimeCtxt);
+  aggRuntime1.executeUpdate(inputBuf, aggregateBuf2, &runtimeCtxt);
+  aggRuntime1.executeUpdate(inputBuf, aggregateBuf2, &runtimeCtxt);
+  RecordBuffer aggOutputBuf2;
+  aggRuntime1.executeTransfer(aggregateBuf2, aggOutputBuf2, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(1, agg1.getTarget()->getInt32("a", aggOutputBuf2));
+  BOOST_CHECK_EQUAL(2, agg1.getTarget()->getInt32("b", aggOutputBuf2));
+  BOOST_CHECK_EQUAL(2, agg1.getTarget()->getInt32("this_is_a_very_long_variable_name", aggOutputBuf2));
+  
+  RecordBuffer aggregateBuf3;
+  aggRuntime2.executeInit(aggOutputBuf1, aggregateBuf3, &runtimeCtxt);
+  aggRuntime2.executeUpdate(aggOutputBuf1, aggregateBuf3, &runtimeCtxt);
+  aggRuntime2.executeUpdate(aggOutputBuf2, aggregateBuf3, &runtimeCtxt);
+  RecordBuffer aggOutputBuf3;
+  aggRuntime2.executeTransfer(aggregateBuf3, aggOutputBuf3, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(1, agg2.getTarget()->getInt32("a", aggOutputBuf3));
+  BOOST_CHECK_EQUAL(4, agg2.getTarget()->getInt32("this_is_a_very_long_variable_name", aggOutputBuf3));
+
+  recTy.getFree().free(inputBuf);
+  agg1.getAggregate()->getFree().free(aggregateBuf1);
+  agg1.getTarget()->getFree().free(aggOutputBuf1);
+  agg1.getAggregate()->getFree().free(aggregateBuf2);
+  agg1.getTarget()->getFree().free(aggOutputBuf2);
+  agg2.getAggregate()->getFree().free(aggregateBuf3);
+  agg2.getTarget()->getFree().free(aggOutputBuf3);
+}
+
+BOOST_AUTO_TEST_CASE(testTreculFunctionAndTreculFunction)
+{
+  DynamicRecordContext ctxt;
+  ContextTester codeGen;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  RecordType emptyTy(ctxt, {});
+  TreculFunction fun1(ctxt, *codeGen.getContext(), "fun", std::vector<const RecordType*>({ &recTy, &emptyTy }), "a+a");
+  TreculFunctionReference funRef1(fun1.getReference());
+  TreculFunction fun2(ctxt, *codeGen.getContext(), "fun", std::vector<const RecordType*>({ &recTy, &emptyTy }), "a*a");
+  TreculFunctionReference funRef2(fun2.getReference());
+
+
+  TreculModule module(*codeGen.getContext());
+  TreculFunctionRuntime funRuntime1(module.getFunction<TreculFunctionRuntime>(funRef1));
+  BOOST_CHECK(!!funRuntime1);
+  TreculFunctionRuntime funRuntime2(module.getFunction<TreculFunctionRuntime>(funRef2));
+  BOOST_CHECK(!!funRuntime2);
+
+  RecordBuffer inputBuf = recTy.GetMalloc()->malloc();
+  recTy.setInt32("a", 1, inputBuf);
+
+  int32_t ret = funRuntime1.execute(inputBuf, RecordBuffer(), &runtimeCtxt);
+  BOOST_CHECK_EQUAL(2, ret);
+  
+  ret = funRuntime2.execute(inputBuf, RecordBuffer(), &runtimeCtxt);
+  BOOST_CHECK_EQUAL(1, ret);
+  
+  recTy.getFree().free(inputBuf);
+}
+
 // Important test case with potentially important design
 // implications is to test NULLABLE local values.
 // Simple case is a NULLABLE in a transfer; bigger deal

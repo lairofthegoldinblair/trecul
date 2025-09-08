@@ -57,7 +57,6 @@
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
-#include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Bitstream/BitstreamWriter.h"
@@ -2115,15 +2114,7 @@ TreculRecordOperations::TreculRecordOperations(CodeGenerationContext & codeGen,
 
   op();
   
-  codeGen.LLVMBuilder->CreateRetVoid();
-
-  llvm::verifyFunction(*codeGen.LLVMFunction);
-  // llvm::outs() << "We just constructed this LLVM module:\n\n" << *mContext->LLVMModule;
-  // // Now run optimizer over the IR
-  codeGen.mFPM->run(*codeGen.LLVMFunction);
-  // llvm::outs() << "We just optimized this LLVM module:\n\n" << *mContext->LLVMModule;
-  // llvm::outs() << "\n\nRunning foo: ";
-  // llvm::outs().flush();
+  codeGen.completeFunctionContext();
 }
 
 TreculRecordOperations::~TreculRecordOperations()
@@ -2250,19 +2241,12 @@ TreculTransfer::TreculTransfer(DynamicRecordContext& recCtxt,
     // Code generate
     ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(p.getNodes()));  
     toLLVM->recordConstructor(toLLVM.get(), wrap(&codeGen));
-    codeGen.LLVMBuilder->CreateRetVoid();
+    codeGen.completeFunctionContext();
     
     // If doing copy find out if this was an identity transfer
-    if (0 == i)
+    if (0 == i) {      
       mIsIdentity = 1==codeGen.IsIdentity;
-
-    llvm::verifyFunction(*codeGen.LLVMFunction);
-    // llvm::outs() << "We just constructed this LLVM module:\n\n" << *codeGen.LLVMModule;
-    // // Now run optimizer over the IR
-    codeGen.mFPM->run(*codeGen.LLVMFunction);
-    // llvm::outs() << "We just optimized this LLVM module:\n\n" << *codeGen.LLVMModule;
-    // llvm::outs() << "\n\nRunning foo: ";
-    // llvm::outs().flush();
+    }
   }
 }
 
@@ -2316,15 +2300,7 @@ TreculTransfer2::TreculTransfer2(DynamicRecordContext& recCtxt,
     // Code generate
     ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(p.getNodes()));  
     toLLVM->recordConstructor(toLLVM.get(), wrap(&codeGen));
-    codeGen.LLVMBuilder->CreateRetVoid();
-    
-    llvm::verifyFunction(*codeGen.LLVMFunction);
-    // llvm::outs() << "We just constructed this LLVM module:\n\n" << *codeGen.LLVMModule;
-    // // Now run optimizer over the IR
-    codeGen.mFPM->run(*codeGen.LLVMFunction);
-    // llvm::outs() << "We just optimized this LLVM module:\n\n" << *codeGen.LLVMModule;
-    // llvm::outs() << "\n\nRunning foo: ";
-    // llvm::outs().flush();
+    codeGen.completeFunctionContext();
   }
 }
 
@@ -2353,7 +2329,7 @@ void RecordTypeTransfer::execute(RecordBuffer & source, RecordBuffer & target, c
 
 IQLTransferModule * RecordTypeTransfer::create() const
 {
-  return new IQLTransferModule(getTarget()->getMalloc(), getCopyFunName(), getMoveFunName(), llvm::CloneModule(*mContext->LLVMModule));
+  return new IQLTransferModule(getTarget()->getMalloc(), getCopyFunName(), getMoveFunName(), mContext->takeModule());
 }
 
 IQLTransferModule::IQLTransferModule(const RecordTypeMalloc& recordMalloc,
@@ -2404,7 +2380,7 @@ void RecordTypeTransfer2::execute(RecordBuffer * sources,
 
 IQLTransferModule2 * RecordTypeTransfer2::create() const
 {
-  return new IQLTransferModule2(getTarget()->getMalloc(), getCopyFunName(), getMoveFunName(), llvm::CloneModule(*mContext->LLVMModule));
+  return new IQLTransferModule2(getTarget()->getMalloc(), getCopyFunName(), getMoveFunName(), mContext->takeModule());
 }
 
 IQLTransferModule2::IQLTransferModule2(const RecordTypeMalloc& recordMalloc,
@@ -2484,7 +2460,7 @@ void RecordTypeInPlaceUpdate::execute(RecordBuffer & source, RecordBuffer target
 
 IQLUpdateModule * RecordTypeInPlaceUpdate::create() const
 {
-  return new IQLUpdateModule(getFunName(), llvm::CloneModule(*mContext->LLVMModule));
+  return new IQLUpdateModule(getFunName(), mContext->takeModule());
 }
 
 RecordTypeOperations::RecordTypeOperations(const RecordType * recordType, const std::string& funName, std::function<void()> op)
@@ -2508,20 +2484,12 @@ void RecordTypeOperations::init(const RecordType * recordType, std::function<voi
 
   op();
   
-  mContext->LLVMBuilder->CreateRetVoid();
-
-  llvm::verifyFunction(*mContext->LLVMFunction);
-  // llvm::outs() << "We just constructed this LLVM module:\n\n" << *mContext->LLVMModule;
-  // // Now run optimizer over the IR
-  mContext->mFPM->run(*mContext->LLVMFunction);
-  // llvm::outs() << "We just optimized this LLVM module:\n\n" << *mContext->LLVMModule;
-  // llvm::outs() << "\n\nRunning foo: ";
-  // llvm::outs().flush();
+  mContext->completeFunctionContext();
 }
 
 IQLRecordTypeOperationModule * RecordTypeOperations::create() const
 {
-  return new IQLRecordTypeOperationModule(mFunName, llvm::CloneModule(*mContext->LLVMModule));
+  return new IQLRecordTypeOperationModule(mFunName, mContext->takeModule());
 }
 
 RecordTypeFreeOperation::RecordTypeFreeOperation(const RecordType * recordType)
@@ -2645,18 +2613,18 @@ TreculAggregate::TreculAggregate(DynamicRecordContext& recCtxt,
  mAggregate = typeCheckContext.getAggregateRecord();
 
  // Create a valid code generation context based on the input and output record formats.
-
+ codeGen.createAggregateContexts(typeCheckConfig);
  // Create update function on top of source
  // and aggregate. Mask out group by keys in
  // aggregate to avoid conflicts.
- codeGen.reinitialize();
+ codeGen.restoreAggregateUpdateContext();
  createUpdateFunction(codeGen, groupKeys);
+ codeGen.saveAggregateUpdateContext();
 
  // Save stuff into Update specific variables.
- codeGen.saveAggregateContext(&codeGen.Update);
 
  // Reinitialize and create initializer.
- codeGen.createFunctionContext(typeCheckConfig);
+ codeGen.restoreAggregateInitializeContext();
  codeGen.createTransferFunction(mSource, mAggregate, mInitializeFun);
 
  // Generate code to initialize group by keys (nothing
@@ -2673,10 +2641,10 @@ TreculAggregate::TreculAggregate(DynamicRecordContext& recCtxt,
  codeGen.IsIdentity = 1;
 
  // Save stuff into Initialize specific variables.
- codeGen.saveAggregateContext(&codeGen.Initialize);
+ codeGen.saveAggregateInitializeContext();
 
  // Reinitialize and create transfer
- codeGen.createFunctionContext(typeCheckConfig);
+ codeGen.restoreAggregateTransferContext();
  if (!isOlap) {
    codeGen.createTransferFunction(mAggregate, mTarget, mTransferFun);
  } else {
@@ -2699,27 +2667,15 @@ TreculAggregate::TreculAggregate(DynamicRecordContext& recCtxt,
    codeGen.createTransferFunction(updateSources, masks, mTarget, mTransferFun);
    codeGen.IQLMoveSemantics = 0;
  }
- codeGen.saveAggregateContext(&codeGen.Transfer);
+ codeGen.saveAggregateTransferContext();
 
- // Code generate
+ // Code generate starting in the transfer context
+ codeGen.restoreAggregateTransferContext();
  ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(p.getNodes()));  
  toLLVM->recordConstructor(toLLVM.get(), wrap(&codeGen));
-
- // Complete all builders
- codeGen.Update.Builder->CreateRetVoid();
- codeGen.Initialize.Builder->CreateRetVoid();
- codeGen.Transfer.Builder->CreateRetVoid();
-    
  mIsIdentity = 1==codeGen.IsIdentity;
-
- llvm::verifyFunction(*codeGen.Update.Function);
- llvm::verifyFunction(*codeGen.Initialize.Function);
- llvm::verifyFunction(*codeGen.Transfer.Function);
-
- // // Now run optimizer over the IR
- codeGen.mFPM->run(*codeGen.Update.Function);
- codeGen.mFPM->run(*codeGen.Initialize.Function);
- codeGen.mFPM->run(*codeGen.Transfer.Function);
+ codeGen.saveAggregateTransferContext();
+ codeGen.completeAggregateContexts();
 }
 
 TreculAggregate::TreculAggregate(class DynamicRecordContext& recCtxt, 
@@ -2744,13 +2700,13 @@ TreculAggregate::~TreculAggregate()
 }
 
 void TreculAggregate::init(class DynamicRecordContext& recCtxt, 
-            class CodeGenerationContext & codeGen,
-			       const std::string & funName, 
-			       const RecordType * source, 
-			       const std::string& initializer,
-			       const std::string& update,
-			       const std::vector<std::string>& groupKeys,
-			       bool isOlap)
+                           class CodeGenerationContext & codeGen,
+                           const std::string & funName, 
+                           const RecordType * source, 
+                           const std::string& initializer,
+                           const std::string& update,
+                           const std::vector<std::string>& groupKeys,
+                           bool isOlap)
 {
   mInitializeFun = funName + "$init";
   mUpdateFun = funName + "$update";
@@ -2789,8 +2745,7 @@ void TreculAggregate::init(class DynamicRecordContext& recCtxt,
   {
     ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(updateParser.getNodes()));  
     toLLVM->statementBlock(toLLVM.get(), wrap(&codeGen));
-    codeGen.LLVMBuilder->CreateRetVoid();
-    funs.push_back(codeGen.LLVMFunction);
+    codeGen.completeFunctionContext();
   }
 
   // 
@@ -2803,8 +2758,7 @@ void TreculAggregate::init(class DynamicRecordContext& recCtxt,
   {
     ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(initParser.getNodes()));  
     toLLVM->recordConstructor(toLLVM.get(), wrap(&codeGen));
-    codeGen.LLVMBuilder->CreateRetVoid();
-    funs.push_back(codeGen.LLVMFunction);
+    codeGen.completeFunctionContext();
   }
   
   // 
@@ -2860,19 +2814,10 @@ void TreculAggregate::init(class DynamicRecordContext& recCtxt,
   {
     ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(transferParser.getNodes()));  
     toLLVM->recordConstructor(toLLVM.get(), wrap(&codeGen));
-    codeGen.LLVMBuilder->CreateRetVoid();
-    funs.push_back(codeGen.LLVMFunction);
+    codeGen.completeFunctionContext();
   }
   mIsIdentity = 1==codeGen.IsIdentity;
   BOOST_ASSERT(isOlap || mIsIdentity);
-
- // Verify and optimize
- for(std::vector<llvm::Function*>::iterator it=funs.begin();
-     it != funs.end();
-     ++it) {
-   llvm::verifyFunction(**it);
-   codeGen.mFPM->run(**it);
- }
 }
 
 void TreculAggregate::createUpdateFunction(CodeGenerationContext & codeGen,
@@ -3000,15 +2945,7 @@ void TreculInPlaceUpdate::init(class DynamicRecordContext& recCtxt,
 
   ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(p.getNodes()));  
   toLLVM->statementBlock(toLLVM.get(), wrap(&codeGen));
-  codeGen.LLVMBuilder->CreateRetVoid();
-
-  llvm::verifyFunction(*codeGen.LLVMFunction);
-  // llvm::outs() << "We just constructed this LLVM module:\n\n" << *codeGen.LLVMModule;
-  // // Now run optimizer over the IR
-  codeGen.mFPM->run(*codeGen.LLVMFunction);
-  // llvm::outs() << "We just optimized this LLVM module:\n\n" << *codeGen.LLVMModule;
-  // llvm::outs() << "\n\nRunning foo: ";
-  // llvm::outs().flush();
+  codeGen.completeFunctionContext();
 }
 
 IQLExpression * TreculFunction::getAST(class DynamicRecordContext& recCtxt,
@@ -3112,15 +3049,7 @@ void TreculFunction::init(DynamicRecordContext& recCtxt,
 
   ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(nodes.get()));  
   toLLVM->singleExpression(toLLVM.get(), wrap(&codeGen));
-  codeGen.LLVMBuilder->CreateRetVoid();
-
-  llvm::verifyFunction(*codeGen.LLVMFunction);
-  // llvm::outs() << "We just constructed this LLVM module:\n\n" << *codeGen.LLVMModule;
-  // Now run optimizer over the IR
-  codeGen.mFPM->run(*codeGen.LLVMFunction);
-  // llvm::outs() << "We just optimized this LLVM module:\n\n" << *codeGen.LLVMModule;
-  // llvm::outs() << "\n\nRunning foo: ";
-  // llvm::outs().flush();
+  codeGen.completeFunctionContext();
 }
 
 RecordTypeFunction::RecordTypeFunction(class DynamicRecordContext& recCtxt, 
@@ -3157,7 +3086,7 @@ int32_t RecordTypeFunction::execute(RecordBuffer source, RecordBuffer target, cl
 
 IQLFunctionModule * RecordTypeFunction::create() const
 {
-  return new IQLFunctionModule(getFunName(), llvm::CloneModule(*mContext->LLVMModule));
+  return new IQLFunctionModule(getFunName(), mContext->takeModule());
 }
 
 
@@ -3290,7 +3219,7 @@ IQLAggregateModule * RecordTypeAggregate::create() const
 				getInitializeFunName(),
 				getUpdateFunName(),
 				getTransferFunName(),
-				llvm::CloneModule(*mContext->LLVMModule),
+				mContext->takeModule(),
 				getIsTransferIdentity());
 }
 

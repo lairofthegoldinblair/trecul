@@ -1309,8 +1309,6 @@ private:
     FieldType(ctxt, FieldType::BIGDECIMAL, 16, nullable)
   {
   }
-  llvm::Value * createGlobalValue(CodeGenerationContext * ctxt,
-				  const decimal128& dec) const;
 public:
   static DecimalType * Get(DynamicRecordContext& ctxt, bool nullable=false);
   ~DecimalType();

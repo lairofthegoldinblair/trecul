@@ -266,34 +266,34 @@ llvm::Type * FieldType::LLVMGetType(CodeGenerationContext * ctxt) const
   case VARCHAR:
     return ctxt->LLVMVarcharType;
   case CHAR:
-    return llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctxt->LLVMContext), (unsigned) (mSize + 1));
+    return ctxt->getType(static_cast<const CharType *>(this));
   case BIGDECIMAL:
     return ctxt->LLVMDecimal128Type;
   case INT8:
-    return llvm::Type::getInt8Ty(*ctxt->LLVMContext);
+    return ctxt->LLVMInt8Type;
   case INT16:
-    return llvm::Type::getInt16Ty(*ctxt->LLVMContext);
+    return ctxt->LLVMInt16Type;
   case INT32:
-    return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
+    return ctxt->LLVMInt32Type;
   case INT64:
-    return llvm::Type::getInt64Ty(*ctxt->LLVMContext);
+    return ctxt->LLVMInt64Type;
   case FLOAT:
-    return llvm::Type::getFloatTy(*ctxt->LLVMContext);
+    return ctxt->LLVMFloatType;
   case DOUBLE:
-    return llvm::Type::getDoubleTy(*ctxt->LLVMContext);
+    return ctxt->LLVMDoubleType;
   case DATETIME:
     {
       static_assert(sizeof(boost::posix_time::ptime) == 8);
-      return llvm::Type::getInt64Ty(*ctxt->LLVMContext);
+      return ctxt->LLVMInt64Type;
     }
   case DATE:
     {
       static_assert(sizeof(boost::gregorian::date) == 4);
-      return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
+      return ctxt->LLVMInt32Type;
     }
   case IPV4:
     static_assert(sizeof(boost::asio::ip::address_v4::bytes_type) == 4);
-    return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
+    return ctxt->LLVMInt32Type;
   case CIDRV4:
     {
       static_assert(sizeof(boost::asio::ip::address_v4::bytes_type) == 4);
@@ -302,12 +302,12 @@ llvm::Type * FieldType::LLVMGetType(CodeGenerationContext * ctxt) const
     }
   case IPV6:
     static_assert(sizeof(boost::asio::ip::address_v6::bytes_type) == 16);
-    return llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctxt->LLVMContext), 16U);
+    return ctxt->LLVMIPV6Type;
   case CIDRV6:
     static_assert(sizeof(boost::asio::ip::address_v6::bytes_type) == 16);
-    return llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctxt->LLVMContext), 17U);
+    return ctxt->LLVMCidrV6Type;
   case INTERVAL:
-    return llvm::Type::getInt32Ty(*ctxt->LLVMContext);
+    return ctxt->LLVMInt32Type;
   default:
     throw std::runtime_error("Invalid Type value");
   }
@@ -871,66 +871,25 @@ DecimalType::~DecimalType()
 {
 }
 
-llvm::Value * DecimalType::createGlobalValue(CodeGenerationContext * ctxt,
-					     const decimal128 & dec) const
-{
-  llvm::LLVMContext * c = ctxt->LLVMContext;
-  llvm::Module * m = ctxt->LLVMModule;
-  llvm::Type * ty = ctxt->LLVMDecimal128Type;
-  llvm::GlobalVariable * globalVar = 
-    new llvm::GlobalVariable(*m, ty, false, 
-			     llvm::GlobalValue::ExternalLinkage, 
-			     0, "decGlobal");
-  // The value to initialize the global
-  llvm::Type * int32Ty = llvm::Type::getInt32Ty(*c);
-  llvm::Type * structTypeMembers[4];
-  llvm::Constant * constStructMembers[4];
-  for(int i=0 ; i<4; i++) {
-    structTypeMembers[i] = int32Ty;
-    constStructMembers[i] = llvm::ConstantInt::get(int32Ty, 
-						   ((int32_t *) &dec)[i], 
-						   true);
-  }
-  llvm::StructType * structTy = llvm::StructType::create(*c, llvm::ArrayRef<llvm::Type*>(&structTypeMembers[0],4), "decGlobalTy", true);
-  llvm::Constant * globalVal = llvm::ConstantStruct::get(structTy, 
-							 llvm::ArrayRef<llvm::Constant*>(&constStructMembers[0],4));
-  globalVar->setInitializer(globalVal);
-  return globalVar;
-}
-
 llvm::Value * DecimalType::getMinValue(CodeGenerationContext * ctxt) const
 {
-  decimal128 dec;
-  decContext decCtxt;
-  ::decContextDefault(&decCtxt, 0);
   // Both of these values have the desired effect when we deal with non-infinite
   // decimals.  I guess I am being a bit conservative in choosing the former.
-  ::decimal128FromString(&dec, "-9.999999999999999999999999999999999e+6144", &decCtxt);
   // ::decimal128FromString(&dec, "-Infinity", &decCtxt);
-  return createGlobalValue(ctxt, dec);
+  return ctxt->buildDecimalLiteral("-9.999999999999999999999999999999999e+6144")->getValue(ctxt);
 }
 
 llvm::Value * DecimalType::getMaxValue(CodeGenerationContext * ctxt) const
 {
-  decimal128 dec;
-  decContext decCtxt;
-  ::decContextDefault(&decCtxt, 0);
   // Both of these values have the desired effect when we deal with non-infinite
   // decimals.  I guess I am being a bit conservative in choosing the former.
-  ::decimal128FromString(&dec, "9.999999999999999999999999999999999e+6144", &decCtxt);
   // ::decimal128FromString(&dec, "Infinity", &decCtxt);
-  return createGlobalValue(ctxt, dec);
+  return ctxt->buildDecimalLiteral("9.999999999999999999999999999999999e+6144")->getValue(ctxt);
 }
 
 llvm::Value * DecimalType::getZero(CodeGenerationContext * ctxt) const
 {
-  decNumber dn;
-  decimal128 dec;
-  decContext decCtxt;
-  ::decContextDefault(&decCtxt, 0);
-  ::decNumberZero(&dn);
-  ::decimal128FromNumber(&dec, &dn, &decCtxt);
-  return createGlobalValue(ctxt, dec);
+  return ctxt->buildDecimalLiteral("0")->getValue(ctxt);
 }
 
 bool DecimalType::isNumeric() const
@@ -1319,31 +1278,7 @@ FixedArrayType * FixedArrayType::Get(DynamicRecordContext& ctxt,
 
 llvm::Type * FixedArrayType::LLVMGetType(CodeGenerationContext * ctxt) const
 {
-  if (getElementType()->isNullable()) {
-    llvm::Type * fixedArrayMembers[2];
-    fixedArrayMembers[0] = llvm::ArrayType::get(getElementType()->LLVMGetType(ctxt), (unsigned) GetSize());
-    fixedArrayMembers[1] = llvm::ArrayType::get(ctxt->LLVMBuilder->getInt8Ty(), GetNullSize());
-    llvm::StructType * structTy =  llvm::StructType::get(*ctxt->LLVMContext,
-                                                         llvm::ArrayRef(&fixedArrayMembers[0], 2),
-                                                         0);
-    if (auto JTMBOrErr = llvm::orc::JITTargetMachineBuilder::detectHost()) {
-      std::optional<llvm::orc::JITTargetMachineBuilder> JTMB = std::move(*JTMBOrErr);
-      if (auto DLOrErr = JTMB->getDefaultDataLayoutForTarget()) {
-        std::optional<llvm::DataLayout> DL = std::move(*DLOrErr);
-        const llvm::StructLayout * layout = DL->getStructLayout(structTy);
-        BOOST_ASSERT(layout->getElementOffset(0) == GetDataOffset());
-        BOOST_ASSERT(layout->getElementOffset(1) == GetNullOffset());
-        if (layout->getSizeInBytes() != GetAllocSize()) {
-          throw std::runtime_error((boost::format("layout->getSizeInBytes() != GetAllocSize(); layout->getSizeInBytes() = %1% GetAllocSize() = %2%") %
-                                    layout->getSizeInBytes() %
-                                    GetAllocSize()).str());
-        }
-      }
-    }
-    return structTy;
-  } else {
-    return llvm::ArrayType::get(getElementType()->LLVMGetType(ctxt), (unsigned) GetSize());
-  }
+  return ctxt->getType(this);
 }
 
 FixedArrayType::~FixedArrayType()
@@ -2484,13 +2419,7 @@ RecordType * RecordType::Get(DynamicRecordContext& ctxt,
 
 llvm::Type * RecordType::LLVMGetType(CodeGenerationContext * ctxt) const
 {
-  std::vector<llvm::Type *> members;
-  for(const auto & elt : mMembers) {
-    members.push_back(elt.getType()->LLVMGetType(ctxt));
-  }
-  return llvm::StructType::get(*ctxt->LLVMContext,
-                               llvm::ArrayRef(&members[0], members.size()),
-                               0);
+  return ctxt->getType(this);
 }
 
 void RecordType::setInt8(const std::string& field, int8_t val, RecordBuffer buf) const

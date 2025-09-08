@@ -50,6 +50,7 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
@@ -60,6 +61,12 @@
 /**
  * Call a decimal binary operator.
  */
+
+std::vector<IQLToLLVMValue *> & IQLToLLVMValue::getValueFactory(CodeGenerationContext * ctxt)
+{
+  return ctxt->ValueFactory;
+}
+
 
 IQLToLLVMRValue::IQLToLLVMRValue (llvm::Value * val, 
                                   IQLToLLVMValue::ValueType globalOrLocal)
@@ -112,7 +119,7 @@ const IQLToLLVMRValue * IQLToLLVMRValue::get(CodeGenerationContext * ctxt,
                                              IQLToLLVMValue::ValueType globalOrLocal)
 {
   IQLToLLVMRValue * tmp = new IQLToLLVMRValue(val, nv, globalOrLocal);
-  ctxt->ValueFactory.push_back(tmp);
+  getValueFactory(ctxt).push_back(tmp);
   return tmp;
 }
 
@@ -229,7 +236,7 @@ IQLToLLVMField * IQLToLLVMField::get(CodeGenerationContext * ctxt,
 				     const std::string& recordName)
 {
   IQLToLLVMField * tmp = new IQLToLLVMField(ctxt, recordType, memberName, recordName);
-  ctxt->ValueFactory.push_back(tmp);
+  getValueFactory(ctxt).push_back(tmp);
   return tmp;
 }
 
@@ -239,7 +246,7 @@ IQLToLLVMField * IQLToLLVMField::get(CodeGenerationContext * ctxt,
 				     llvm::Value * basePointer)
 {
   IQLToLLVMField * tmp = new IQLToLLVMField(recordType, memberName, basePointer);
-  ctxt->ValueFactory.push_back(tmp);
+  getValueFactory(ctxt).push_back(tmp);
   return tmp;
 }
 
@@ -249,7 +256,7 @@ IQLToLLVMField * IQLToLLVMField::get(CodeGenerationContext * ctxt,
 				     llvm::Value * basePointer)
 {
   IQLToLLVMField * tmp = new IQLToLLVMField(recordType, memberIdx, basePointer);
-  ctxt->ValueFactory.push_back(tmp);
+  getValueFactory(ctxt).push_back(tmp);
   return tmp;
 }
 
@@ -331,7 +338,7 @@ IQLToLLVMArrayElement * IQLToLLVMArrayElement::get(CodeGenerationContext * ctxt,
 						   llvm::Value * nullByteMask)
 {
   IQLToLLVMArrayElement * tmp = new IQLToLLVMArrayElement(val, nullBytePtr, nullByteMask);
-  ctxt->ValueFactory.push_back(tmp);
+  getValueFactory(ctxt).push_back(tmp);
   return tmp;
 }
 
@@ -339,7 +346,7 @@ IQLToLLVMArrayElement * IQLToLLVMArrayElement::get(CodeGenerationContext * ctxt,
 						   IQLToLLVMTypedValue val)
 {
   IQLToLLVMArrayElement * tmp = new IQLToLLVMArrayElement(val);
-  ctxt->ValueFactory.push_back(tmp);
+  getValueFactory(ctxt).push_back(tmp);
   return tmp;
 }
 
@@ -416,7 +423,7 @@ IQLToLLVMLocal * IQLToLLVMLocal::get(CodeGenerationContext * ctxt,
                                      llvm::Type * lvalNullTy)
 {
   IQLToLLVMLocal * tmp = new IQLToLLVMLocal(lval, lvalNull, lvalNullTy);
-  ctxt->ValueFactory.push_back(tmp);
+  getValueFactory(ctxt).push_back(tmp);
   return tmp;
 }
 
@@ -424,7 +431,7 @@ IQLToLLVMLocal * IQLToLLVMLocal::get(CodeGenerationContext * ctxt,
 				     IQLToLLVMTypedValue lval)
 {
   IQLToLLVMLocal * tmp = new IQLToLLVMLocal(lval, nullptr, nullptr);
-  ctxt->ValueFactory.push_back(tmp);
+  getValueFactory(ctxt).push_back(tmp);
   return tmp;
 }
 
@@ -490,7 +497,7 @@ IQLToLLVMArgument * IQLToLLVMArgument::get(CodeGenerationContext * ctxt,
 					   llvm::Value * basePointer)
 {
   IQLToLLVMArgument * tmp = new IQLToLLVMArgument(val, ty, basePointer);
-  ctxt->ValueFactory.push_back(tmp);
+  getValueFactory(ctxt).push_back(tmp);
   return tmp;
 }
 
@@ -503,6 +510,20 @@ CodeGenerationFunctionContext::CodeGenerationFunctionContext()
   OutputRecord(NULL),
   AllocaCache(NULL)
 {
+}
+
+void CodeGenerationFunctionContext::clear()
+{
+  delete Builder;
+  Builder = nullptr;
+  delete unwrap(RecordArguments);
+  RecordArguments = nullptr; 
+  delete mSymbolTable;
+  mSymbolTable = nullptr; 
+  delete AllocaCache;
+  AllocaCache = nullptr; 
+  Function = nullptr;
+  OutputRecord = nullptr;
 }
 
 CodeGenerationContext::CodeGenerationContext()
@@ -539,6 +560,12 @@ CodeGenerationContext::CodeGenerationContext()
 
   this->createFunctionContext(TypeCheckConfiguration::get());
 
+  LLVMInt8Type = llvm::Type::getInt8Ty(*this->LLVMContext);
+  LLVMInt16Type = llvm::Type::getInt16Ty(*this->LLVMContext);
+  LLVMInt32Type = llvm::Type::getInt32Ty(*this->LLVMContext);
+  LLVMInt64Type = llvm::Type::getInt64Ty(*this->LLVMContext);
+  LLVMFloatType = llvm::Type::getFloatTy(*this->LLVMContext);
+  LLVMDoubleType = llvm::Type::getDoubleTy(*this->LLVMContext);
 #if DECSUBST
   static unsigned numDecContextMembers(8);
 #else
@@ -588,6 +615,8 @@ CodeGenerationContext::CodeGenerationContext()
   this->LLVMCidrV4Type = llvm::StructType::get(*this->LLVMContext,
                                                    llvm::ArrayRef(&varcharMembers[0], 2),
                                                    0);
+  this->LLVMIPV6Type = llvm::ArrayType::get(llvm::Type::getInt8Ty(*LLVMContext), 16U);
+  this->LLVMCidrV6Type = llvm::ArrayType::get(llvm::Type::getInt8Ty(*LLVMContext), 17U);
   // DATETIME runtime type
   this->LLVMInt32Type = llvm::Type::getInt32Ty(*this->LLVMContext);
 
@@ -1648,13 +1677,13 @@ CodeGenerationContext::~CodeGenerationContext()
     caches.insert(AllocaCache);
   }
   if (Update.AllocaCache != nullptr) {
-    caches.insert((local_cache *) Update.AllocaCache);
+    caches.insert(Update.AllocaCache);
   }
   if (Initialize.AllocaCache != nullptr) {
-    caches.insert((local_cache *) Initialize.AllocaCache);
+    caches.insert(Initialize.AllocaCache);
   }
   if (Transfer.AllocaCache != nullptr) {
-    caches.insert((local_cache *) Transfer.AllocaCache);
+    caches.insert(Transfer.AllocaCache);
   }
   for(auto b : caches) {
     delete b;
@@ -1674,6 +1703,51 @@ void CodeGenerationContext::disownModule()
 std::unique_ptr<llvm::Module> CodeGenerationContext::takeModule()
 {
   return llvm::CloneModule(*LLVMModule);
+}
+
+llvm::Type * CodeGenerationContext::getType(const RecordType * ty)
+{
+  std::vector<llvm::Type *> members;
+  for(RecordType::const_member_iterator it = ty->begin_members(), end = ty->end_members(); it != end; ++it) {
+    members.push_back(it->getType()->LLVMGetType(this));
+  }
+  return llvm::StructType::get(*LLVMContext,
+                               llvm::ArrayRef(&members[0], members.size()),
+                               0);
+}
+
+llvm::Type * CodeGenerationContext::getType(const CharType * ty)
+{
+  return llvm::ArrayType::get(llvm::Type::getInt8Ty(*LLVMContext), (unsigned) (ty->GetSize() + 1));
+}
+
+llvm::Type * CodeGenerationContext::getType(const FixedArrayType * ty)
+{
+  if (ty->getElementType()->isNullable()) {
+    llvm::Type * fixedArrayMembers[2];
+    fixedArrayMembers[0] = llvm::ArrayType::get(ty->getElementType()->LLVMGetType(this), (unsigned) ty->GetSize());
+    fixedArrayMembers[1] = llvm::ArrayType::get(LLVMBuilder->getInt8Ty(), ty->GetNullSize());
+    llvm::StructType * structTy =  llvm::StructType::get(*LLVMContext,
+                                                         llvm::ArrayRef(&fixedArrayMembers[0], 2),
+                                                         0);
+    // if (auto JTMBOrErr = llvm::orc::JITTargetMachineBuilder::detectHost()) {
+    //   std::optional<llvm::orc::JITTargetMachineBuilder> JTMB = std::move(*JTMBOrErr);
+    //   if (auto DLOrErr = JTMB->getDefaultDataLayoutForTarget()) {
+    //     std::optional<llvm::DataLayout> DL = std::move(*DLOrErr);
+    //     const llvm::StructLayout * layout = DL->getStructLayout(structTy);
+    //     BOOST_ASSERT(layout->getElementOffset(0) == ty->GetDataOffset());
+    //     BOOST_ASSERT(layout->getElementOffset(1) == ty->GetNullOffset());
+    //     if (layout->getSizeInBytes() != ty->GetAllocSize()) {
+    //       throw std::runtime_error((boost::format("layout->getSizeInBytes() != GetAllocSize(); layout->getSizeInBytes() = %1% GetAllocSize() = %2%") %
+    //                                 layout->getSizeInBytes() %
+    //                                 ty->GetAllocSize()).str());
+    //     }
+    //   }
+    // }
+    return structTy;
+  } else {
+    return llvm::ArrayType::get(ty->getElementType()->LLVMGetType(this), (unsigned) ty->GetSize());
+  }
 }
 
 bool CodeGenerationContext::isValueType(const FieldType * ft)
@@ -2105,7 +2179,7 @@ llvm::Value * CodeGenerationContext::getContextArgumentRef()
 
 void CodeGenerationContext::reinitializeForTransfer(const TypeCheckConfiguration & typeCheckConfig)
 {
-  delete (local_cache *) AllocaCache;
+  delete AllocaCache;
   delete mSymbolTable;
   mSymbolTable = new TreculSymbolTable(typeCheckConfig);
   AllocaCache = new local_cache();
@@ -2118,11 +2192,19 @@ void CodeGenerationContext::reinitialize()
   mSymbolTable->clear();
   LLVMFunction = NULL;
   unwrap(IQLRecordArguments)->clear();
+  for(auto & c : *AllocaCache) {
+    c.second.clear();
+  }
   AggFn = 0;
 }
 
 void CodeGenerationContext::createFunctionContext(const TypeCheckConfiguration & typeCheckConfig)
 {
+  // Should only call this when these members are null, but...
+  BOOST_ASSERT(nullptr == LLVMBuilder);
+  BOOST_ASSERT(nullptr == mSymbolTable);
+  BOOST_ASSERT(nullptr == IQLRecordArguments);
+  BOOST_ASSERT(nullptr == AllocaCache);
   LLVMBuilder = new llvm::IRBuilder<>(*LLVMContext);
   mSymbolTable = new TreculSymbolTable(typeCheckConfig);
   LLVMFunction = NULL;
@@ -2138,22 +2220,34 @@ void CodeGenerationContext::dumpSymbolTable()
 
 void CodeGenerationContext::restoreAggregateContext(CodeGenerationFunctionContext * fCtxt)
 {
-  this->LLVMBuilder = fCtxt->Builder;
-  this->mSymbolTable = fCtxt->mSymbolTable;
-  this->LLVMFunction = fCtxt->Function;
-  this->IQLRecordArguments = fCtxt->RecordArguments;
-  this->IQLOutputRecord = fCtxt->OutputRecord;
-  this->AllocaCache = (local_cache *) fCtxt->AllocaCache;
+  BOOST_ASSERT(nullptr == this->LLVMBuilder);
+  BOOST_ASSERT(nullptr == this->mSymbolTable);
+  BOOST_ASSERT(nullptr == this->LLVMFunction);
+  BOOST_ASSERT(nullptr == this->IQLRecordArguments);
+  BOOST_ASSERT(nullptr == this->IQLOutputRecord);
+  BOOST_ASSERT(nullptr == this->AllocaCache);
+  std::swap(this->LLVMBuilder, fCtxt->Builder);
+  std::swap(this->mSymbolTable, fCtxt->mSymbolTable);
+  std::swap(this->LLVMFunction, fCtxt->Function);
+  std::swap(this->IQLRecordArguments, fCtxt->RecordArguments);
+  std::swap(this->IQLOutputRecord, fCtxt->OutputRecord);
+  std::swap(this->AllocaCache, fCtxt->AllocaCache);
 }
 
 void CodeGenerationContext::saveAggregateContext(CodeGenerationFunctionContext * fCtxt)
 {
-  fCtxt->Builder = this->LLVMBuilder;
-  fCtxt->mSymbolTable = this->mSymbolTable;
-  fCtxt->Function = this->LLVMFunction;
-  fCtxt->RecordArguments = this->IQLRecordArguments;
-  fCtxt->OutputRecord = this->IQLOutputRecord;
-  fCtxt->AllocaCache = this->AllocaCache;
+  BOOST_ASSERT(nullptr == fCtxt->Builder);
+  BOOST_ASSERT(nullptr == fCtxt->mSymbolTable);
+  BOOST_ASSERT(nullptr == fCtxt->Function);
+  BOOST_ASSERT(nullptr == fCtxt->RecordArguments);
+  BOOST_ASSERT(nullptr == fCtxt->OutputRecord);
+  BOOST_ASSERT(nullptr == fCtxt->AllocaCache);
+  std::swap(fCtxt->Builder, this->LLVMBuilder);
+  std::swap(fCtxt->mSymbolTable, this->mSymbolTable);
+  std::swap(fCtxt->Function, this->LLVMFunction);
+  std::swap(fCtxt->RecordArguments, this->IQLRecordArguments);
+  std::swap(fCtxt->OutputRecord, this->IQLOutputRecord);
+  std::swap(fCtxt->AllocaCache, this->AllocaCache);
 }
 
 void CodeGenerationContext::addInputRecordType(const char * name, 
@@ -7849,6 +7943,12 @@ const IQLToLLVMValue * CodeGenerationContext::buildLiteralCast(const char * val,
   }  
 }
 
+void CodeGenerationContext::beginAggregateFunction()
+{
+  saveAggregateContext(&Transfer);
+  restoreAggregateContext(&Update);
+}
+
 const IQLToLLVMValue * CodeGenerationContext::buildAggregateFunction(const char * fn,
 								     const IQLToLLVMValue * e,
                                                                      const FieldType * exprTy,
@@ -7865,6 +7965,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildAggregateFunction(const char 
   agg->update(this, aggFn, e, exprTy, retTy);
   // Move temporarily to the initialization context and provide init
   // for the aggregate variable
+  saveAggregateContext(&Update);
   restoreAggregateContext(&Initialize);
 
   int saveIsIdentity = IsIdentity;
@@ -7873,6 +7974,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildAggregateFunction(const char 
 
   // Shift back to transfer context and return a reference to the
   // aggregate variable corresponding to this aggregate function.
+  saveAggregateContext(&Initialize);
   restoreAggregateContext(&Transfer);
 
   return buildVariableRef(aggFn.c_str(), retTy);
@@ -8235,6 +8337,54 @@ void CodeGenerationContext::createUpdate(const std::vector<const RecordType *>& 
 {
   createTransferFunction(sources, masks, nullptr, funName);
   IQLMoveSemantics = 0;
+}
+
+void CodeGenerationContext::completeFunctionContext()
+{
+  LLVMBuilder->CreateRetVoid();  
+  llvm::verifyFunction(*LLVMFunction);  
+  // llvm::outs() << "We just constructed this LLVM module:\n\n" << *codeGen.LLVMModule;
+  // // Now run optimizer over the IR
+  mFPM->run(*LLVMFunction);
+  // llvm::outs() << "We just optimized this LLVM module:\n\n" << *codeGen.LLVMModule;
+  // llvm::outs() << "\n\nRunning foo: ";
+  // llvm::outs().flush();
+
+  // Clean up 
+  reinitialize();
+}
+
+void CodeGenerationContext::createAggregateContexts(const TypeCheckConfiguration & typeCheckConfig)
+{
+ reinitialize();
+ saveAggregateContext(&Update);
+ createFunctionContext(typeCheckConfig);
+ saveAggregateContext(&Initialize);
+ createFunctionContext(typeCheckConfig);
+ saveAggregateContext(&Transfer);
+}
+
+void CodeGenerationContext::completeAggregateContexts()
+{
+  // Complete all builders
+  Update.Builder->CreateRetVoid();
+  Initialize.Builder->CreateRetVoid();
+  Transfer.Builder->CreateRetVoid();
+  
+  llvm::verifyFunction(*Update.Function);
+  llvm::verifyFunction(*Initialize.Function);
+  llvm::verifyFunction(*Transfer.Function);
+  
+  // // Now run optimizer over the IR
+  mFPM->run(*Update.Function);
+  mFPM->run(*Initialize.Function);
+  mFPM->run(*Transfer.Function);
+
+  // Clean up 
+  Initialize.clear();
+  Transfer.clear();
+  restoreAggregateContext(&Update);
+  reinitialize();
 }
 
 class NullInitializedAggregate : public AggregateFunction

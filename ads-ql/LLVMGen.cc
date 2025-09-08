@@ -656,7 +656,7 @@ void IQLToLLVMEndSwitchCase(IQLCodeGenerationContextRef ctxtRef)
 void IQLToLLVMBeginAggregateFunction(IQLCodeGenerationContextRef ctxtRef)
 {
   CodeGenerationContext * ctxt = unwrap(ctxtRef);
-  ctxt->restoreAggregateContext(&ctxt->Update);
+  ctxt->beginAggregateFunction();
 }
 
 IQLToLLVMValueRef IQLToLLVMBuildAggregateFunction(IQLCodeGenerationContextRef ctxtRef, 
