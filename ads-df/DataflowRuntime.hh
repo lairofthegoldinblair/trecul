@@ -35,6 +35,7 @@
 #if !defined(__DATAFLOW_RUNTIME_HH)
 #define __DATAFLOW_RUNTIME_HH
 
+#include <atomic>
 #include <mutex>
 #include <vector>
 #include <list>
@@ -640,6 +641,11 @@ private:
   std::size_t mNumInternalWriteBufferFlush;
   std::size_t mNumIOWaits;
 
+  /**
+   * Exit the scheduler if this is set
+   */
+  std::atomic<bool> mCancelled;
+
   /** 
    * Run an operator for a bit of time.
    */
@@ -967,6 +973,11 @@ public:
     // and I'd like a better way of handling it.
     if (prevState == RUNNING)
       mState = RUNNING;
+  }
+
+  void cancel()
+  {
+    mCancelled.store(true, std::memory_order_relaxed);
   }
 
   boost::asio::io_service& getIOService();

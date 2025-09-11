@@ -69,6 +69,16 @@ private:
   AsyncWriter<RuntimeWriteOperator> mWriter;
   std::thread * mWriterThread;
   int64_t mRead;
+
+  void shutdownWriter()
+  {
+    if (mWriterThread != nullptr) {
+      mWriter.enqueue(RecordBuffer());
+      mWriterThread->join();
+      delete mWriterThread;
+      mWriterThread = nullptr;
+    }
+  }
 public:
   RuntimeWriteOperator(RuntimeOperator::Services& services, const RuntimeOperatorType& opType);
   ~RuntimeWriteOperator();
@@ -93,6 +103,7 @@ RuntimeWriteOperator<_Compressor>::RuntimeWriteOperator(RuntimeOperator::Service
 template<typename _Compressor>
 RuntimeWriteOperator<_Compressor>::~RuntimeWriteOperator()
 {
+  shutdownWriter();
 }
 
 template<typename _Compressor>
@@ -225,10 +236,10 @@ void RuntimeWriteOperator<_Compressor>::onEvent(RuntimePort * port)
 	read(port, input);
 	bool isEOS = RecordBuffer::isEOS(input);
 	//writeToHdfs(input, isEOS);
-	mWriter.enqueue(input);
-	if (isEOS) {
-	  // Wait for writers to flush; perhaps this should be done is shutdown
-	  mWriterThread->join();
+	if (!isEOS) {
+          mWriter.enqueue(input);
+        } else {
+          shutdownWriter();
 	  break;
 	}
       }
@@ -239,10 +250,11 @@ void RuntimeWriteOperator<_Compressor>::onEvent(RuntimePort * port)
 template<typename _Compressor>
 void RuntimeWriteOperator<_Compressor>::shutdown()
 {
-  if (mFile != STDOUT_FILENO) {
+  if (mFile != STDOUT_FILENO && mFile >= 0) {
     ::close(mFile);
   }
   mFile = -1;
+  shutdownWriter();
 }
 
 RuntimeOperator * RuntimeWriteOperatorType::create(RuntimeOperator::Services& services) const

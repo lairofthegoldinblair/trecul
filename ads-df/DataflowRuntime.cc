@@ -70,7 +70,8 @@ DataflowScheduler::DataflowScheduler(int32_t partition, int32_t numPartitions)
   mIOService(NULL),
   mNumIOPoll(0),
   mNumInternalWriteBufferFlush(0),
-  mNumIOWaits(0)
+  mNumIOWaits(0),
+  mCancelled(false)
 {
   mQueues[0].mMask = 0;
   mQueues[1].mMask = 0;
@@ -346,7 +347,7 @@ void DataflowScheduler::complete()
 void DataflowScheduler::run()
 {
   init();
-  while(true) {
+  while(!mCancelled.load(std::memory_order_relaxed)) {
     // The trick here is to pick a number of dataflow requests
     // to process before running a poll so that we do
     // not degrade performance but still service IO with

@@ -74,6 +74,8 @@
 #include "TableOperator.hh"
 
 #define BOOST_TEST_MODULE MyTest
+#include <boost/test/data/test_case.hpp>
+#include <boost/test/data/monomorphic.hpp>
 #include <boost/test/unit_test.hpp>
 
 class TestStruct {
@@ -3141,6 +3143,88 @@ BOOST_AUTO_TEST_CASE(testSort)
   RuntimeProcess p;
   p.init(0,0,1,*plan.get());
   p.run();
+}
+
+class RuntimeExceptionOperatorType : public RuntimeOperatorType
+{
+  friend class RuntimeExceptionOperator;
+private:
+  // Serialization
+  friend class boost::serialization::access;
+  template <class Archive>
+  void serialize(Archive & ar, const unsigned int version)
+  {
+    ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
+  }
+public:
+  /**
+   * NULL predicate means TRUE.
+   */
+  RuntimeExceptionOperatorType()
+    :
+    RuntimeOperatorType("RuntimeExceptionOperatorType")
+  {
+  }
+  ~RuntimeExceptionOperatorType() 
+  {
+  }
+  RuntimeOperator * create(RuntimeOperator::Services & s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+  }
+};
+
+class RuntimeExceptionOperator : public RuntimeOperatorBase<RuntimeExceptionOperatorType>
+{
+public:
+  RuntimeExceptionOperator(RuntimeOperator::Services& services, 
+                           const RuntimeExceptionOperatorType& opType)
+    :
+    RuntimeOperatorBase<RuntimeExceptionOperatorType>(services, opType)
+  {
+  }
+    
+  ~RuntimeExceptionOperator() {}
+  void start()
+  {
+    throw std::runtime_error("RuntimeExceptionOperator throw");
+  }
+  void onEvent(RuntimePort * ) {}
+  void shutdown() {}
+};
+
+RuntimeOperator * RuntimeExceptionOperatorType::create(RuntimeOperator::Services & s) const
+{
+  return new RuntimeExceptionOperator(s, *this);
+}
+
+BOOST_DATA_TEST_CASE(testException, boost::unit_test::data::make({ 1, 2, 4, 16}), num_partitions)
+{
+  PlanCheckContext ctxt;
+  RuntimeExceptionOperatorType * leftType = new RuntimeExceptionOperatorType();
+  leftType->setPartitionConstraint(RuntimePartitionConstraint({0}));
+  RecordType emptyTy(ctxt, {});
+  TreculFunction trivialHash(ctxt, ctxt.getCodeGenerator(), "hash", std::vector<const RecordType*>({ &emptyTy, &emptyTy }), "0");
+  RuntimeHashPartitionerOperatorType * partType = new RuntimeHashPartitionerOperatorType(trivialHash);
+  partType->setPartitionConstraint(RuntimePartitionConstraint({0}));
+  TreculFreeOperation freeOp(ctxt.getCodeGenerator(), &emptyTy);
+  RuntimeDevNullOperatorType * dnType = new RuntimeDevNullOperatorType(freeOp);
+  RuntimeOperatorPlan plan(num_partitions,true);
+  plan.addOperatorType(leftType);
+  plan.addOperatorType(partType);
+  plan.addOperatorType(dnType);
+  plan.connectStraight(leftType, 0, partType, 0, true, true);
+  plan.connectBroadcast(partType, dnType, 0, &emptyTy, freeOp.getReference(), true, true);
+  plan.setModule(std::make_unique<TreculModule>(ctxt.getCodeGenerator().takeModule()));
+  plan.loadFunctions();
+  RuntimeProcess p;
+  p.init(0,num_partitions-1,num_partitions,plan);
+  try {
+    p.run();
+    BOOST_CHECK(false);
+  } catch (std::exception & ex) {
+    BOOST_CHECK(boost::algorithm::equals("RuntimeExceptionOperator throw", ex.what()));
+  }
 }
 
 struct SerialOrganizedTableTestFixtureBase

@@ -787,7 +787,7 @@ WritableFile * LocalWritableFileFactory::openForWrite(PathPtr p)
 		 O_WRONLY|O_CREAT|O_TRUNC,
 		 S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP);
   if (f == -1) {
-    throw std::runtime_error((boost::format("Couldn't create file: %1%") % filename).str());
+    throw std::runtime_error((boost::format("Couldn't create file %1%: %2%") % filename % strerror(errno)).str());
   }
   return new LocalWritableFile(f);
 }

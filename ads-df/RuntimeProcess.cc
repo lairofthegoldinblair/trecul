@@ -51,6 +51,7 @@
 #include "MessagePassingRemoting.hh"
 #endif
 
+#include <condition_variable>
 #include <fstream>
 #include <memory>
 #include <thread>
@@ -535,17 +536,31 @@ private:
   bool mFailed;
   std::string mMessage;
   DataflowScheduler& mScheduler;
+  std::mutex & mMutex;
+  std::deque<DataflowSchedulerThreadRunner*> & mCompletedQueue;
+  std::condition_variable & mCondVar;
+ 
 public:
-  DataflowSchedulerThreadRunner(DataflowScheduler& s);
+  DataflowSchedulerThreadRunner(DataflowScheduler& s,
+                                std::mutex & mut,
+                                std::deque<DataflowSchedulerThreadRunner *> & completedQueue,
+                                std::condition_variable & condVar);
   bool isFailed() const { return mFailed; }
   const std::string& getMessage() const { return mMessage; }
   void run();
+  void cancel();
 };
 
-DataflowSchedulerThreadRunner::DataflowSchedulerThreadRunner(DataflowScheduler & s)
+DataflowSchedulerThreadRunner::DataflowSchedulerThreadRunner(DataflowScheduler & s,
+                                                             std::mutex & mut,
+                                                             std::deque<DataflowSchedulerThreadRunner *> & completedQueue,
+                                                             std::condition_variable & condVar)
   :
   mFailed(false),
-  mScheduler(s)
+  mScheduler(s),
+  mMutex(mut),
+  mCompletedQueue(completedQueue),
+  mCondVar(condVar)
 {
 }
 
@@ -559,6 +574,15 @@ void DataflowSchedulerThreadRunner::run()
     mMessage = ex.what();
     mFailed = true;
   }
+  std::unique_lock lk(mMutex);
+  mCompletedQueue.push_back(this);
+  lk.unlock();
+  mCondVar.notify_one();
+}
+
+void DataflowSchedulerThreadRunner::cancel()
+{
+  mScheduler.cancel();
 }
 
 void RuntimeProcess::validateGraph()
@@ -625,12 +649,15 @@ void RuntimeProcess::run()
   // Start any threads necessary for remote execution
   runRemote(threads);
 
+  std::mutex mutex;
+  std::deque<DataflowSchedulerThreadRunner*> completedQueue;
+  std::condition_variable condVar;
   // Now start schedulers for each partition.
   for(std::map<int32_t, DataflowScheduler*>::iterator it = mSchedulers.begin();
       it != mSchedulers.end();
       ++it) {
     it->second->setOperators(mPartitionIndex[it->first]);
-    runners.push_back(std::shared_ptr<DataflowSchedulerThreadRunner>(new DataflowSchedulerThreadRunner(*it->second)));
+    runners.push_back(std::shared_ptr<DataflowSchedulerThreadRunner>(new DataflowSchedulerThreadRunner(*it->second, mutex, completedQueue, condVar)));
     threads.push_back(std::shared_ptr<std::thread>(new std::thread(std::bind(&DataflowSchedulerThreadRunner::run, runners.back()))));
   }
 
@@ -651,7 +678,25 @@ void RuntimeProcess::run()
   //   std::cout << "=================================================" << std::endl;
   // }
   
-  // Wait for workers to complete.
+  // Wait for workers to complete.  If a thread fails then cancel the rest.
+  std::size_t numCompleted=0;
+  bool cancelled(false);
+  while(numCompleted < runners.size()) {
+    std::unique_lock lk(mutex);
+    condVar.wait(lk, [&completedQueue] { return completedQueue.size() > 0; });
+    numCompleted += completedQueue.size();
+    for(auto runner : completedQueue) {
+      if (!cancelled && runner->isFailed()) {
+        for(auto & r : runners) {
+          r->cancel();
+        }
+        cancelled = true;
+      }
+    }
+    completedQueue.clear();
+  }
+
+  
   for(std::vector<std::shared_ptr<std::thread> >::iterator it = threads.begin();
       it != threads.end();
       ++it) {
@@ -666,7 +711,10 @@ void RuntimeProcess::run()
       ++it) {
     if ((*it)->isFailed()) {
       numThreadErrors += 1;
-      errorMessages << ((*it)->getMessage().size() == 0 ? "No message detail" : (*it)->getMessage().c_str()) << "\n";
+      if (numThreadErrors > 1) {
+        errorMessages << "\n";
+      }
+      errorMessages << ((*it)->getMessage().size() == 0 ? "No message detail" : (*it)->getMessage().c_str());
     }
   }
   if (numThreadErrors) {
