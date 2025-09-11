@@ -121,7 +121,7 @@ int32_t stdio_file_traits::write(stdio_file_traits::file_type f, uint8_t * buf, 
     if (ret < 0) {
       if (errno == EINTR)
 	continue;
-      throw errno;
+      throw std::runtime_error((boost::format("[stdio_file_traits::write] write failed : %1%") % strerror(errno)).str());
     }
     return (int32_t) ret;
   }

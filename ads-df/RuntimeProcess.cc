@@ -70,6 +70,10 @@ extern char ** environ;
 #endif
 #endif
 
+#if defined(linux) || defined(__linux) || defined(__linux__)
+#include <sys/resource.h>
+#endif
+
 namespace po = boost::program_options;
 
 static void checkRegularFileExists(const std::string& filename)
@@ -779,6 +783,23 @@ static bool checkRequiredArgs(const po::variables_map& vm,
   return ok;
 }
 
+#if defined(linux) || defined(__linux) || defined(__linux__)
+static bool setProcessLimit(rlim_t desired, int resource, const char * resource_name)
+{
+  struct rlimit rl;
+  if (getrlimit(resource, &rl) < 0) {
+    std::cerr << "getrlimit(" << resource_name << ") failed: " << strerror(errno) << std::endl;
+    return false;
+  }
+  rl.rlim_cur = (std::min)(desired, rl.rlim_max);
+  if (setrlimit(resource, &rl) < 0) {
+    std::cerr << "setrlimit(" << resource_name << ") failed: " << strerror(errno) << std::endl;
+    return false;
+  }
+  return true;
+}
+#endif
+
 int PlanRunner::run(int argc, char ** argv)
 {
   // Make sure this symbol can be dlsym'd
@@ -801,6 +822,10 @@ int PlanRunner::run(int argc, char ** argv)
     ("partitions", po::value<int32_t>(), "number of partitions for the flow")
     ("plan", "run dataflow from a compiled plan")
     ("file", po::value<std::string>(), "input script file to be run in process")
+#if defined(linux) || defined(__linux) || defined(__linux__)
+    ("max-open-files", po::value<uint32_t>(), "maximum number of open files to allow")
+    ("max-core-file-size", po::value<int32_t>(), "maximum core file size (-1 unlimited)")
+#endif
 #if defined(TRECUL_HAS_HADOOP)
     ("map", po::value<std::string>(), "input mapper script file for jobs run through Hadoop pipes")
     ("reduce", po::value<std::string>(), "input reducer script file for jobs run through Hadoop pipes")
@@ -854,6 +879,19 @@ int PlanRunner::run(int argc, char ** argv)
   if (vm.count("case-insensitive")) {
     TypeCheckConfiguration::get().caseInsensitive(true);
   }
+
+#if defined(linux) || defined(__linux) || defined(__linux__)
+  if (vm.count("max-open-files") > 0) {
+    if (!setProcessLimit(vm["max-open-files"].as<uint32_t>(), RLIMIT_NOFILE, "RLIMIT_NOFILE")) {
+      return 1;
+    }
+  }
+  if (vm.count("max-core-file-size") > 0) {
+    if (!setProcessLimit(vm["max-core-file-size"].as<uint32_t>() >= 0 ? vm["max-core-file-size"].as<uint32_t>() : RLIM_INFINITY, RLIMIT_CORE, "RLIMIT_CORE")) {
+      return 1;
+    }
+  }
+#endif  
   
   if (vm.count("compile")) {
     std::string inputFile(vm["file"].as<std::string>());
