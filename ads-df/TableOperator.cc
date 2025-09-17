@@ -125,6 +125,7 @@ private:
   TreculFunction * mKeyPrefixFun;
   TreculFunction * mKeyLessThanFun;
   TreculFunction * mPresortedEqFun;
+  TreculFunction * mPresortedLessThanEqFun;
   TreculAggregate * mAggregate;
   TreculFreeOperation * mAggregateFree;
   TreculFreeOperation * mAggregateTargetFree;
@@ -301,6 +302,7 @@ ColumnGroupOutput::ColumnGroupOutput(PlanCheckContext& ctxt,
   mKeyPrefixFun(nullptr),
   mKeyLessThanFun(nullptr),
   mPresortedEqFun(nullptr),
+  mPresortedLessThanEqFun(nullptr),
   mAggregate(nullptr),
   mAggregateFree(nullptr),
   mAggregateTargetFree(nullptr),
@@ -339,6 +341,7 @@ ColumnGroupOutput::~ColumnGroupOutput()
   delete mKeyPrefixFun;
   delete mKeyLessThanFun;
   delete mPresortedEqFun;
+  delete mPresortedLessThanEqFun;
   delete mAggregate;
   delete mAggregateFree;
   delete mAggregateTargetFree;
@@ -374,13 +377,15 @@ void ColumnGroupOutput::check(PlanCheckContext & ctxt)
   if (version.size()) {
     const RecordType * input = ColumnGroupType;
     mColumnGroupTypeFree = new TreculFreeOperation(ctxt.getCodeGenerator(), ColumnGroupType);
-    std::vector<SortKey> sortKeys;
-    sortKeys.push_back(version + " DESC");
+    std::vector<SortKey> versionSortKeys;
+    versionSortKeys.emplace_back(version, SortKey::DESC);
     const std::vector<std::string>& primaryKey = Metadata->getTable()->getPrimaryKey();
-    mKeyPrefixFun = SortKeyPrefixFunction::get(ctxt, input, sortKeys);
-    mKeyLessThanFun = LessThanFunction::get(ctxt, input, input, sortKeys, true, "sort_less");
+    mKeyPrefixFun = SortKeyPrefixFunction::get(ctxt, input, versionSortKeys);
+    mKeyLessThanFun = LessThanFunction::get(ctxt, input, input, versionSortKeys, true, "sort_less");
     mPresortedEqFun = EqualsFunction::get(ctxt, input, input, primaryKey, 
 					  "presort_eq", true);
+    mPresortedLessThanEqFun = LessThanEqualsFunction::get(ctxt, input, input, Metadata->getTable()->getPrimarySortKey(), true, 
+                                                          "presort_leq");
 
     // Output all fields plus the version index that
     // identifies the Nth highest version.
@@ -452,9 +457,10 @@ RuntimeOperatorType * ColumnGroupOutput::create(RuntimePlanBuilder& plan,
   RuntimeOperatorType * sortTy = 
     new RuntimeSortOperatorType(ColumnGroupType,
                                 *mColumnGroupTypeFree,
-				*mKeyPrefixFun,
-				*mKeyLessThanFun,
+				mKeyPrefixFun,
+				mKeyLessThanFun,
 				mPresortedEqFun,
+				mPresortedLessThanEqFun,
 				"",
 				1000000);
   plan.addOperatorType(sortTy);
@@ -761,7 +767,8 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
 	// If the user is not outputting sort keys
 	// then we skip the sort merging starting at that
 	// point.  
-	std::vector<std::string> sortKeys;
+	std::vector<std::string> sortKeyFields;
+	std::vector<SortKey> sortKeys;
 	std::set<std::string> lookup;
 	for(RecordType::const_member_iterator m = ty->begin_members(),
 	      e = ty->end_members(); m != e; ++m) {
@@ -770,17 +777,18 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
 	for(TableMetadata::sort_key_const_iterator k = mTableMetadata->getSortKeys().begin(),
 	      e = mTableMetadata->getSortKeys().end();
 	    k != e; ++k) {
-	  std::set<std::string>::const_iterator it = lookup.find(*k);
+	  std::set<std::string>::const_iterator it = lookup.find(k->getName());
 	  if (lookup.end() == it) {
 	    break;
 	  }
-	  sortKeys.push_back(*it);
+	  sortKeys.push_back(*k);
+          sortKeyFields.push_back(k->getName());
 	}
 	if (sortKeys.size()) {
 	  cgo->mKeyPrefix = 
-	    KeyPrefixFunction::get(ctxt, ty, sortKeys, "keyPrefix");
-	  cgo->mLessThan = 
-	    LessThanFunction::get(ctxt, ty, sortKeys, "lessThan");
+	    KeyPrefixFunction::get(ctxt, ty, sortKeyFields, "keyPrefix");
+	  cgo->mLessThan =
+	    LessThanFunction::get(ctxt, ty, ty, sortKeys, true, "lessThan");
 	}
       }
     } else {

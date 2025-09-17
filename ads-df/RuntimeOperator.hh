@@ -123,12 +123,34 @@ public:
    * as is necessary for sorting); by default NULLs sort low but that may
    * be tweaked by a configuration change.
    */
+  static std::string get(const RecordType * lhs,
+                         const RecordType * rhs,
+                         const std::vector<SortKey>& fields,
+                         bool sortNulls,
+                         bool nullsSortLow);
   static TreculFunction * get(PlanCheckContext & ctxt,
                               const RecordType * lhs,
                               const RecordType * rhs,
                               const std::vector<SortKey>& fields,
                               bool sortNulls,
                               const std::string& name = "lessThan");
+};
+
+class LessThanEqualsFunction
+{
+public:
+  /**
+   * If sortNulls is false comparisons with NULLs use SQL-like 3 valued
+   * logic. If sortNulls is true NULLs are treated as either low or high values (e.g. 
+   * as is necessary for sorting); by default NULLs sort low but that may
+   * be tweaked by a configuration change.
+   */
+  static TreculFunction * get(PlanCheckContext & ctxt,
+                              const RecordType * lhs,
+                              const RecordType * rhs,
+                              const std::vector<SortKey>& fields,
+                              bool sortNulls,
+                              const std::string& name = "lessThanEquals");
 };
 
 class CompareFunction

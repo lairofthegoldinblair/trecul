@@ -58,7 +58,7 @@ const std::map<std::string, std::string>& TableFileMetadata::getComputedColumns(
 
 TableMetadata::TableMetadata(const std::string& tableName,
 			     const std::string& recordType,
-			     const std::vector<std::string>& sortKeys)
+			     const std::vector<SortKey>& sortKeys)
   :
   mTableName(tableName),
   mRecordType(recordType),
@@ -68,7 +68,7 @@ TableMetadata::TableMetadata(const std::string& tableName,
 
 TableMetadata::TableMetadata(const std::string& tableName,
 			     const std::string& recordType,
-			     const std::vector<std::string>& sortKeys,
+			     const std::vector<SortKey>& sortKeys,
 			     const std::vector<std::string>& primaryKey,
 			     const std::string& version)
   :
@@ -81,8 +81,8 @@ TableMetadata::TableMetadata(const std::string& tableName,
   if (sortKeys.size() < primaryKey.size()) { 
     throw std::runtime_error("Primary key must be a prefix of sort keys");
   }
-  for(std::size_t i = 0, e = sortKeys.size(); i<e; ++i) {
-    if (primaryKey[i] != sortKeys[i]) {
+  for(std::size_t i = 0, e = primaryKey.size(); i<e; ++i) {
+    if (primaryKey[i] != sortKeys[i].getName()) {
       throw std::runtime_error("Primary key must be a prefix of sort keys");
     }
   }
@@ -161,7 +161,7 @@ const RecordType * TableMetadata::getRecordType(DynamicRecordContext& ctxt) cons
   return bld.getProduct();
 }
 
-const std::vector<std::string>& TableMetadata::getSortKeys() const
+const std::vector<SortKey>& TableMetadata::getSortKeys() const
 {
   return mSortKeys;
 }
@@ -169,6 +169,11 @@ const std::vector<std::string>& TableMetadata::getSortKeys() const
 const std::vector<std::string>& TableMetadata::getPrimaryKey() const
 {
   return mPrimaryKey;
+}
+
+std::vector<SortKey> TableMetadata::getPrimarySortKey() const
+{
+  return std::vector<SortKey>(mSortKeys.begin(), mSortKeys.begin() + mPrimaryKey.size());
 }
 
 const std::string& TableMetadata::getVersion() const
@@ -208,7 +213,7 @@ TableColumnGroup::~TableColumnGroup()
   }
 }
 
-const std::vector<std::string>& TableColumnGroup::getSortKeys() const
+const std::vector<SortKey>& TableColumnGroup::getSortKeys() const
 {
   return mTable->getSortKeys();
 }

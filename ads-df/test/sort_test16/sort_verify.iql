@@ -1,0 +1,8 @@
+a = read[file="input.txt", format="a INTEGER NULL, b INTEGER NULL", mode="text"];
+
+b = sort[presorted="a", presorted="b"];
+a -> b;
+
+c = write[file="output.txt", mode="text"];
+b -> c;
+

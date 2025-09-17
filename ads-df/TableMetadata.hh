@@ -41,6 +41,8 @@
 #include <string>
 #include <vector>
 
+#include "LogicalOperator.hh"
+
 class DynamicRecordContext;
 class RecordType;
 
@@ -121,7 +123,7 @@ public:
 
   const RecordType * getRecordType(DynamicRecordContext & ctxt) const;
 
-  const std::vector<std::string>& getSortKeys() const;
+  const std::vector<SortKey>& getSortKeys() const;
   const std::string& getName() const
   {
     return mName;
@@ -156,12 +158,12 @@ public:
 class TableMetadata
 {
 public:
-  typedef std::vector<std::string>::const_iterator sort_key_const_iterator;
+  typedef std::vector<SortKey>::const_iterator sort_key_const_iterator;
   typedef std::vector<TableColumnGroup*>::const_iterator column_group_const_iterator;
 private:
   std::string mTableName;
   std::string mRecordType;
-  std::vector<std::string> mSortKeys;
+  std::vector<SortKey> mSortKeys;
   // Optional primary key.  A table with multiple 
   // column groups must have a primary key and must be sorted
   // its primary key.  There is an implicit assumption (which we 
@@ -182,11 +184,11 @@ private:
 public:
   TableMetadata(const std::string& tableName,
 		const std::string& recordType,
-		const std::vector<std::string>& sortKeys);
+		const std::vector<SortKey>& sortKeys);
 
   TableMetadata(const std::string& tableName,
 		const std::string& recordType,
-		const std::vector<std::string>& sortKeys,
+		const std::vector<SortKey>& sortKeys,
 		const std::vector<std::string>& primaryKey,
 		const std::string& version);
 
@@ -230,12 +232,13 @@ public:
   /**
    * Is the data stored in a sorted order?
    */
-  const std::vector<std::string>& getSortKeys() const;
+  const std::vector<SortKey>& getSortKeys() const;
 
   /**
    * Optional primary key for the table?
    */
   const std::vector<std::string>& getPrimaryKey() const;
+  std::vector<SortKey> getPrimarySortKey() const;
 
   /**
    * Version column for the table.

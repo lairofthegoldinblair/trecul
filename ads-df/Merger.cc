@@ -807,6 +807,7 @@ RuntimeOperator * InternalFileWriteOperatorType::create(RuntimeOperator::Service
 
 LogicalSortMerge::LogicalSortMerge()
   :
+  LogicalOperator(1,std::numeric_limits<uint32_t>::max(),1,1),
   mKeyPrefix(NULL),
   mKeyEq(NULL)
   
@@ -1000,6 +1001,7 @@ LogicalSort::LogicalSort()
   mKeyPrefix(nullptr),
   mKeyEq(nullptr),
   mPresortedKeyEq(nullptr),
+  mPresortedKeyLessThanEq(nullptr),
   mMemory(128*1024*1024)
 {
 }
@@ -1010,6 +1012,7 @@ LogicalSort::~LogicalSort()
   delete mKeyPrefix;
   delete mKeyEq;
   delete mPresortedKeyEq;
+  delete mPresortedKeyLessThanEq;
 }
 
 void LogicalSort::check(PlanCheckContext& ctxt)
@@ -1056,12 +1059,13 @@ void LogicalSort::check(PlanCheckContext& ctxt)
     mKeyPrefix = SortKeyPrefixFunction::get(ctxt, input, sortKeys);
     // Tell LessThan to sort NULLs properly
     mKeyEq = LessThanFunction::get(ctxt, input, input, sortKeys, true, "sort_less");
-  } else {
-    ctxt.logError(*this, "must specify one or more sort keys");
+  } else if (0 == presortedKeys.size()) {
+    ctxt.logError(*this, "must specify one or more sort keys or one or more presorted keys");
   }
   if (presortedKeys.size()) {
     mPresortedKeyEq = EqualsFunction::get(ctxt, input, input, presortedKeys, 
 					  "presort_eq", true);
+    mPresortedKeyLessThanEq = LessThanEqualsFunction::get(ctxt, input, input, presortedKeys, true, "presorted_leq");
   }
 }
 
@@ -1070,10 +1074,10 @@ void LogicalSort::create(class RuntimePlanBuilder& plan)
   RuntimeOperatorType * opType = 
     new RuntimeSortOperatorType(getInput(0)->getRecordType(),
                                 *mFree,
-				*mKeyPrefix, 
-				*mKeyEq,
-				// TODO: Support presorted keys
+				mKeyPrefix, 
+				mKeyEq,
 				mPresortedKeyEq,
+                                mPresortedKeyLessThanEq,
 				mTempDir,
 				mMemory);
   plan.addOperatorType(opType);
@@ -1268,8 +1272,8 @@ void RuntimeSortOperator::addSortRun()
   std::size_t sz = getMyOperatorType().mSerialize.getRecordLength(mInput);
   uint32_t keyPrefix = 
     getMyOperatorType().mKeyPrefix.execute(mInput, 
-                                           NULL, 
-                                           mLessFunction.IQLCompare.Context);
+                                            NULL, 
+                                            mLessFunction.IQLCompare.Context);
   SortNode n(keyPrefix, mInput);
   // See if we are forced to spill
   if(!mSortRuns.push_back(n, sz)) {
@@ -1679,8 +1683,84 @@ void RuntimeSortOperator::shutdown()
 
 #endif
 
+class RuntimeSortVerifyOperator : public RuntimeOperatorBase<RuntimeSortOperatorType>
+{
+private:
+  enum State { START, READ, WRITE };
+  State mState;
+  RecordBuffer mInput;
+  RecordBuffer mPrevious;
+  class InterpreterContext * mRuntimeContext;
+public:
+  RuntimeSortVerifyOperator(RuntimeOperator::Services& services, const RuntimeSortOperatorType& opType);
+  ~RuntimeSortVerifyOperator();
+  void start();
+  void onEvent(RuntimePort * port);
+  void shutdown();
+};
+
+RuntimeSortVerifyOperator::RuntimeSortVerifyOperator(RuntimeOperator::Services& services, const RuntimeSortOperatorType& opType)
+  :
+  RuntimeOperatorBase<RuntimeSortOperatorType>(services, opType),
+  mState(START),
+  mRuntimeContext(new InterpreterContext())
+{
+}
+
+RuntimeSortVerifyOperator::~RuntimeSortVerifyOperator()
+{
+  delete mRuntimeContext;
+}
+
+void RuntimeSortVerifyOperator::start()
+{
+  mPrevious = RecordBuffer();
+  mState = START;
+  onEvent(NULL);
+}
+
+void RuntimeSortVerifyOperator::onEvent(RuntimePort * port)
+{
+  switch(mState) {
+  case START:
+    while(true) {
+      requestRead(0);
+      mState = READ;
+      return;
+    case READ:
+      read(port, mInput);
+      if (mInput && mPrevious) {
+	auto ret =  getMyOperatorType().mPresortedLessThanEqualsFun.execute(mPrevious, 
+                                                                                   mInput,
+                                                                                   mRuntimeContext);
+        if (0 == ret) {
+          throw std::runtime_error("[RuntimeSortVerifyOperator::onEvent] Input not sorted");
+        }
+      }
+      requestWrite(0);
+      mState = WRITE;
+      return;
+    case WRITE:
+      write(port, mInput, false);
+      mPrevious = mInput;
+      if (RecordBuffer::isEOS(mPrevious)) 
+	break;
+    }
+  }
+}
+
+void RuntimeSortVerifyOperator::shutdown()
+{
+}
+
 RuntimeOperator * RuntimeSortOperatorType::create(RuntimeOperator::Services & s) const
 {
-  return new RuntimeSortOperator(s, *this);
+  if (!mLessThanFunRef.empty()) {
+    BOOST_ASSERT(!mKeyPrefixRef.empty());
+    return new RuntimeSortOperator(s, *this);
+  } else {
+    BOOST_ASSERT(!mPresortedEqualsFunRef.empty() && !mPresortedLessThanEqualsFunRef.empty());
+    return new RuntimeSortVerifyOperator(s, *this);
+  }
 }
 

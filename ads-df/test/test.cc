@@ -3297,7 +3297,7 @@ struct SerialOrganizedTableTestFixture : public SerialOrganizedTableTestFixtureB
   }
   static std::shared_ptr<TableMetadata> getMyTableMetadata()
   {
-    std::vector<std::string> mde_log_sort; 
+    std::vector<SortKey> mde_log_sort; 
     std::string tableFormat("a VARCHAR");
     auto m = std::make_shared<TableMetadata>("mytable",
                                              tableFormat,
@@ -3382,7 +3382,7 @@ struct SerialOrganizedSortedTableTestFixture : public SerialOrganizedTableTestFi
   }
   static std::shared_ptr<TableMetadata> getMyTableMetadata()
   {
-    std::vector<std::string> mde_log_sort( { "a" }); 
+    std::vector<SortKey> mde_log_sort( { SortKey("a", SortKey::ASC) }); 
     std::string tableFormat("a INTEGER, b VARCHAR");
     auto m = std::make_shared<TableMetadata>("mytable",
                                              tableFormat,

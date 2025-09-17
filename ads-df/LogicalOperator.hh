@@ -63,7 +63,7 @@ private:
   std::string mName;
   Order mOrder;
 public:
-  SortKey(const std::string& sortKeySpec);
+  explicit SortKey(const std::string& sortKeySpec);
   SortKey(const std::string& sortKeySpec,
 	  Order o);
   ~SortKey();

@@ -1040,6 +1040,7 @@ private:
   TreculFunction * mKeyPrefix;
   TreculFunction * mKeyEq;
   TreculFunction * mPresortedKeyEq;
+  TreculFunction * mPresortedKeyLessThanEq;
   std::string mTempDir;
   std::size_t mMemory;
 public:
@@ -1053,6 +1054,7 @@ class RuntimeSortOperatorType : public RuntimeOperatorType
 {
 public:
   friend class RuntimeSortOperator;
+  friend class RuntimeSortVerifyOperator;
 private:
   // Extract a key prefix from record
   TreculFunctionReference mKeyPrefixRef;
@@ -1063,6 +1065,9 @@ private:
   // Compare two inputs less than for presorted keys (if any)
   TreculFunctionReference mPresortedEqualsFunRef;
   TreculFunctionRuntime mPresortedEqualsFun;
+  // Compare two inputs less than equals for presorted keys (if any)
+  TreculFunctionReference mPresortedLessThanEqualsFunRef;
+  TreculFunctionRuntime mPresortedLessThanEqualsFun;
   // Serialize and deserialize for on disk sort runs
   RecordTypeSerialize mSerialize;
   RecordTypeDeserialize mDeserialize;
@@ -1084,6 +1089,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mKeyPrefixRef);
     ar & BOOST_SERIALIZATION_NVP(mLessThanFunRef);
     ar & BOOST_SERIALIZATION_NVP(mPresortedEqualsFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mPresortedLessThanEqualsFunRef);
     ar & BOOST_SERIALIZATION_NVP(mSerialize);
     ar & BOOST_SERIALIZATION_NVP(mDeserialize);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
@@ -1099,16 +1105,18 @@ private:
 public:
   RuntimeSortOperatorType(const RecordType * input,
                           const TreculFreeOperation & freeFunctor,
-			  const TreculFunction & keyPrefix,
-			  const TreculFunction & lessFun,
+			  const TreculFunction * keyPrefix,
+			  const TreculFunction * lessFun,
 			  const TreculFunction * presortedEquals,
+			  const TreculFunction * presortedLessThanEquals,
 			  const std::string& tempDir,
 			  std::size_t memoryAllowed)
     :
     RuntimeOperatorType("RuntimeSortOperatorType"),
-    mKeyPrefixRef(keyPrefix.getReference()),
-    mLessThanFunRef(lessFun.getReference()),
+    mKeyPrefixRef(nullptr != keyPrefix ? keyPrefix->getReference() : TreculFunctionReference()),
+    mLessThanFunRef(nullptr != lessFun ? lessFun->getReference() : TreculFunctionReference()),
     mPresortedEqualsFunRef(nullptr != presortedEquals ? presortedEquals->getReference() : TreculFunctionReference()),
+    mPresortedLessThanEqualsFunRef(nullptr != presortedLessThanEquals ? presortedLessThanEquals->getReference() : TreculFunctionReference()),
     mSerialize(input->getSerialize()),
     mDeserialize(input->getDeserialize()),
     mMalloc(input->getMalloc()),
@@ -1124,10 +1132,17 @@ public:
   void loadFunctions(TreculModule & m) override
   {
     mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
-    mKeyPrefix = m.getFunction<TreculFunctionRuntime>(mKeyPrefixRef);
-    mLessThanFun = m.getFunction<TreculFunctionRuntime>(mLessThanFunRef);
+    if (!mKeyPrefixRef.empty()) {
+      mKeyPrefix = m.getFunction<TreculFunctionRuntime>(mKeyPrefixRef);
+    }
+    if (!mLessThanFunRef.empty()) {
+      mLessThanFun = m.getFunction<TreculFunctionRuntime>(mLessThanFunRef);
+    }
     if (!mPresortedEqualsFunRef.empty()) {
       mPresortedEqualsFun = m.getFunction<TreculFunctionRuntime>(mPresortedEqualsFunRef);
+    }
+    if (!mPresortedLessThanEqualsFunRef.empty()) {
+      mPresortedLessThanEqualsFun = m.getFunction<TreculFunctionRuntime>(mPresortedLessThanEqualsFunRef);
     }
   }  
 

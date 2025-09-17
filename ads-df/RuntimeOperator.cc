@@ -158,19 +158,12 @@ TreculFunction * LessThanFunction::get(PlanCheckContext & ctxt,
   return get(ctxt, lhs, rhs, keys, false, name);
 }
 
-TreculFunction * LessThanFunction::get(PlanCheckContext & ctxt,
-                                       const RecordType * lhs,
-                                       const RecordType * rhs,
-                                       const std::vector<SortKey>& fields,
-                                       bool sortNulls,
-                                       const std::string& name)
+std::string LessThanFunction::get(const RecordType * lhs,
+                                  const RecordType * rhs,
+                                  const std::vector<SortKey>& fields,
+                                  bool sortNulls,
+                                  bool nullsSortLow)
 {
-  // When we compare two records to each other,
-  // we need to refer to one field from each record.  Since we do this
-  // by name, we generate a temporary prefix to disambiguate.
-  std::vector<const RecordType *> eqTypes;
-  eqTypes.push_back(lhs);
-  eqTypes.push_back(rhs);
   std::string eqPred;
   for(std::size_t i=0; i<fields.size(); i++) {
     if (i > 0) { 
@@ -189,21 +182,60 @@ TreculFunction * LessThanFunction::get(PlanCheckContext & ctxt,
        rhs->getMember(fields[i].getName()).GetType()->isNullable());
     if (handleNulls) {
       bool isLeftNullLess = 
-	(fields[i].getOrder()==SortKey::ASC && QueryOptions::nullsSortLow()) ||
-	(fields[i].getOrder()==SortKey::DESC && !QueryOptions::nullsSortLow());
-      eqPred += (boost::format("(%2%.%1% IS NULL AND %3%.%1% IS NOT NULL OR ") %
+	(fields[i].getOrder()==SortKey::ASC && nullsSortLow) ||
+	(fields[i].getOrder()==SortKey::DESC && !nullsSortLow);
+      eqPred += (boost::format("(%2%.%1% IS NULL AND %3%.%1% IS NOT NULL OR (%2%.%1% IS NOT NULL AND %3%.%1% IS NOT NULL AND ") %
 		 fields[i].getName() %
 		 (isLeftNullLess ? "input0" : "input1") % (isLeftNullLess ? "input1" : "input0")).str();
     }
     eqPred += (boost::format("input0.%1% %2% input1.%1%") % fields[i].getName() %
 	       (fields[i].getOrder()==SortKey::ASC ? "<" : ">")).str();
     if (handleNulls) {
-      eqPred += ")";
+      eqPred += "))";
     }
   }
   for(std::size_t i=1; i<fields.size(); i++) {
     eqPred += "))";
   }
+
+  return eqPred;
+}
+
+TreculFunction * LessThanFunction::get(PlanCheckContext & ctxt,
+                                       const RecordType * lhs,
+                                       const RecordType * rhs,
+                                       const std::vector<SortKey>& fields,
+                                       bool sortNulls,
+                                       const std::string& name)
+{
+  // When we compare two records to each other,
+  // we need to refer to one field from each record.  Since we do this
+  // by name, we generate a temporary prefix to disambiguate.
+  std::vector<const RecordType *> eqTypes;
+  eqTypes.push_back(lhs);
+  eqTypes.push_back(rhs);
+  return new TreculFunction(ctxt,
+                            ctxt.getCodeGenerator(),
+                            name, 
+                            eqTypes, 
+                            get(lhs, rhs, fields, sortNulls, QueryOptions::nullsSortLow()));
+}
+
+TreculFunction * LessThanEqualsFunction::get(PlanCheckContext & ctxt,
+                                             const RecordType * lhs,
+                                             const RecordType * rhs,
+                                             const std::vector<SortKey>& fields,
+                                             bool sortNulls,
+                                             const std::string& name)
+{
+  // Implement as NOT >
+  // Implement > by reversing the ASC/DESC order on all fields
+  std::vector<const RecordType *> eqTypes{lhs, rhs};
+  std::vector<SortKey> reversed;
+  for(const SortKey & k : fields) {
+    reversed.emplace_back(k.getName(), SortKey::ASC == k.getOrder() ? SortKey::DESC : SortKey::ASC);
+  }
+  std::string eqPred = (boost::format("NOT (%1%)") % LessThanFunction::get(lhs, rhs, reversed, sortNulls, QueryOptions::nullsSortLow())).str();
   return new TreculFunction(ctxt,
                             ctxt.getCodeGenerator(),
                             name, 
