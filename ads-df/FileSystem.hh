@@ -481,8 +481,6 @@ private:
   int32_t mCommonVersion;
   int32_t mTableMajorVersion;
   std::string mTableName;
-  // The path to /CommonVersion_SerialCount/TableName/DBVersionNumber
-  PathPtr mTableRoot;
   // Beneath the table root we have
   // a number of path components.
   // Optionally we can handle evaluating
@@ -511,6 +509,9 @@ private:
   void bindComponent(FileSystem * fs, 
 		     std::size_t level, PathPtr p);
 
+  // Find the table root on this file system
+  PathPtr getTableRoot(FileSystem * fs);
+  
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
@@ -525,7 +526,7 @@ public:
 		       const std::string& tableName,
 		       const char * pred = NULL);
   ~SerialOrganizedTable();
-  void bind(FileSystem * fs);
+  void bind(const std::vector<FileSystem *> & fs);
   const std::vector<SerialOrganizedTableFilePtr>& getSerialPaths() const
   {
     return mSerialPaths;

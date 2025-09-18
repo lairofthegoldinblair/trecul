@@ -560,6 +560,14 @@ void ExplicitChunkStrategy::getFilesForPartition(int32_t partition,
 }
 
 SerialChunkStrategy::SerialChunkStrategy()
+  :
+  mCompressionType(CompressionType::Gzip())
+{
+}
+
+SerialChunkStrategy::SerialChunkStrategy(const CompressionType & compressionType)
+  :
+  mCompressionType(compressionType)
 {
 }
 
@@ -585,7 +593,7 @@ void SerialChunkStrategy::getFilesForPartition(int32_t partition,
 {
   // get file that matches the serial.
   std::ostringstream ss;
-  ss << "serial_" << std::setw(5) << std::setfill('0') << partition << ZLibCompress::extension();
+  ss << "serial_" << std::setw(5) << std::setfill('0') << partition << "." << mCompressionType.extension();
   std::string sn(ss.str());
   // Get the file system for the uri
   AutoFileSystem fs(mUri->getUri());

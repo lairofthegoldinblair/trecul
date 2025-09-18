@@ -684,6 +684,7 @@ LogicalTableParser::~LogicalTableParser()
 
 void LogicalTableParser::check(PlanCheckContext& ctxt)
 {
+  std::vector<std::string> fileSystems;
   // Validate the parameters
   for(const_param_iterator it = begin_params();
       it != end_params();
@@ -691,7 +692,7 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
     if (boost::algorithm::iequals(it->Name, "file")) {
       mFile = boost::get<std::string>(it->Value);
     } else if (boost::algorithm::iequals(it->Name, "connect")) {
-      mFileSystem = boost::get<std::string>(it->Value);
+      fileSystems.push_back(boost::get<std::string>(it->Value));
     } else if (boost::algorithm::iequals(it->Name, "where")) {
       mPredicate = boost::get<std::string>(it->Value);
     } else if (boost::algorithm::iequals(it->Name, "commonversion")) {
@@ -807,10 +808,14 @@ void LogicalTableParser::check(PlanCheckContext& ctxt)
 				    mTable, 
 				    mPredicate.size() ? mPredicate.c_str() : nullptr);
     {
-      // Scope to hide fs.
-      FileSystem * fs = FileSystem::get(std::make_shared<URI>(mFileSystem.c_str()));
-      mSOT->bind(fs);
-      FileSystem::release(fs);
+      std::vector<FileSystem *> fss;
+      for(const std::string & fs : fileSystems) {        
+        fss.push_back(FileSystem::get(std::make_shared<URI>(fs.c_str())));
+      }
+      mSOT->bind(fss);
+      for(FileSystem * fs : fss) {
+        FileSystem::release(fs);
+      }
     }
 
     // TODO: Handle case in which there is nothing to read!  Perhaps we just
@@ -865,6 +870,7 @@ void LogicalTableParser::create(class RuntimePlanBuilder& plan)
 			 '\\',
 			 getOutput(0)->getRecordType(),
                          *mTableOutputFree,
+                         file_op::chunk_strategy_type(),
 			 mTableFormat);
     plan.addOperatorType(opType);
     plan.mapOutputPort(this, 0, opType, 0);
@@ -891,6 +897,7 @@ void LogicalTableParser::create(class RuntimePlanBuilder& plan)
 						      '\\',
 						      po->FileOutput,
                                                       *po->FileOutputFree,
+                                                      table_op::chunk_strategy_type(mTableMetadata->getCompressionType()),
 						      po->FileType);
 	  plan.addOperatorType(opType);
 	  if (!po->Transfer->isIdentity()) {

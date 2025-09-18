@@ -782,12 +782,24 @@ void RuntimeHdfsWriteOperator<_FileCreationPolicy, _Compressor>::shutdown()
 RuntimeOperator * HdfsWriteOperatorFactory::create(RuntimeOperator::Services& services,
                                                    const RuntimeHdfsWriteOperatorType<MultiFileCreationPolicy> & opType)
 {
-  return new RuntimeHdfsWriteOperator<MultiFileCreationPolicy, ZLibCompress>(services, opType);
+  if (CompressionType::Gzip() == opType.getCompressionType()) {
+    return new RuntimeHdfsWriteOperator<MultiFileCreationPolicy, ZLibCompress>(services, opType);
+  } else if (CompressionType::Zstandard() == opType.getCompressionType()) {
+    return new RuntimeHdfsWriteOperator<MultiFileCreationPolicy, ZstdCompress>(services, opType);
+  } else {
+    return nullptr;
+  }
 }
 
 RuntimeOperator * HdfsWriteOperatorFactory::create(RuntimeOperator::Services& services,
                                                    const RuntimeHdfsWriteOperatorType<StreamingFileCreationPolicy> & opType)
 {
-  return new RuntimeHdfsWriteOperator<StreamingFileCreationPolicy, ZLibCompress>(services, opType);
+  if (CompressionType::Gzip() == opType.getCompressionType()) {
+    return new RuntimeHdfsWriteOperator<StreamingFileCreationPolicy, ZLibCompress>(services, opType);
+  } else if (CompressionType::Zstandard() == opType.getCompressionType()) {
+    return new RuntimeHdfsWriteOperator<StreamingFileCreationPolicy, ZstdCompress>(services, opType);
+  } else {
+    return nullptr;
+  }
 }
 

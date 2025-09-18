@@ -51,11 +51,6 @@ private:
   // infer referenced columns from the transfer spec.
   // Right now this is a column list.
   std::vector<std::string> mReferenced;
-  // If reading the "table" format, this is the "database"
-  // we are reading from.  It should be a URL that points
-  // to the base path for tables.  It can be either a file
-  // or hdfs URL.
-  std::string mFileSystem;
   // Common Version from the database (serial count).
   int32_t mCommonVersion;
   // Major Version of the table.

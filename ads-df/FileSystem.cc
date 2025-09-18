@@ -914,8 +914,14 @@ void SerialOrganizedTable::bindComponent(FileSystem * fs,
   }
 }
 
-void SerialOrganizedTable::bind(FileSystem * fs)
+PathPtr SerialOrganizedTable::getTableRoot(FileSystem * fs)
 {
+  // We recursively descend into the table root 
+  // First layer is minor version
+  // Second layer is date
+  // Third layer is batch id.
+  // Last layer is actual files.
+
   // First we locate a directory named /CommonVersion_*
   // Then we have the table root.
   std::vector<std::shared_ptr<FileStatus> > ls;
@@ -949,15 +955,15 @@ void SerialOrganizedTable::bind(FileSystem * fs)
   }
   PathPtr nextPath = Path::get(rootPath,
 			       mTableName + "/");
-  mTableRoot = Path::get(nextPath,
-			 boost::lexical_cast<std::string>(mTableMajorVersion) + "/");
+  return Path::get(nextPath,
+                   boost::lexical_cast<std::string>(mTableMajorVersion) + "/");
+}
 
-  // We recursively descend into the table root 
-  // First layer is minor version
-  // Second layer is date
-  // Third layer is batch id.
-  // Last layer is actual files.
-  bindComponent(fs, 0, mTableRoot);
+void SerialOrganizedTable::bind(const std::vector<FileSystem *> & filesystems)
+{
+  for(auto fs : filesystems) {
+    bindComponent(fs, 0, getTableRoot(fs));
+  }
 }
 
 void SerialOrganizedTable::getSerialFiles(FileSystem * fs,

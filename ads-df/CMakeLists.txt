@@ -52,6 +52,7 @@ add_library(ads-df
 http_parser.c
 AsyncRecordParser.cc 
 CompileTimeLogicalOperator.cc 
+CompressionType.cc 
 ConstantScan.cc 
 DataflowRuntime.cc 
 FileService.cc 

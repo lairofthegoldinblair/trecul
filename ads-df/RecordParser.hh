@@ -46,6 +46,7 @@
 
 #include "zlib.h"
 
+#include "CompressionType.hh"
 #include "RecordType.hh"
 #include "RuntimeOperator.hh"
 #include "FileSystem.hh"
@@ -1507,6 +1508,8 @@ public:
 private:
   // What file system am I reading from
   PathPtr mUri;
+  // What type of files (compression) are being read
+  CompressionType mCompressionType;
 
   // Serialization
   friend class boost::serialization::access;
@@ -1514,9 +1517,12 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_NVP(mUri);
+    ar & BOOST_SERIALIZATION_NVP(mCompressionType);
   }
 public:
   SerialChunkStrategy();
+
+  SerialChunkStrategy(const CompressionType & compressionType);
 
   ~SerialChunkStrategy();
 
@@ -1622,7 +1628,7 @@ public:
   {
     mFiles.clear();
     // What file(s) am I parsing?
-    typename _OpType::chunk_strategy_type chunkFiles;
+    typename _OpType::chunk_strategy_type chunkFiles(getLogParserType().mChunkStrategy);
     // Expand file name globbing, then get files for this
     // partition.
     chunkFiles.expand(getLogParserType().mFileInput, getNumPartitions());
@@ -1731,6 +1737,8 @@ public:
   TreculRecordFreeRuntime mFree;
   // What am I importing/outputting
   const RecordType * mRecordType;
+  // My chunk strategy
+  chunk_strategy_type mChunkStrategy;
   // Is there a header to skip?
   bool mSkipHeader;
   // Skip lines starting with this.
@@ -1746,6 +1754,7 @@ public:
     ar & BOOST_SERIALIZATION_NVP(mSkipImporter);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
     ar & BOOST_SERIALIZATION_NVP(mFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mChunkStrategy);
     ar & BOOST_SERIALIZATION_NVP(mSkipHeader);
     ar & BOOST_SERIALIZATION_NVP(mCommentLine);
   }
@@ -1760,6 +1769,7 @@ public:
 			    char escapeChar,
 			    const RecordType * recordType,
                             const TreculFreeOperation & freeFunctor,
+                            const chunk_strategy_type & chunkStrategy,
 			    const RecordType * baseRecordType=nullptr,
 			    const char * commentLine = "")
     :
@@ -1767,6 +1777,7 @@ public:
     mFileInput(file),
     mFreeRef(freeFunctor.getReference()),
     mRecordType(recordType),
+    mChunkStrategy(chunkStrategy),
     mSkipHeader(false),
     mCommentLine(commentLine)
   {

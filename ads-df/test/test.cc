@@ -50,6 +50,7 @@
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/asio/ip/host_name.hpp>
+#include <boost/mpl/list.hpp>
 #include <boost/timer/timer.hpp>
 #include <boost/process/io.hpp>
 #include <boost/process/system.hpp>
@@ -577,6 +578,16 @@ struct test_gz
     std::error_code ec;
     std::filesystem::remove(filename, ec);
   }
+
+  static std::string extension()
+  {
+    return std::string("gz");
+  }
+
+  static CompressionType compression_type()
+  {
+    return CompressionType::Gzip();
+  }
 };
 
 struct test_zstd
@@ -587,7 +598,8 @@ struct test_zstd
     static std::string ret("aaaaaaaaaabbbbbbbbbccccccccccccccccccccccccccccccdddddddd\n");
     return ret;
   }
-  test_zstd(const char * _filename)
+  test_zstd(const char * _filename,
+          const std::string & testdata)
     :
     filename(_filename)
   {
@@ -600,8 +612,13 @@ struct test_zstd
       io::filtering_ostream out;
       out.push(io::zstd_compressor());
       out.push(f);
-      out << testdata();
+      out << testdata;
     }  
+  }
+  test_zstd(const char * _filename)
+    :
+    test_zstd(_filename, testdata())
+  {
   }
   
   test_zstd()
@@ -614,6 +631,16 @@ struct test_zstd
   {
     std::error_code ec;
     std::filesystem::remove(filename, ec);
+  }
+
+  static std::string extension()
+  {
+    return std::string("zst");
+  }
+
+  static CompressionType compression_type()
+  {
+    return CompressionType::Zstandard();
   }
 };
 
@@ -3227,10 +3254,11 @@ BOOST_DATA_TEST_CASE(testException, boost::unit_test::data::make({ 1, 2, 4, 16})
   }
 }
 
+template<typename FileType>
 struct SerialOrganizedTableTestFixtureBase
 {
   std::array<std::string, 3> testdata_;
-  std::vector<std::unique_ptr<test_gz>> files_;
+  std::vector<std::unique_ptr<FileType>> files_;
   SerialOrganizedTableTestFixtureBase(const std::array<std::string, 3> & testdata)
     :
     testdata_(testdata)
@@ -3245,9 +3273,9 @@ struct SerialOrganizedTableTestFixtureBase
     std::filesystem::create_directory("./data/1_1/mytable/1/1/2024-01-01/13ACC820567845EB9ACB0C764F460546", ".");
     std::filesystem::create_directory("./data/1_1/mytable/1/1/2024-01-02", ".");
     std::filesystem::create_directory("./data/1_1/mytable/1/1/2024-01-02/13ACC820567845EB9ACB0C764F460546", ".");
-    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-01/7C4D89943F62499A9AF57475FB5057D5/serial_00000.gz", testdata_[0]));
-    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-01/13ACC820567845EB9ACB0C764F460546/serial_00000.gz", testdata_[1]));
-    files_.push_back(std::make_unique<test_gz>("./data/1_1/mytable/1/1/2024-01-02/13ACC820567845EB9ACB0C764F460546/serial_00000.gz", testdata_[2]));
+    files_.push_back(std::make_unique<FileType>((boost::format("./data/1_1/mytable/1/1/2024-01-01/7C4D89943F62499A9AF57475FB5057D5/serial_00000.%1%") % FileType::extension()).str().c_str(), testdata_[0]));
+    files_.push_back(std::make_unique<FileType>((boost::format("./data/1_1/mytable/1/1/2024-01-01/13ACC820567845EB9ACB0C764F460546/serial_00000.%1%") % FileType::extension()).str().c_str(), testdata_[1]));
+    files_.push_back(std::make_unique<FileType>((boost::format("./data/1_1/mytable/1/1/2024-01-02/13ACC820567845EB9ACB0C764F460546/serial_00000.%1%") % FileType::extension()).str().c_str(), testdata_[2]));
   }
   SerialOrganizedTableTestFixtureBase(const std::string & testdata)
     :
@@ -3288,11 +3316,12 @@ struct SerialOrganizedTableTestFixtureBase
   }
 };
 
-struct SerialOrganizedTableTestFixture : public SerialOrganizedTableTestFixtureBase
+template<typename FileType>
+struct SerialOrganizedTableTestFixture : public SerialOrganizedTableTestFixtureBase<FileType>
 {
   SerialOrganizedTableTestFixture()
     :
-    SerialOrganizedTableTestFixtureBase("ssdfasdfa;sdkfjals\n")
+    SerialOrganizedTableTestFixtureBase<FileType>("ssdfasdfa;sdkfjals\n")
   {
   }
   static std::shared_ptr<TableMetadata> getMyTableMetadata()
@@ -3301,7 +3330,8 @@ struct SerialOrganizedTableTestFixture : public SerialOrganizedTableTestFixtureB
     std::string tableFormat("a VARCHAR");
     auto m = std::make_shared<TableMetadata>("mytable",
                                              tableFormat,
-                                             mde_log_sort);
+                                             mde_log_sort,
+                                             FileType::compression_type());
 
     // Create a single column group for the whole table.                                                                                                                                                             
     TableColumnGroup * cg = m->addDefaultColumnGroup();
@@ -3315,63 +3345,97 @@ struct SerialOrganizedTableTestFixture : public SerialOrganizedTableTestFixtureB
 
     return m;
   }
+  
+  void testBind()
+  {
+    SerialOrganizedTable t(1, 1, "mytable");
+    std::string p = (boost::format("file://%1%") % std::filesystem::absolute(std::filesystem::path(".") / "data").generic_string()).str();
+    FileSystem * fs = FileSystem::get(URI::get(p.c_str()));
+    t.bind({fs});
+    BOOST_REQUIRE_EQUAL(3U, t.getSerialPaths().size());
+    for(auto f : t.getSerialPaths()) {
+      BOOST_CHECK_EQUAL(1, f->getMinorVersion());
+      BOOST_CHECK(boost::algorithm::equals("2024-01-01", f->getDate()) ||
+                  boost::algorithm::equals("2024-01-02", f->getDate()));
+    }
+    FileSystem::release(fs);
+  }
+
+  void testBindWithPredicate()
+  {
+    SerialOrganizedTable t(1, 1, "mytable","Date = '2024-01-01'");
+    std::string p = (boost::format("file://%1%") % std::filesystem::absolute(std::filesystem::path(".") / "data").generic_string()).str();
+    FileSystem * fs = FileSystem::get(URI::get(p.c_str()));
+    t.bind({fs});
+    BOOST_REQUIRE_EQUAL(2U, t.getSerialPaths().size());
+    for(auto f : t.getSerialPaths()) {
+      BOOST_CHECK_EQUAL(1, f->getMinorVersion());
+      BOOST_CHECK(boost::algorithm::equals("2024-01-01", f->getDate()));
+    }
+    FileSystem::release(fs);
+  }
+
+  void testTableOperator()
+  {
+    std::stringstream expected;
+    expected << this->testdata_[0] << this->testdata_[1] << this->testdata_[2];
+    BOOST_CHECK_EQUAL(expected.str(), this->runTableScan(this->getMyTableMetadata()));
+  }
+
+  void testTableOperatorWithDatePredicate()
+
+  {
+    std::stringstream expected;
+    expected << this->testdata_[0] << this->testdata_[1];
+    BOOST_CHECK_EQUAL(expected.str(), this->runTableScan(this->getMyTableMetadata(), "Date = '2024-01-01'"));
+  }
+
+  void testTableOperatorWithDatePredicate2()
+  {
+    std::stringstream expected;
+    expected << this->testdata_[2];
+    BOOST_CHECK_EQUAL(expected.str(), this->runTableScan(this->getMyTableMetadata(), "Date = '2024-01-02'"));
+  }
 };
 
-BOOST_FIXTURE_TEST_CASE(testBind, SerialOrganizedTableTestFixture)
+typedef boost::mpl::list<test_gz, test_zstd> table_test_file_types;
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(testBind, FileType, table_test_file_types)
 {
-  SerialOrganizedTable t(1, 1, "mytable");
-  std::string p = (boost::format("file://%1%") % std::filesystem::absolute(std::filesystem::path(".") / "data").generic_string()).str();
-  FileSystem * fs = FileSystem::get(URI::get(p.c_str()));
-  t.bind(fs);
-  BOOST_REQUIRE_EQUAL(3U, t.getSerialPaths().size());
-  for(auto f : t.getSerialPaths()) {
-    BOOST_CHECK_EQUAL(1, f->getMinorVersion());
-    BOOST_CHECK(boost::algorithm::equals("2024-01-01", f->getDate()) ||
-                boost::algorithm::equals("2024-01-02", f->getDate()));
-  }
-  FileSystem::release(fs);
+  SerialOrganizedTableTestFixture<FileType> fixture;
+  fixture.testBind();
 }
 
-BOOST_FIXTURE_TEST_CASE(testBindWithPredicate, SerialOrganizedTableTestFixture)
+BOOST_AUTO_TEST_CASE_TEMPLATE(testBindWithPredicate, FileType, table_test_file_types)
 {
-  SerialOrganizedTable t(1, 1, "mytable","Date = '2024-01-01'");
-  std::string p = (boost::format("file://%1%") % std::filesystem::absolute(std::filesystem::path(".") / "data").generic_string()).str();
-  FileSystem * fs = FileSystem::get(URI::get(p.c_str()));
-  t.bind(fs);
-  BOOST_REQUIRE_EQUAL(2U, t.getSerialPaths().size());
-  for(auto f : t.getSerialPaths()) {
-    BOOST_CHECK_EQUAL(1, f->getMinorVersion());
-    BOOST_CHECK(boost::algorithm::equals("2024-01-01", f->getDate()));
-  }
-  FileSystem::release(fs);
+  SerialOrganizedTableTestFixture<FileType> fixture;
+  fixture.testBindWithPredicate();
 }
 
-BOOST_FIXTURE_TEST_CASE(testTableOperator, SerialOrganizedTableTestFixture)
+BOOST_AUTO_TEST_CASE_TEMPLATE(testTableOperator, FileType, table_test_file_types)
 {
-  std::stringstream expected;
-  expected << testdata_[0] << testdata_[1] << testdata_[2];
-  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata()));
+  SerialOrganizedTableTestFixture<FileType> fixture;
+  fixture.testTableOperator();
 }
 
-BOOST_FIXTURE_TEST_CASE(testTableOperatorWithDatePredicate, SerialOrganizedTableTestFixture)
+BOOST_AUTO_TEST_CASE_TEMPLATE(testTableOperatorWithDatePredicate, FileType, table_test_file_types)
 {
-  std::stringstream expected;
-  expected << testdata_[0] << testdata_[1];
-  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata(), "Date = '2024-01-01'"));
+  SerialOrganizedTableTestFixture<FileType> fixture;
+  fixture.testTableOperatorWithDatePredicate();
 }
 
-BOOST_FIXTURE_TEST_CASE(testTableOperatorWithDatePredicate2, SerialOrganizedTableTestFixture)
+BOOST_AUTO_TEST_CASE_TEMPLATE(testTableOperatorWithDatePredicate2, FileType, table_test_file_types)
 {
-  std::stringstream expected;
-  expected << testdata_[2];
-  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata(), "Date = '2024-01-02'"));
+  SerialOrganizedTableTestFixture<FileType> fixture;
+  fixture.testTableOperatorWithDatePredicate2();
 }
 
-struct SerialOrganizedSortedTableTestFixture : public SerialOrganizedTableTestFixtureBase
+template<typename FileType>
+struct SerialOrganizedSortedTableTestFixture : public SerialOrganizedTableTestFixtureBase<FileType>
 {
   SerialOrganizedSortedTableTestFixture()
     :
-    SerialOrganizedTableTestFixtureBase({
+    SerialOrganizedTableTestFixtureBase<FileType>({
         "1\tone\n"
         "2\ttwo\n",
         "3\tthree\n"
@@ -3386,7 +3450,8 @@ struct SerialOrganizedSortedTableTestFixture : public SerialOrganizedTableTestFi
     std::string tableFormat("a INTEGER, b VARCHAR");
     auto m = std::make_shared<TableMetadata>("mytable",
                                              tableFormat,
-                                             mde_log_sort);
+                                             mde_log_sort,
+                                             FileType::compression_type());
 
     // Create a single column group for the whole table.                                                                                                                                                          
     TableColumnGroup * cg = m->addDefaultColumnGroup();
@@ -3400,26 +3465,229 @@ struct SerialOrganizedSortedTableTestFixture : public SerialOrganizedTableTestFi
 
     return m;
   }
+  void testTableOperatorSorted()
+  {
+    std::stringstream expected;
+    expected << this->testdata_[0] << this->testdata_[1] << this->testdata_[2];
+    BOOST_CHECK_EQUAL(expected.str(), this->runTableScan(this->getMyTableMetadata()));
+  }
+
+  void testTableOperatorSortedWithDatePredicate()
+  {
+    std::stringstream expected;
+    expected << this->testdata_[0] << this->testdata_[1];
+    BOOST_CHECK_EQUAL(expected.str(), this->runTableScan(this->getMyTableMetadata(), "Date = '2024-01-01'"));
+  }
+
+  void testTableOperatorSortedWithDatePredicate2()
+  {
+    std::stringstream expected;
+    expected << this->testdata_[2];
+    BOOST_CHECK_EQUAL(expected.str(), this->runTableScan(this->getMyTableMetadata(), "Date = '2024-01-02'"));
+  }
 };
 
-BOOST_FIXTURE_TEST_CASE(testTableOperatorSorted, SerialOrganizedSortedTableTestFixture)
+BOOST_AUTO_TEST_CASE_TEMPLATE(testTableOperatorSorted, FileType, table_test_file_types)
 {
-  std::stringstream expected;
-  expected << testdata_[0] << testdata_[1] << testdata_[2];
-  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata()));
+  SerialOrganizedSortedTableTestFixture<FileType> fixture;
+  fixture.testTableOperatorSorted();
 }
 
-BOOST_FIXTURE_TEST_CASE(testTableOperatorSortedWithDatePredicate, SerialOrganizedTableTestFixture)
+BOOST_AUTO_TEST_CASE_TEMPLATE(testTableOperatorSortedWithDatePredicate, FileType, table_test_file_types)
 {
-  std::stringstream expected;
-  expected << testdata_[0] << testdata_[1];
-  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata(), "Date = '2024-01-01'"));
+  SerialOrganizedSortedTableTestFixture<FileType> fixture;
+  fixture.testTableOperatorSortedWithDatePredicate();
 }
 
-BOOST_FIXTURE_TEST_CASE(testTableOperatorSortedWithDatePredicate2, SerialOrganizedTableTestFixture)
+BOOST_AUTO_TEST_CASE_TEMPLATE(testTableOperatorSortedWithDatePredicate2, FileType, table_test_file_types)
 {
-  std::stringstream expected;
-  expected << testdata_[2];
-  BOOST_CHECK_EQUAL(expected.str(), runTableScan(getMyTableMetadata(), "Date = '2024-01-02'"));
+  SerialOrganizedSortedTableTestFixture<FileType> fixture;
+  fixture.testTableOperatorSortedWithDatePredicate2();  
+}
+
+template<typename FileType>
+struct SerialOrganizedMultiRootTableTestFixtureBase
+{
+  std::array<std::string, 3> testdata_;
+  std::vector<std::unique_ptr<FileType>> files_;
+  SerialOrganizedMultiRootTableTestFixtureBase(const std::array<std::string, 3> & testdata)
+    :
+    testdata_(testdata)
+  {
+    std::filesystem::create_directory("./data1", ".");
+    std::filesystem::create_directory("./data1/1_1", ".");
+    std::filesystem::create_directory("./data1/1_1/mytable", ".");
+    std::filesystem::create_directory("./data1/1_1/mytable/1", ".");
+    std::filesystem::create_directory("./data1/1_1/mytable/1/1", ".");
+    std::filesystem::create_directory("./data2", ".");
+    std::filesystem::create_directory("./data2/1_1", ".");
+    std::filesystem::create_directory("./data2/1_1/mytable", ".");
+    std::filesystem::create_directory("./data2/1_1/mytable/1", ".");
+    std::filesystem::create_directory("./data2/1_1/mytable/1/1", ".");
+    std::filesystem::create_directory("./data1/1_1/mytable/1/1/2024-01-01", ".");
+    std::filesystem::create_directory("./data1/1_1/mytable/1/1/2024-01-01/7C4D89943F62499A9AF57475FB5057D5", ".");
+    std::filesystem::create_directory("./data1/1_1/mytable/1/1/2024-01-01/13ACC820567845EB9ACB0C764F460546", ".");
+    std::filesystem::create_directory("./data2/1_1/mytable/1/1/2024-01-02", ".");
+    std::filesystem::create_directory("./data2/1_1/mytable/1/1/2024-01-02/13ACC820567845EB9ACB0C764F460546", ".");
+    files_.push_back(std::make_unique<FileType>((boost::format("./data1/1_1/mytable/1/1/2024-01-01/7C4D89943F62499A9AF57475FB5057D5/serial_00000.%1%") % FileType::extension()).str().c_str(), testdata_[0]));
+    files_.push_back(std::make_unique<FileType>((boost::format("./data1/1_1/mytable/1/1/2024-01-01/13ACC820567845EB9ACB0C764F460546/serial_00000.%1%") % FileType::extension()).str().c_str(), testdata_[1]));
+    files_.push_back(std::make_unique<FileType>((boost::format("./data2/1_1/mytable/1/1/2024-01-02/13ACC820567845EB9ACB0C764F460546/serial_00000.%1%") % FileType::extension()).str().c_str(), testdata_[2])); 
+  }
+  SerialOrganizedMultiRootTableTestFixtureBase(const std::string & testdata)
+    :
+    SerialOrganizedMultiRootTableTestFixtureBase({ testdata, testdata, testdata })
+  {
+  }
+  
+  virtual ~SerialOrganizedMultiRootTableTestFixtureBase()
+  {
+    std::filesystem::remove_all("./data1");
+    std::filesystem::remove_all("./data2");
+  }
+
+  std::string runTableScan(std::shared_ptr<TableMetadata> metadata, const char * predicate=nullptr)
+  {
+    PlanCheckContext ctxt;
+    LogicalPlan plan(ctxt);
+    auto tablescan = new LogicalTableParser("mytable", metadata);
+    tablescan->addParam("connect", (boost::format("file://%1%") % (std::filesystem::current_path() / "data1").native()).str());
+    tablescan->addParam("connect", (boost::format("file://%1%") % (std::filesystem::current_path() / "data2").native()).str());
+    if (nullptr != predicate) {
+      tablescan->addParam("where", predicate);
+    }
+    plan.addOperator(tablescan);
+    auto filewrite = new LogicalFileWrite();
+    filewrite->addParam("file", LogicalOperator::param_type((std::filesystem::current_path() / "data/output.txt").native()));
+    filewrite->addParam("mode", LogicalOperator::param_type("text"));
+    plan.addOperator(filewrite);
+    plan.addEdge(tablescan, filewrite);
+    auto runtimePlan = DataflowGraphBuilder::create(plan, 1);
+    RuntimeProcess p;
+    p.init(0,0,1,*runtimePlan.get());
+    p.run();
+    std::ifstream resultFile(std::filesystem::current_path() / "data/output.txt");
+    std::stringstream result;
+    std::copy(std::istreambuf_iterator<char>(resultFile),
+              std::istreambuf_iterator<char>(),
+              std::ostreambuf_iterator<char>(result));
+    return result.str();
+  }
+};
+
+template<typename FileType>
+struct SerialOrganizedMultiRootTableTestFixture : public SerialOrganizedMultiRootTableTestFixtureBase<FileType>
+{
+  SerialOrganizedMultiRootTableTestFixture()
+    :
+    SerialOrganizedMultiRootTableTestFixtureBase<FileType>("ssdfasdfa;sdkfjals\n")
+  {
+  }
+  static std::shared_ptr<TableMetadata> getMyTableMetadata()
+  {
+    std::vector<SortKey> mde_log_sort; 
+    std::string tableFormat("a VARCHAR");
+    auto m = std::make_shared<TableMetadata>("mytable",
+                                             tableFormat,
+                                             mde_log_sort,
+                                             FileType::compression_type());
+
+    // Create a single column group for the whole table.                                                                                                                                                             
+    TableColumnGroup * cg = m->addDefaultColumnGroup();
+    {
+      // Version 1 of the table                                                                                                                                                                                      
+      std::map<std::string, std::string> computedColumns;
+      TableFileMetadata * f = new TableFileMetadata(tableFormat,
+                                                    computedColumns);
+      cg->add(1, f);
+    }
+
+    return m;
+  }
+  
+  void testMultiRootBind()
+  {
+    SerialOrganizedTable t(1, 1, "mytable");
+    std::string p1 = (boost::format("file://%1%") % std::filesystem::absolute(std::filesystem::path(".") / "data1").generic_string()).str();
+    std::string p2 = (boost::format("file://%1%") % std::filesystem::absolute(std::filesystem::path(".") / "data2").generic_string()).str();
+    FileSystem * fs1 = FileSystem::get(URI::get(p1.c_str()));
+    FileSystem * fs2 = FileSystem::get(URI::get(p2.c_str()));
+    t.bind({fs1, fs2});
+    BOOST_REQUIRE_EQUAL(3U, t.getSerialPaths().size());
+    for(auto f : t.getSerialPaths()) {
+      BOOST_CHECK_EQUAL(1, f->getMinorVersion());
+      BOOST_CHECK(boost::algorithm::equals("2024-01-01", f->getDate()) ||
+                  boost::algorithm::equals("2024-01-02", f->getDate()));
+    }
+    FileSystem::release(fs1);
+    FileSystem::release(fs2);
+  }
+
+  void testMultiRootBindWithPredicate()
+  {
+    SerialOrganizedTable t(1, 1, "mytable","Date = '2024-01-01'");
+    std::string p1 = (boost::format("file://%1%") % std::filesystem::absolute(std::filesystem::path(".") / "data1").generic_string()).str();
+    std::string p2 = (boost::format("file://%1%") % std::filesystem::absolute(std::filesystem::path(".") / "data2").generic_string()).str();
+    FileSystem * fs1 = FileSystem::get(URI::get(p1.c_str()));
+    FileSystem * fs2 = FileSystem::get(URI::get(p2.c_str()));
+    t.bind({fs1, fs2});
+    BOOST_REQUIRE_EQUAL(2U, t.getSerialPaths().size());
+    for(auto f : t.getSerialPaths()) {
+      BOOST_CHECK_EQUAL(1, f->getMinorVersion());
+      BOOST_CHECK(boost::algorithm::equals("2024-01-01", f->getDate()));
+    }
+    FileSystem::release(fs1);
+    FileSystem::release(fs2);
+  }
+
+  void testMultiRootTableOperator()
+  {
+    std::stringstream expected;
+    expected << this->testdata_[0] << this->testdata_[1] << this->testdata_[2];
+    BOOST_CHECK_EQUAL(expected.str(), this->runTableScan(this->getMyTableMetadata()));
+  }
+
+  void testMultiRootTableOperatorWithDatePredicate()
+  {
+    std::stringstream expected;
+    expected << this->testdata_[0] << this->testdata_[1];
+    BOOST_CHECK_EQUAL(expected.str(), this->runTableScan(this->getMyTableMetadata(), "Date = '2024-01-01'"));
+  }
+
+  void testMultiRootTableOperatorWithDatePredicate2()
+  {
+    std::stringstream expected;
+    expected << this->testdata_[2];
+    BOOST_CHECK_EQUAL(expected.str(), this->runTableScan(this->getMyTableMetadata(), "Date = '2024-01-02'"));
+  }
+};
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(testMultiRootBind, FileType, table_test_file_types)
+{
+  SerialOrganizedMultiRootTableTestFixture<FileType> fixture;
+  fixture.testMultiRootBind();
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(testMultiRootBindWithPredicate, FileType, table_test_file_types)
+{
+  SerialOrganizedMultiRootTableTestFixture<FileType> fixture;
+  fixture.testMultiRootBindWithPredicate();
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(testMultiRootTableOperator, FileType, table_test_file_types)
+{
+  SerialOrganizedMultiRootTableTestFixture<FileType> fixture;
+  fixture.testMultiRootTableOperator();
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(testMultiRootTableOperatorWithDatePredicate, FileType, table_test_file_types)
+{
+  SerialOrganizedMultiRootTableTestFixture<FileType> fixture;
+  fixture.testMultiRootTableOperatorWithDatePredicate();
+}
+
+BOOST_AUTO_TEST_CASE_TEMPLATE(testMultiRootTableOperatorWithDatePredicate2, FileType, table_test_file_types)
+{
+  SerialOrganizedMultiRootTableTestFixture<FileType> fixture;
+  fixture.testMultiRootTableOperatorWithDatePredicate2();
 }
 

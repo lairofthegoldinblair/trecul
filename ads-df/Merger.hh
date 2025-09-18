@@ -40,6 +40,7 @@
 #include "AsynchronousFileSystem.hh"
 #include "RuntimeOperator.hh"
 #include "CompileTimeLogicalOperator.hh"
+#include "CompressionType.hh"
 
 template <class _Pred>
 struct NotPred : std::binary_function<typename _Pred::first_argument_type,
@@ -738,6 +739,7 @@ private:
   TreculFreeOperation * mFileNameExprFree;
   int32_t mMaxRecords;
   int32_t mMaxSeconds;
+  CompressionType mCompression;
 
   void buildHeader(bool isFormatHeader);
   void checkPath(PlanCheckContext& ctxt, const std::string& path);

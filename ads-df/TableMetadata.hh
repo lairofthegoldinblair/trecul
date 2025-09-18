@@ -41,6 +41,7 @@
 #include <string>
 #include <vector>
 
+#include "CompressionType.hh"
 #include "LogicalOperator.hh"
 
 class DynamicRecordContext;
@@ -181,14 +182,19 @@ private:
   // If we have multiple column groups then they must be
   // named.  This is the map from name to column group.
   std::map<std::string, TableColumnGroup*> mColumnGroupNames;
+  // (Default) compression for table data
+  CompressionType mCompressionType;
+  
 public:
   TableMetadata(const std::string& tableName,
 		const std::string& recordType,
-		const std::vector<SortKey>& sortKeys);
+		const std::vector<SortKey>& sortKeys,
+                const CompressionType & compressionType);
 
   TableMetadata(const std::string& tableName,
 		const std::string& recordType,
 		const std::vector<SortKey>& sortKeys,
+                const CompressionType & compressionType,
 		const std::vector<std::string>& primaryKey,
 		const std::string& version);
 
@@ -244,6 +250,11 @@ public:
    * Version column for the table.
    */
   const std::string& getVersion() const;
+
+  /**
+   * Compression type of the table
+   */
+  const CompressionType& getCompressionType() const;
 
   /**
    * Add columns required for column group processing.

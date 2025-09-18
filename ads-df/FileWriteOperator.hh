@@ -315,6 +315,11 @@ public:
       mCreationPolicy->loadFunctions(m);
     }
   }
+
+  const CompressionType & getCompressionType() const
+  {
+    return mCreationPolicy->getCompressionType();
+  }
 };
 
 // Some hackery to keep the RuntimeHdfsWriteOperator template implementation out of the header file

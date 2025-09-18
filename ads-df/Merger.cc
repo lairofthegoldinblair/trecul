@@ -598,6 +598,7 @@ void LogicalFileRead::internalCreate(class RuntimePlanBuilder& plan)
 					      mEscapeChar,
 					      getOutput(0)->getRecordType(),
                                               *mFree,
+                                              serial_op_type::chunk_strategy_type(),
 					      mFormat,
 					      mCommentLine.c_str());
     sot->setSkipHeader(mSkipHeader);
@@ -609,6 +610,7 @@ void LogicalFileRead::internalCreate(class RuntimePlanBuilder& plan)
 					  mEscapeChar,
 					  getOutput(0)->getRecordType(),
                                           *mFree,
+                                          text_op_type::chunk_strategy_type(),
 					  mFormat,
 					  mCommentLine.c_str());
     tot->setSkipHeader(mSkipHeader);
@@ -626,7 +628,8 @@ LogicalFileWrite::LogicalFileWrite()
   mFileNameExpr(nullptr),
   mFileNameExprFree(nullptr),
   mMaxRecords(0),
-  mMaxSeconds(0)
+  mMaxSeconds(0),
+  mCompression(CompressionType::Gzip())
 {
 }
 
@@ -701,10 +704,13 @@ WritableFileFactory * LogicalFileWrite::getFileFactory(UriPtr uri) const
 void LogicalFileWrite::check(PlanCheckContext& ctxt)
 {
   // Validate the parameters
+  std::string compressionType;
   for(const_param_iterator it = begin_params();
       it != end_params();
       ++it) {
-    if (it->equals("connect")) {
+    if (it->equals("compression")) {
+      compressionType = getStringValue(ctxt, *it);
+    } else if (it->equals("connect")) {
       mConnect = getStringValue(ctxt, *it);
     } else if (it->equals("file")) {
       mFile = getStringValue(ctxt, *it);
@@ -737,6 +743,14 @@ void LogicalFileWrite::check(PlanCheckContext& ctxt)
     ctxt.logError(*this, "mode parameter must be \"text\" or \"binary\"");
   }
 
+  if (!compressionType.empty()) {
+    std::error_code ec;
+    mCompression = CompressionType::fromString(compressionType, ec);
+    if (ec) {
+      ctxt.logError(*this, "compression parameter must be \"none\", \"gzip\" or \"zstd\"");
+    }
+  }
+
   if (0==mConnect.size()) {
     checkPath(ctxt, mFile);
   } else {
@@ -767,6 +781,7 @@ void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
                                                                              mHeader,
                                                                              mHeaderFile,
                                                                              new StreamingFileCreationPolicy(uri->getPath(),
+                                                                                                             mCompression,
                                                                                                              (std::size_t) mMaxSeconds,
                                                                                                              (std::size_t) mMaxRecords));
     } else {
@@ -778,7 +793,8 @@ void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
                                                                          mHeader,
                                                                          mHeaderFile,
                                                                          new MultiFileCreationPolicy(mConnect.size() ? "" : uri->getPath(),
-                                                                                                     mFileNameExpr, mFileNameExprFree));
+                                                                                                     mFileNameExpr, mFileNameExprFree,
+                                                                                                     mCompression));
     }
   } else if (boost::algorithm::iequals("binary", mMode)) {
     opType = new InternalFileWriteOperatorType("write",

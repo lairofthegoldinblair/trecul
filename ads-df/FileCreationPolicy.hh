@@ -5,6 +5,7 @@
 
 #include <boost/asio.hpp>
 
+#include "CompressionType.hh"
 #include "RuntimePort.hh"
 #include "RuntimeOperator.hh"
 #include "ServiceCompletionPort.hh"
@@ -127,6 +128,7 @@ private:
   TreculFunctionReference mTransferFreeRef;
   TreculRecordFreeRuntime mTransferFree;
   FieldAddress * mTransferOutput;
+  CompressionType mCompressionType;
 
   // Serialization
   friend class boost::serialization::access;
@@ -137,6 +139,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mTransferRef);
     ar & BOOST_SERIALIZATION_NVP(mTransferFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mTransferOutput);
+    ar & BOOST_SERIALIZATION_NVP(mCompressionType);
   }
 public:
   MultiFileCreationPolicy()
@@ -146,12 +149,14 @@ public:
   }
   MultiFileCreationPolicy(const std::string& hdfsFile,
 			  const TreculTransfer * argTransfer,
-                          const TreculFreeOperation * argTransferFree)
+                          const TreculFreeOperation * argTransferFree,
+                          const CompressionType & compressionType)
     :
     mHdfsFile(hdfsFile),
     mTransferRef(nullptr != argTransfer ? argTransfer->getReference() : TreculTransferReference()),
     mTransferFreeRef(nullptr != argTransferFree ? argTransferFree->getReference() : TreculFunctionReference()),
-    mTransferOutput(nullptr != argTransfer ? new FieldAddress(*argTransfer->getTarget()->begin_offsets()) : NULL)
+    mTransferOutput(nullptr != argTransfer ? new FieldAddress(*argTransfer->getTarget()->begin_offsets()) : NULL),
+    mCompressionType(compressionType)
   {
   }
   ~MultiFileCreationPolicy()
@@ -172,6 +177,10 @@ public:
     if (!mTransferFreeRef.empty()) {
       mTransferFree = m.getFunction<TreculRecordFreeRuntime>(mTransferFreeRef);
     }
+  }
+  const CompressionType & getCompressionType() const
+  {
+    return mCompressionType;
   }
 };
 
@@ -377,6 +386,11 @@ private:
    */
   std::size_t mFileRecords;
 
+  /**
+   * Compression type of files to create
+   */
+  CompressionType mCompressionType;
+
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
@@ -385,6 +399,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mBaseDir);
     ar & BOOST_SERIALIZATION_NVP(mFileSeconds);
     ar & BOOST_SERIALIZATION_NVP(mFileRecords);
+    ar & BOOST_SERIALIZATION_NVP(mCompressionType);
   }
 
   StreamingFileCreationPolicy()
@@ -395,12 +410,14 @@ private:
   }
 public:
   StreamingFileCreationPolicy(const std::string& baseDir,
+                              const CompressionType & compressionType,
 			      std::size_t fileSeconds=0,
 			      std::size_t fileRecords=0)
     :
     mBaseDir(baseDir),
     mFileSeconds(fileSeconds),
-    mFileRecords(fileRecords)
+    mFileRecords(fileRecords),
+    mCompressionType(compressionType)
   {
   }
   ~StreamingFileCreationPolicy()
@@ -409,6 +426,10 @@ public:
   bool requiresServiceCompletionPort() const { return true; }
   void loadFunctions(TreculModule & m)
   {
+  }
+  const CompressionType & getCompressionType() const
+  {
+    return mCompressionType;
   }
 };
 

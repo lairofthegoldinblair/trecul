@@ -58,17 +58,20 @@ const std::map<std::string, std::string>& TableFileMetadata::getComputedColumns(
 
 TableMetadata::TableMetadata(const std::string& tableName,
 			     const std::string& recordType,
-			     const std::vector<SortKey>& sortKeys)
+			     const std::vector<SortKey>& sortKeys,
+                             const CompressionType & compressionType)
   :
   mTableName(tableName),
   mRecordType(recordType),
-  mSortKeys(sortKeys)
+  mSortKeys(sortKeys),
+  mCompressionType(compressionType)
 {
 }
 
 TableMetadata::TableMetadata(const std::string& tableName,
 			     const std::string& recordType,
 			     const std::vector<SortKey>& sortKeys,
+                             const CompressionType & compressionType,
 			     const std::vector<std::string>& primaryKey,
 			     const std::string& version)
   :
@@ -76,7 +79,8 @@ TableMetadata::TableMetadata(const std::string& tableName,
   mRecordType(recordType),
   mSortKeys(sortKeys),
   mPrimaryKey(primaryKey),
-  mVersion(version)
+  mVersion(version),
+  mCompressionType(compressionType)
 {
   if (sortKeys.size() < primaryKey.size()) { 
     throw std::runtime_error("Primary key must be a prefix of sort keys");
@@ -174,6 +178,11 @@ const std::vector<std::string>& TableMetadata::getPrimaryKey() const
 std::vector<SortKey> TableMetadata::getPrimarySortKey() const
 {
   return std::vector<SortKey>(mSortKeys.begin(), mSortKeys.begin() + mPrimaryKey.size());
+}
+
+const CompressionType& TableMetadata::getCompressionType() const
+{
+  return mCompressionType;
 }
 
 const std::string& TableMetadata::getVersion() const
