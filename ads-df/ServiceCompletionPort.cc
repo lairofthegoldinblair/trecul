@@ -17,11 +17,17 @@ ServiceCompletionFifo::~ServiceCompletionFifo()
 
 void ServiceCompletionFifo::write(RecordBuffer buf)
 {
-  std::lock_guard<std::mutex> channelGuard(mLock);
-  DataflowSchedulerScopedLock schedGuard(mTargetScheduler);
-  mQueue.Push(buf);
-  mRecordsRead += 1;
-  mTargetScheduler.reprioritizeReadRequest(*mTarget);   
+  bool wakeUpTarget;
+  {
+    std::lock_guard<std::mutex> channelGuard(mLock);
+    DataflowSchedulerScopedLock schedGuard(mTargetScheduler);
+    mQueue.Push(buf);
+    mRecordsRead += 1;
+    wakeUpTarget = mTargetScheduler.reprioritizeReadRequest(*mTarget);
+  }
+  if (wakeUpTarget) {
+    mTargetScheduler.unblocked();
+  }
 }
 
 void ServiceCompletionFifo::sync(ServiceCompletionPort & port)

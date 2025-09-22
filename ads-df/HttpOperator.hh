@@ -139,7 +139,7 @@ public:
 
   int32_t numServiceCompletionPorts() const 
   {
-    return 1;
+    return 2;
   }
 
   RuntimeOperator * create(RuntimeOperator::Services & services) const;

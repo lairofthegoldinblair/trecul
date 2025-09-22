@@ -42,6 +42,7 @@
 #include <mutex>
 #include <thread>
 #include <map>
+#include <boost/asio/io_service.hpp>
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 
@@ -81,6 +82,8 @@ private:
   std::vector<InProcessFifo *> mChannels;
   // Service Completion Channels
   std::vector<class ServiceCompletionFifo *> mServiceChannels;
+  // ASIO service
+  boost::asio::io_service mIOService;
 
   /**
    * Create all of the operators in the required partitions.

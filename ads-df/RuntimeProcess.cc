@@ -60,6 +60,10 @@
 #include <boost/bind/bind.hpp>
 #include <boost/regex.hpp>
 #include <boost/iostreams/stream.hpp>
+#include <boost/log/core.hpp>
+#include <boost/log/expressions.hpp>
+#include <boost/log/trivial.hpp>
+#include <boost/log/sinks/text_file_backend.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 #if defined(__APPLE__) || defined(__APPLE_CC__)
@@ -178,7 +182,7 @@ void RuntimeProcess::init(int32_t partitionStart,
   if (partitionStart < 0 || partitionEnd >= numPartitions)
     throw std::runtime_error("Invalid partition allocation to process");
   for(int32_t i=partitionStart; i<=partitionEnd; i++) {
-    mSchedulers[i] = new DataflowScheduler(i, numPartitions);
+    mSchedulers[i] = new DataflowScheduler(i, numPartitions, &mIOService);
   }
 
   for(RuntimeOperatorPlan::operator_const_iterator it = plan.operator_begin();
@@ -653,6 +657,11 @@ void RuntimeProcess::run()
   // Start any threads necessary for remote execution
   runRemote(threads);
 
+  // Start IOService thread(s)
+  typedef boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_type;
+  auto ioServiceWork = std::make_unique<work_type>(mIOService.get_executor());
+  std::thread ioServiceThread([this](){this->mIOService.run();});
+  
   std::mutex mutex;
   std::deque<DataflowSchedulerThreadRunner*> completedQueue;
   std::condition_variable condVar;
@@ -706,6 +715,10 @@ void RuntimeProcess::run()
       ++it) {
     (*it)->join();
   }
+
+  // Stop IOService thread(s)
+  ioServiceWork.reset();
+  ioServiceThread.join();
 
   // Check for errors and rethrow.
   int32_t numThreadErrors=0;
@@ -806,6 +819,7 @@ int PlanRunner::run(int argc, char ** argv)
   // TODO: I think a better way to do this is to export a pointer to the function
   // from the module.
   int dummy=9923;
+  std::string loglev;
   SuperFastHash((char *) &dummy, sizeof(int), sizeof(int));
   
 #if defined(TRECUL_HAS_HADOOP)
@@ -818,6 +832,7 @@ int PlanRunner::run(int argc, char ** argv)
     ("help", "produce help message")
     ("case-insensitive", "should identifiers be case insensitive")
     ("compile", "generate dataflow plan but don't run")
+    ("loglevel", po::value<std::string>(&loglev)->default_value("warning"), "log level (trace,debug,info,warning,error)")
     ("serial", po::value<int32_t>(), "specific partition against which to run a dataflow")
     ("partitions", po::value<int32_t>(), "number of partitions for the flow")
     ("plan", "run dataflow from a compiled plan")
@@ -878,6 +893,18 @@ int PlanRunner::run(int argc, char ** argv)
 
   if (vm.count("case-insensitive")) {
     TypeCheckConfiguration::get().caseInsensitive(true);
+  }
+
+  if (boost::algorithm::iequals("trace", loglev)) {
+    boost::log::core::get()->set_filter(boost::log::trivial::severity >= boost::log::trivial::trace);
+  } else if (boost::algorithm::iequals("debug", loglev)) {
+    boost::log::core::get()->set_filter(boost::log::trivial::severity >= boost::log::trivial::debug);
+  } else if (boost::algorithm::iequals("info", loglev)) {
+    boost::log::core::get()->set_filter(boost::log::trivial::severity >= boost::log::trivial::info);
+  } else if (boost::algorithm::iequals("warning", loglev)) {
+    boost::log::core::get()->set_filter(boost::log::trivial::severity >= boost::log::trivial::warning);
+  } else if (boost::algorithm::iequals("error", loglev)) {
+    boost::log::core::get()->set_filter(boost::log::trivial::severity >= boost::log::trivial::error);
   }
 
 #if defined(linux) || defined(__linux) || defined(__linux__)

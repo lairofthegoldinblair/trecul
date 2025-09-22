@@ -79,7 +79,7 @@ Zstd.cc
 ${EXTRA_SOURCE}
 )
 
-target_link_libraries( ads-df ads-ql ${ZLIB_LIBRARIES} ${ZSTD_LIBRARIES} ${URIPARSER_LIBRARIES} ${Boost_IOSTREAMS_LIBRARY} ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${EXTRA_LIBS} )
+target_link_libraries( ads-df ads-ql ${ZLIB_LIBRARIES} ${ZSTD_LIBRARIES} ${URIPARSER_LIBRARIES} ${Boost_IOSTREAMS_LIBRARY} ${Boost_LOG_LIBRARY} ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${EXTRA_LIBS} )
 
 add_executable( ads-df-exe ads-df.cc )
 set_target_properties( ads-df-exe PROPERTIES OUTPUT_NAME "ads-df")

@@ -36,6 +36,7 @@
 #define __DATAFLOW_RUNTIME_HH
 
 #include <atomic>
+#include <condition_variable>
 #include <mutex>
 #include <vector>
 #include <list>
@@ -168,6 +169,20 @@ private:
    * able to disable (or severely limit) buffers when not needed.
    */
   bool mBuffered;
+
+  /**
+   * Move a chunk of data from the channel queue into the target port 
+   * local cache.   Reach into the scheduler(s) associated with the ports and
+   * notify them about the event.
+   */
+  void writeSomeToPort();
+  /**
+   * Move all the data in the local cache of the source into the channel
+   * queue.  Reach into the scheduler(s) associated with the ports and
+   * notify them about the event.
+   */
+  void readAllFromPort();
+
 public:
   InProcessFifo(DataflowScheduler & sourceScheduler, 
 		DataflowScheduler & targetScheduler,
@@ -199,19 +214,6 @@ public:
    * Implement flush on behalf of the ports.
    */
   uint64_t flush(InProcessPort<InProcessFifo> & port);
-
-  /**
-   * Move a chunk of data from the channel queue into the target port 
-   * local cache.   Reach into the scheduler(s) associated with the ports and
-   * notify them about the event.
-   */
-  void writeSomeToPort();
-  /**
-   * Move all the data in the local cache of the source into the channel
-   * queue.  Reach into the scheduler(s) associated with the ports and
-   * notify them about the event.
-   */
-  void readAllFromPort();
 
   /**
    * The number of elements currently in the channel.
@@ -474,7 +476,12 @@ private:
    * Lock that protects the internal scheduler queues. Using Boost threads/pthreads for now.
    * Will evaluate performance of this vs. user defined spin locks.
    */
-  std::mutex mLock;
+  mutable std::mutex mLock;
+
+  /**
+   * Condition variable used to wait for scheduler to be unblocked
+   */
+  std::condition_variable mCondVar;
 
   /**
    * These are the operators I am scheduling.
@@ -628,8 +635,6 @@ private:
    * so that it posts directly to dataflow fifos rather than a queue owned
    * by io_service.  I suppose that would be implementing my own io_service???
    *
-   * TODO: Is it right to have this owned by a scheduler?  It may be
-   * a process wide thing?
    */
   boost::asio::io_service * mIOService;
 
@@ -637,9 +642,7 @@ private:
    * These statistics tell us something about how the scheduler
    * is behaving with respect to processing IO completions.
    */
-  std::size_t mNumIOPoll;
   std::size_t mNumInternalWriteBufferFlush;
-  std::size_t mNumIOWaits;
 
   /**
    * Exit the scheduler if this is set
@@ -669,8 +672,15 @@ private:
 
   void ioComplete(RuntimePort & ports);
 
+  /**
+   * True if there are requests outstanding but all such requests are blocked.
+   * First method takes a lock, second assumes that lock is taken.
+   */
+  bool isBlocked() const;
+  bool isBlockedLocked() const;
+
 public:
-  DataflowScheduler(int32_t partition=0, int32_t numPartitions=1);
+  DataflowScheduler(int32_t partition=0, int32_t numPartitions=1, boost::asio::io_service * ioService=nullptr);
   ~DataflowScheduler();
   // TODO: Not sure we want this here.  It is really here because the 
   // RuntimeOperator needs this at creation time.
@@ -915,8 +925,19 @@ public:
   {
     ioComplete(port);
   }
-  void reprioritizeReadRequest(RuntimePort & port);
-  void reprioritizeWriteRequest(RuntimePort & port);
+  /**
+   * When a channel is written (resp. read) that may cause change to a
+   * corresponding read (resp. write) request on the other side of the 
+   * channel.   Then methods perform those updates.   Must be taken with 
+   * scheduler lock held.
+   *
+   * N.B. In a multithreaded context, this method may be called from 
+   * different thread than the one this scheduler is running on.
+   *
+   * returns true if the read/write unblocks the scheduler.
+   */
+  bool reprioritizeReadRequest(RuntimePort & port);
+  bool reprioritizeWriteRequest(RuntimePort & port);
 
   /**
    * Calculate the priority of a read on a channel of size sz.
@@ -979,6 +1000,8 @@ public:
   {
     mCancelled.store(true, std::memory_order_relaxed);
   }
+
+  void unblocked();
 
   boost::asio::io_service& getIOService();
 };

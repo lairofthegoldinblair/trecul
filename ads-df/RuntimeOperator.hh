@@ -388,6 +388,10 @@ protected:
   {
     mServices.requestRead(&ports);
   }
+  void requestCompletion(RuntimePort & ports)
+  {
+    mServices.requestRead(&ports);
+  }
   void read(RuntimePort * port, RecordBuffer& buf)
   {
     mServices.read(port, buf);

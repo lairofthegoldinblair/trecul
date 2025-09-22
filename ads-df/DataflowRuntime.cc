@@ -59,7 +59,7 @@ RuntimeOperatorProcess::~RuntimeOperatorProcess()
 {
 }
 
-DataflowScheduler::DataflowScheduler(int32_t partition, int32_t numPartitions)
+DataflowScheduler::DataflowScheduler(int32_t partition, int32_t numPartitions, boost::asio::io_service * ioService)
   :
   mState(INITIALIZED),
   mRequestsOutstanding(0),
@@ -67,21 +67,16 @@ DataflowScheduler::DataflowScheduler(int32_t partition, int32_t numPartitions)
   mNumPartitions(numPartitions),
   mCurrentPort(NULL),
   mMaxWritesBeforeYield(14*10),
-  mIOService(NULL),
-  mNumIOPoll(0),
+  mIOService(ioService),
   mNumInternalWriteBufferFlush(0),
-  mNumIOWaits(0),
   mCancelled(false)
 {
   mQueues[0].mMask = 0;
   mQueues[1].mMask = 0;
-  mIOService = new boost::asio::io_service();
 }
 
 DataflowScheduler::~DataflowScheduler()
 {
-  // TODO: How to shutdown properly.
-  delete mIOService;
 }
 
 void DataflowScheduler::setOperator(RuntimeOperator * op)
@@ -352,30 +347,17 @@ void DataflowScheduler::run()
     // to process before running a poll so that we do
     // not degrade performance but still service IO with
     // acceptable latency.
-    RunCompletion ret = runSome(10000);
-    if (ret == NO_REQUESTS_OUTSTANDING) {
+    bool ret = runSome();
+    if (ret) {
+      // NO_REQUESTS_OUTSTANDING, we are done
       break;
-    }
-    
-    // First give a crack at processing IO without blocking
-    // We don't want to flush buffers yet because we want to 
-    // maintain throughput until we are sure that we are stalling
-    // due to IO waits.  Could also opt to busy wait (poll multiple
-    // times) for a bit before giving up.
-    std::size_t processed = mIOService->poll();
-    if (0 != processed || MAX_ITERATIONS_REACHED == ret) {
-      // An IO completed or there are dataflow ops
-      // outstanding so try to run operators again
-      mIOService->reset();
-      mNumIOPoll += 1;
-      continue;
     }
 
     // All requests are blocked; must be something to wait for
-    // in IO land.  
-    BOOST_ASSERT(NO_ENABLED_REQUESTS == ret);
+    // in another thread (e.g. io service thread or another partition).
+    BOOST_ASSERT(!ret);
 
-    // No IOs were ready but we may have some records
+    // We may have some records
     // hanging out in port buffers that we can try to flush
     // through the system.  This isn't good for throughput but
     // we also want reasonable latency for records to be processed
@@ -388,14 +370,12 @@ void DataflowScheduler::run()
       continue;
     }
 
-    // We've concluded there REALLY isn't anything to do but wait.
-    // Only block on the first request because it 
-    // will likely result in us having more work to do while subsequent 
-    // IO's may not be ready yet and we shouldn't need to wait for them.
-    mIOService->run_one();
-    mIOService->poll();
-    mIOService->reset();
-    mNumIOWaits += 1;
+    {
+      std::unique_lock lk(mLock);
+      mCondVar.wait_for(lk, std::chrono::milliseconds(1), [this] () { return !this->isBlockedLocked(); });
+      continue;
+    }
+
     // TODO: Should spin for a bit and then wait in an
     // alertable state.
     // if (0 == --spins) {
@@ -500,34 +480,87 @@ void DataflowScheduler::ioComplete(RuntimePort & ports)
   } while(it != &ports);
 }
 
-void DataflowScheduler::reprioritizeReadRequest(RuntimePort & port)
+bool DataflowScheduler::isBlocked() const
 {
-  // Grab the current size of the port and see if it has changed from currently
-  // scheduled priority. Do this only if the port has an outstanding request.
-  int32_t newPriority = getPriority(port);
-  if (port.isReadWriteOutstanding() && newPriority != port.getQueueIndex()) {
-    mQueues[0].mQueues[port.getQueueIndex()].erase(RuntimePort::SchedulerQueue::s_iterator_to(port));
-    if (mQueues[0].mQueues[port.getQueueIndex()].empty())
-      mQueues[0].mMask &= ~(1 << port.getQueueIndex());
-    mQueues[0].mQueues[newPriority].push_back(port);
-    mQueues[0].mMask |= (1 << newPriority);
-    port.setQueueIndex(newPriority);
-  }
+  std::unique_lock lk(mLock);
+  return isBlockedLocked();
 }
 
-void DataflowScheduler::reprioritizeWriteRequest(RuntimePort & port)
+bool DataflowScheduler::isBlockedLocked() const
+{
+  uint32_t bitmask = mQueues[0].mMask;
+  uint32_t bitOffset;
+  uint8_t zeroFlag;
+  __asm__ ("bsrl %2, %%eax;\n\t"
+           "movl %%eax, %0;\n\t"
+           "setzb %1;\n\t"
+           : "=r"(bitOffset), "=r"(zeroFlag)
+           : "r"(bitmask)
+           : "%eax");
+  if (!zeroFlag && bitOffset > 0) {
+    return false;
+  }
+
+  bitmask = mQueues[1].mMask;
+  __asm__ ("bsrl %2, %%eax;\n\t"
+           "movl %%eax, %0;\n\t"
+           "setzb %1;\n\t"
+           : "=r"(bitOffset), "=r"(zeroFlag)
+           : "r"(bitmask)
+           : "%eax");
+  if(!zeroFlag && bitOffset>0) {
+    return false;
+  }
+  return true;
+}
+
+bool DataflowScheduler::reprioritizeReadRequest(RuntimePort & port)
 {
   // Grab the current size of the port and see if it has changed from currently
   // scheduled priority. Do this only if the port has an outstanding request.
   int32_t newPriority = getPriority(port);
-  if (port.isReadWriteOutstanding() && newPriority != port.getQueueIndex()) {
-    mQueues[1].mQueues[port.getQueueIndex()].erase(RuntimePort::SchedulerQueue::s_iterator_to(port));
-    if (mQueues[1].mQueues[port.getQueueIndex()].empty())
-      mQueues[1].mMask &= ~(1 << port.getQueueIndex());
-    mQueues[1].mQueues[newPriority].push_back(port);
-    mQueues[1].mMask |= (1 << newPriority);
-    port.setQueueIndex(newPriority);
+  bool unblocked = false;
+  if (port.isReadWriteOutstanding()) {
+    auto oldPriority = port.getQueueIndex();
+    if (newPriority != oldPriority) {
+      // If old priority is 0 then it's possible the operator is currently blocked and is being unblocked
+      unblocked = 0 == oldPriority && isBlockedLocked();
+      mQueues[0].mQueues[port.getQueueIndex()].erase(RuntimePort::SchedulerQueue::s_iterator_to(port));
+      if (mQueues[0].mQueues[port.getQueueIndex()].empty())
+        mQueues[0].mMask &= ~(1 << port.getQueueIndex());
+      mQueues[0].mQueues[newPriority].push_back(port);
+      mQueues[0].mMask |= (1 << newPriority);
+      port.setQueueIndex(newPriority);
+    }
   }
+  return unblocked;
+}
+
+bool DataflowScheduler::reprioritizeWriteRequest(RuntimePort & port)
+{
+  // Grab the current size of the port and see if it has changed from currently
+  // scheduled priority. Do this only if the port has an outstanding request.
+  int32_t newPriority = getPriority(port);
+  bool unblocked = false;
+  if (port.isReadWriteOutstanding()) {
+    auto oldPriority = port.getQueueIndex();
+    if (newPriority != oldPriority) {
+      // If old priority is 0 then it's possible the operator is currently blocked and is being unblocked
+      unblocked = 0 == oldPriority && isBlockedLocked();
+      mQueues[1].mQueues[port.getQueueIndex()].erase(RuntimePort::SchedulerQueue::s_iterator_to(port));
+      if (mQueues[1].mQueues[port.getQueueIndex()].empty())
+        mQueues[1].mMask &= ~(1 << port.getQueueIndex());
+      mQueues[1].mQueues[newPriority].push_back(port);
+      mQueues[1].mMask |= (1 << newPriority);
+      port.setQueueIndex(newPriority);
+    }
+  }
+  return unblocked;
+}
+
+void DataflowScheduler::unblocked()
+{
+  mCondVar.notify_one();
 }
 
 boost::asio::io_service& DataflowScheduler::getIOService()
@@ -573,12 +606,19 @@ uint64_t InProcessFifo::flush(InProcessPort<InProcessFifo> & port)
     if(0 != mQueue.getSize()) {
       return 0;
     }
-    TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler,
-					      mTargetScheduler);
-    uint64_t sz = mSource->getLocalBuffer().getSize();
-    if (sz != 0) {
-      mSource->getLocalBuffer().popAndPushAllTo(mQueue);
-      mTargetScheduler.reprioritizeReadRequest(*mTarget); 
+    uint64_t sz = 0;
+    bool wakeUpTarget=false;
+    {
+      TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler,
+                                                mTargetScheduler);
+      sz = mSource->getLocalBuffer().getSize();
+      if (sz != 0) {
+        mSource->getLocalBuffer().popAndPushAllTo(mQueue);
+        wakeUpTarget = mTargetScheduler.reprioritizeReadRequest(*mTarget); 
+      }
+    }
+    if (wakeUpTarget) {
+      mTargetScheduler.unblocked();
     }
     return sz;
   } else {
@@ -594,11 +634,17 @@ void InProcessFifo::writeSomeToPort()
   // TODO: Update statistics on RecordsRead
   // TODO: Eliminate the call to reprioritze (and the corresponding lock)
   // if the priority hasn't changed.
-  std::lock_guard<std::mutex> channelGuard(mLock);
-  TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
-  mQueue.popAndPushSomeTo(mTarget->getLocalBuffer());
-  mTargetScheduler.readComplete(*mTarget);
-  mSourceScheduler.reprioritizeWriteRequest(*mSource);
+  bool wakeUpSource=false;
+  {
+    std::lock_guard<std::mutex> channelGuard(mLock);
+    TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
+    mQueue.popAndPushSomeTo(mTarget->getLocalBuffer());
+    mTargetScheduler.readComplete(*mTarget);
+    wakeUpSource = mSourceScheduler.reprioritizeWriteRequest(*mSource);
+  }
+  if (wakeUpSource) {
+    mSourceScheduler.unblocked();
+  }
 }
 
 void InProcessFifo::readAllFromPort()
@@ -609,11 +655,17 @@ void InProcessFifo::readAllFromPort()
   // TODO: Update statistics on RecordsRead
   // TODO: Eliminate the call to reprioritze (and the corresponding lock)
   // if the priority hasn't changed.
-  std::lock_guard<std::mutex> channelGuard(mLock);
-  TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
-  mSource->getLocalBuffer().popAndPushAllTo(mQueue);
-  mSourceScheduler.writeComplete(*mSource);
-  mTargetScheduler.reprioritizeReadRequest(*mTarget); 
+  bool wakeUpTarget=false;
+  {
+    std::lock_guard<std::mutex> channelGuard(mLock);
+    TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
+    mSource->getLocalBuffer().popAndPushAllTo(mQueue);
+    mSourceScheduler.writeComplete(*mSource);
+    wakeUpTarget = mTargetScheduler.reprioritizeReadRequest(*mTarget);
+  }
+  if (wakeUpTarget) {
+    mTargetScheduler.unblocked();
+  }
 }
 
 // class MemcpyStateMachine
@@ -669,11 +721,17 @@ void RemoteReceiveFifo::sync(InProcessPort<RemoteReceiveFifo> & port)
 
 void RemoteReceiveFifo::sync(uint64_t available)
 {
-  std::lock_guard<std::mutex> channelGuard(mLock);
-  TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
-  mDataAvailable += available;
-  mSourceScheduler.writeComplete(*mAvailableSource);
-  mTargetScheduler.reprioritizeReadRequest(*mTarget);
+  bool wakeUpTarget=false;
+  {
+    std::lock_guard<std::mutex> channelGuard(mLock);
+    TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
+    mDataAvailable += available;
+    mSourceScheduler.writeComplete(*mAvailableSource);
+    mTargetScheduler.reprioritizeReadRequest(*mTarget);
+  }
+  if (wakeUpTarget) {
+    mTargetScheduler.unblocked();
+  }
 }
 
 void RemoteReceiveFifo::writeSomeToPort()
@@ -684,13 +742,19 @@ void RemoteReceiveFifo::writeSomeToPort()
   // TODO: Update statistics on RecordsRead
   // TODO: Eliminate the call to reprioritze (and the corresponding lock)
   // if the priority hasn't changed.
-  std::lock_guard<std::mutex> channelGuard(mLock);
-  TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
-  uint64_t before = mQueue.getSize();
-  mQueue.popAndPushSomeTo(mTarget->getLocalBuffer());
-  mDataAvailable -= (before - mQueue.getSize());
-  mTargetScheduler.readComplete(*mTarget);
-  mSourceScheduler.reprioritizeWriteRequest(*mDataSource);
+  bool wakeUpSource=false;
+  {
+    std::lock_guard<std::mutex> channelGuard(mLock);
+    TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
+    uint64_t before = mQueue.getSize();
+    mQueue.popAndPushSomeTo(mTarget->getLocalBuffer());
+    mDataAvailable -= (before - mQueue.getSize());
+    mTargetScheduler.readComplete(*mTarget);
+    wakeUpSource = mSourceScheduler.reprioritizeWriteRequest(*mDataSource);
+  }
+  if (wakeUpSource) {
+    mSourceScheduler.unblocked();
+  }
 }
 
 void RemoteReceiveFifo::readAllFromPort()
@@ -701,10 +765,16 @@ void RemoteReceiveFifo::readAllFromPort()
   // TODO: Update statistics on RecordsRead
   // TODO: Eliminate the call to reprioritze (and the corresponding lock)
   // if the priority hasn't changed.
-  std::lock_guard<std::mutex> channelGuard(mLock);
-  TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
-  mDataSource->getLocalBuffer().popAndPushAllTo(mQueue);
-  mSourceScheduler.writeComplete(*mDataSource);
-  mTargetScheduler.reprioritizeReadRequest(*mTarget);
+  bool wakeUpTarget=false;
+  {
+    std::lock_guard<std::mutex> channelGuard(mLock);
+    TwoDataflowSchedulerScopedLock schedGuard(mSourceScheduler, mTargetScheduler);
+    mDataSource->getLocalBuffer().popAndPushAllTo(mQueue);
+    mSourceScheduler.writeComplete(*mDataSource);
+    wakeUpTarget = mTargetScheduler.reprioritizeReadRequest(*mTarget);
+  }
+  if (wakeUpTarget) {
+    mTargetScheduler.unblocked();
+  }
 }
 
