@@ -1951,6 +1951,77 @@ public:
   }
 };
 
+class RuntimeHybridRunningTotalOperatorType : public RuntimeOperatorType
+{
+public:
+  typedef RecordTypeEquals equals_type;
+  typedef RecordTypeHasher hasher_type;
+  friend class RuntimeHybridRunningTotalOperator;
+private:
+  TreculFunctionReference mFreeRef;
+  TreculRecordFreeRuntime mFree;
+  TreculFunctionReference mAggregateFreeRef;
+  TreculRecordFreeRuntime mAggregateFree;
+  TreculAggregateReference mAggregateRef;
+  TreculAggregateRuntime mAggregate;
+  TreculFunctionReference mHashFunRef;
+  TreculFunctionRuntime mHashFun;
+  TreculFunctionReference mHashKeyEqFunRef;
+  TreculFunctionRuntime mHashKeyEqFun;
+  TreculFunctionReference mSortKeyEqFunRef;
+  TreculFunctionRuntime mSortKeyEqFun;
+
+  // Serialization
+  friend class boost::serialization::access;
+  template <class Archive>
+  void serialize(Archive & ar, const unsigned int version)
+  {
+    ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
+    ar & BOOST_SERIALIZATION_NVP(mFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mAggregateFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mAggregateRef);
+    ar & BOOST_SERIALIZATION_NVP(mHashFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mHashKeyEqFunRef);
+    ar & BOOST_SERIALIZATION_NVP(mSortKeyEqFunRef);
+  }
+  RuntimeHybridRunningTotalOperatorType()
+  {
+  }  
+public:
+  RuntimeHybridRunningTotalOperatorType(const TreculFreeOperation & freeFunctor, 
+                                        const TreculFunction & hashFun,
+                                        const TreculFunction & hashEqFun,
+                                        const TreculFunction * eqFun,
+                                        const TreculAggregate & agg,
+                                        const TreculFreeOperation & aggregateFreeFunctor)
+    :
+    RuntimeOperatorType("RuntimeHybridRunningTotalOperatorType"),
+    mFreeRef(freeFunctor.getReference()),
+    mAggregateFreeRef(aggregateFreeFunctor.getReference()),
+    mAggregateRef(agg.getReference()),
+    mHashFunRef(hashFun.getReference()),
+    mHashKeyEqFunRef(hashEqFun.getReference()),
+    mSortKeyEqFunRef(eqFun != nullptr ? eqFun->getReference() : TreculFunctionReference())
+  {
+  }
+  ~RuntimeHybridRunningTotalOperatorType()
+  {
+  }
+
+  RuntimeOperator * create(RuntimeOperator::Services & s) const;
+  void loadFunctions(TreculModule & m) override
+  {
+    mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    mAggregateFree = m.getFunction<TreculRecordFreeRuntime>(mAggregateFreeRef);
+    mAggregate = m.getAggregate(mAggregateRef);
+    mHashFun = m.getFunction<TreculFunctionRuntime>(mHashFunRef);
+    mHashKeyEqFun = m.getFunction<TreculFunctionRuntime>(mHashKeyEqFunRef);
+    if (!mSortKeyEqFunRef.empty()) {
+      mSortKeyEqFun = m.getFunction<TreculFunctionRuntime>(mSortKeyEqFunRef);      
+    }
+  }
+};
+
 class hash_func
 {
 public:
@@ -2363,13 +2434,24 @@ public:
   void shutdown();
 };
 
+class LogicalBroadcast : public LogicalOperator
+{  
+private:
+  TreculTransfer * mTransfer;
+public:
+  LogicalBroadcast();
+  ~LogicalBroadcast();
+  void check(PlanCheckContext& log);
+  void create(class RuntimePlanBuilder& plan);  
+};
+
 class RuntimeBroadcastPartitionerOperatorType : public RuntimeOperatorType
 {
 public:
   friend class RuntimeBroadcastPartitionerOperator;
 private:
   TreculTransferReference mTransferRef;
-TreculTransferRuntime mTransfer;
+  TreculTransferRuntime mTransfer;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>

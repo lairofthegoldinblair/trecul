@@ -1297,10 +1297,6 @@ void LogicalGroupBy::check(PlanCheckContext& log)
     }
   }
 
-  if (mIsRunningTotal && SORT != mAlgorithm) {
-    log.logError(*this, "runningtotal is only supported with sort group by");
-  }
-
   if ((init.size() != 0 && 0==update.size()) ||
       (update.size() != 0 && 0==init.size())) {
     log.logError(*this, "either specify both initialize and update or output argument");
@@ -1382,12 +1378,22 @@ void LogicalGroupBy::create(class RuntimePlanBuilder& plan)
 {
   RuntimeOperatorType * opType = NULL;
   if (mIsRunningTotal) {
-    opType = 
-      new RuntimeSortRunningTotalOperatorType(*mFree,
-					      mHash,
-					      mSortEq,
-					      *mAggregate,
-                                              *mAggregateFree);
+    if (mHashEq == nullptr) {
+      opType = 
+        new RuntimeSortRunningTotalOperatorType(*mFree,
+                                                mHash,
+                                                mSortEq,
+                                                *mAggregate,
+                                                *mAggregateFree);
+    } else {
+      opType = 
+        new RuntimeHybridRunningTotalOperatorType(*mFree,
+                                                  *mHash,
+                                                  *mHashEq,
+                                                  mSortEq,
+                                                  *mAggregate,
+                                                  *mAggregateFree);
+    }
   } else if (mHashEq == NULL) {
     opType = 
       new RuntimeSortGroupByOperatorType(*mFree,
@@ -1883,6 +1889,141 @@ void RuntimeSortRunningTotalOperator::onEvent(RuntimePort * port)
 
 void RuntimeSortRunningTotalOperator::shutdown()
 {
+}
+
+class RuntimeHybridRunningTotalOperator : public RuntimeOperator
+{
+private:
+  enum State { START, READ, WRITE, WRITE_EOS };
+  State mState;
+  class InterpreterContext * mRuntimeContext;
+  RecordBuffer mInput;
+  RecordBuffer mCurrentAggregate;
+  // Hash table for the current set of sort group keys.
+  paged_hash_table mTable;
+  paged_hash_table::query_iterator<paged_hash_table::probe_predicate> mSearchIterator;
+  paged_hash_table::scan_all_iterator mScanIterator;
+  const RuntimeHybridRunningTotalOperatorType & getHybridRunningTotalType() { return *reinterpret_cast<const RuntimeHybridRunningTotalOperatorType *>(&getOperatorType()); }
+public:
+  RuntimeHybridRunningTotalOperator(RuntimeOperator::Services& services, const RuntimeHybridRunningTotalOperatorType& opType);
+  ~RuntimeHybridRunningTotalOperator();
+  void start();
+  void onEvent(RuntimePort * port);
+  void shutdown();
+};
+
+RuntimeHybridRunningTotalOperator::RuntimeHybridRunningTotalOperator(RuntimeOperator::Services& services, 
+								 const RuntimeHybridRunningTotalOperatorType& opType)
+  :
+  RuntimeOperator(services, opType),
+  mState(START),
+  mRuntimeContext(new InterpreterContext()),
+  mTable(false, NULL),
+  mSearchIterator(paged_hash_table::probe_predicate(opType.mHashFun,
+						    opType.mHashKeyEqFun))
+{
+}
+
+RuntimeHybridRunningTotalOperator::~RuntimeHybridRunningTotalOperator()
+{
+  delete mRuntimeContext;
+}
+
+void RuntimeHybridRunningTotalOperator::start()
+{
+  mCurrentAggregate = RecordBuffer(NULL);
+  mState = START;
+  onEvent(NULL);
+}
+
+void RuntimeHybridRunningTotalOperator::onEvent(RuntimePort * port)
+{
+  switch(mState) {
+  case START:
+    while(true) {
+      // Read all inputs
+      requestRead(0);
+      mState = READ;
+      return;
+    case READ: 
+      {
+	read(port, mSearchIterator.mQueryPredicate.ProbeThis);
+
+	if (RecordBuffer::isEOS(mSearchIterator.mQueryPredicate.ProbeThis) || 
+	    mCurrentAggregate == RecordBuffer() ||
+	    (!!getHybridRunningTotalType().mSortKeyEqFun &&
+             !getHybridRunningTotalType().mSortKeyEqFun.execute(mCurrentAggregate, 
+                                                                mSearchIterator.mQueryPredicate.ProbeThis, 
+                                                                mRuntimeContext))) {
+
+	  // Free the accumulated aggregate records
+	  mScanIterator.init(mTable);
+	  while(mScanIterator.next(mRuntimeContext)) {
+	      getHybridRunningTotalType().mAggregateFree.free(mScanIterator.value());            
+	  }	  
+	  // Clear the table
+	  mTable.clear();
+          
+	  // All done if EOS, else proceed to insert into cleaned table
+	  if (RecordBuffer::isEOS(mSearchIterator.mQueryPredicate.ProbeThis)) {
+	    requestWrite(0);
+	    mState = WRITE_EOS;
+	    return;
+	  case WRITE_EOS:
+	    write(port, RecordBuffer(NULL), true);
+	    break;
+	  }
+	}
+
+	// Lookup into current hash table and insert/update
+	mTable.find(mSearchIterator, mRuntimeContext);
+	if(!mSearchIterator.next(mRuntimeContext)) {
+	  // Create a new record and initialize it (using copy semantics).
+	  // TODO: It might be possible to use a move here if the group
+	  // keys aren't referenced in the aggregate functions
+          RecordBuffer agg;
+	  getHybridRunningTotalType().mAggregate.executeInit(mSearchIterator.mQueryPredicate.ProbeThis, 
+                                                             agg, 
+                                                             mRuntimeContext);
+	  mTable.insert(agg, mSearchIterator);
+          mCurrentAggregate = agg;
+	} else {
+	  mCurrentAggregate = mSearchIterator.value();
+	}
+	// In place update agg using input.
+	BOOST_ASSERT(mCurrentAggregate != RecordBuffer(NULL));
+	getHybridRunningTotalType().mAggregate.executeUpdate(mSearchIterator.mQueryPredicate.ProbeThis,
+                                                             mCurrentAggregate, 
+                                                             mRuntimeContext);
+	
+	requestWrite(0);
+	mState = WRITE;
+	return;
+      case WRITE:
+	{
+	  RecordBuffer out;
+	  getHybridRunningTotalType().mAggregate.executeTransfer(mSearchIterator.mQueryPredicate.ProbeThis,
+                                                                 mCurrentAggregate,
+                                                                 out, 
+                                                                 mRuntimeContext);
+	  write(port, out, false);
+	  if (mSearchIterator.mQueryPredicate.ProbeThis != RecordBuffer()) {
+	    getHybridRunningTotalType().mFree.free(mSearchIterator.mQueryPredicate.ProbeThis);
+            mSearchIterator.mQueryPredicate.ProbeThis = RecordBuffer();
+	  }
+	}
+      }
+    }
+  }
+}
+
+void RuntimeHybridRunningTotalOperator::shutdown()
+{
+}
+
+RuntimeOperator * RuntimeHybridRunningTotalOperatorType::create(RuntimeOperator::Services & s) const
+{
+  return new RuntimeHybridRunningTotalOperator(s, *this);
 }
 
 paged_hash_table::paged_hash_table(bool ownTableData, const TreculFunctionRuntime & tableHash)
@@ -2999,6 +3140,43 @@ void RuntimeHashPartitionerOperator::onEvent(RuntimePort * port)
 
 void RuntimeHashPartitionerOperator::shutdown()
 {
+}
+
+LogicalBroadcast::LogicalBroadcast()
+  :
+  LogicalOperator(1,1,1,1),
+  mTransfer(nullptr)
+{
+}
+
+LogicalBroadcast::~LogicalBroadcast()
+{
+  delete mTransfer;
+}
+
+void LogicalBroadcast::check(PlanCheckContext& log)
+{
+  std::string xfer("input.*");
+  for(const_param_iterator it = begin_params();
+      it != end_params();
+      ++it) {
+    if (it->equals("output")) {
+      xfer = getStringValue(log, *it);
+    } else {
+      checkDefaultParam(log, *it);
+    }
+  }
+  const RecordType * input = getInput(0)->getRecordType();
+  mTransfer = new TreculTransfer(log, log.getCodeGenerator(), "broadcast_transfer", getInput(0)->getRecordType(), xfer);
+  getOutput(0)->setRecordType(mTransfer->getTarget());
+}
+
+void LogicalBroadcast::create(class RuntimePlanBuilder& plan)
+{
+  auto partitionType = new RuntimeBroadcastPartitionerOperatorType(*mTransfer);
+  plan.addOperatorType(partitionType);
+  plan.mapInputPort(this, 0, partitionType, 0);
+  plan.mapOutputPort(this, 0, partitionType, 0);  
 }
 
 RuntimeBroadcastPartitionerOperatorType::~RuntimeBroadcastPartitionerOperatorType()

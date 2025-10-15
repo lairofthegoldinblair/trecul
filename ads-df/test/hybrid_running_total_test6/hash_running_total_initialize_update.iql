@@ -1,0 +1,8 @@
+a = generate[program="RECORDCOUNT AS ignore, RECORDCOUNT/5 AS a, CAST(RECORDCOUNT AS INTEGER) AS b", numRecords=10];
+b = group_by[hashKey="a", initialize="CAST(NULL AS INTEGER) AS b_0, CAST(NULL AS INTEGER) AS b_1", update="
+SET b_1 = b_0
+SET b_0 = b 
+", runningtotal="true"];
+c = write[file="output.txt", mode="text"];
+a -> b;
+b -> c;

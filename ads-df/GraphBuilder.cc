@@ -102,6 +102,7 @@ BOOST_CLASS_EXPORT(RuntimeCrossJoinOperatorType);
 BOOST_CLASS_EXPORT(RuntimeSortMergeJoinOperatorType);
 BOOST_CLASS_EXPORT(RuntimeHashGroupByOperatorType);
 BOOST_CLASS_EXPORT(RuntimeSortGroupByOperatorType);
+BOOST_CLASS_EXPORT(RuntimeHybridRunningTotalOperatorType);
 BOOST_CLASS_EXPORT(RuntimeSortRunningTotalOperatorType);
 BOOST_CLASS_EXPORT(RuntimeHashPartitionerOperatorType);
 BOOST_CLASS_EXPORT(RuntimeBroadcastPartitionerOperatorType);
@@ -370,7 +371,9 @@ void DataflowGraphBuilder::nodeStart(const char * type,
   if (mOps.find(name) != mOps.end()) {
     throw std::runtime_error((boost::format("Operator with name %1% already defined") % name).str());
   }
-  if (boost::algorithm::iequals("collect", type)) {
+  if (boost::algorithm::iequals("broadcast", type)) {
+    mCurrentOp = new LogicalBroadcast();
+  } else if (boost::algorithm::iequals("collect", type)) {
     mCurrentOp = new LogicalCollect();
   } else if (boost::algorithm::iequals("constant_sink", type)) {
     mCurrentOp = new LogicalConstantSink();
