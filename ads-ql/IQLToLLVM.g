@@ -106,7 +106,7 @@ printStatement[IQLCodeGenerationContextRef ctxt]
 
 ifStatement[IQLCodeGenerationContextRef ctxt]
 	:
-	^(TK_IF expression[$ctxt] statement[$ctxt] statement[$ctxt]?)
+	^(TK_IF e = expression[$ctxt] { IQLToLLVMBeginIf($ctxt); } statement[$ctxt] ( { IQLToLLVMBeginElse($ctxt); } statement[$ctxt])?  { IQLToLLVMEndIf($ctxt, e.llvmVal); } )
 	;
 
 statementBlock[IQLCodeGenerationContextRef ctxt]

@@ -2346,6 +2346,7 @@ void CodeGenerationContext::whileBegin()
   // Create blocks for the condition, loop body and continue.
   std::stack<class IQLToLLVMStackRecord* > & stk(IQLStack);
   stk.push(new IQLToLLVMStackRecord());
+  stk.top()->StartBB = b->GetInsertBlock();
   stk.top()->ThenBB = llvm::BasicBlock::Create(*c, "whileCond", TheFunction);
   stk.top()->ElseBB = llvm::BasicBlock::Create(*c, "whileBody");
   stk.top()->MergeBB = llvm::BasicBlock::Create(*c, "whileCont");
@@ -7477,7 +7478,8 @@ void CodeGenerationContext::buildBeginElse()
   // Unwrap to C++
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
-  // Unconditional branch to the continue block.  
+  BOOST_ASSERT(IQLStack.top()->ElseBB == nullptr);
+  // Unconditional branch from end of then block to the continue block.  
   b->CreateBr(IQLStack.top()->MergeBB);
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
@@ -7529,6 +7531,7 @@ void CodeGenerationContext::buildBeginIfThenElse(const IQLToLLVMValue * condVal)
   // Create blocks for the then and else cases.  Insert the 'then' block at the
   // end of the function.
   IQLStack.push(new IQLToLLVMStackRecord());
+  IQLStack.top()->StartBB = b->GetInsertBlock();
   IQLStack.top()->ThenBB = llvm::BasicBlock::Create(*c, "then", TheFunction);
   IQLStack.top()->ElseBB = llvm::BasicBlock::Create(*c, "else");
   IQLStack.top()->MergeBB = llvm::BasicBlock::Create(*c, "ifcont");

@@ -10730,6 +10730,397 @@ void testArrayInt32Concat(bool isNullable, bool isEltNullable)
   recTy.getFree().free(inputBuf);
 }
 
+BOOST_AUTO_TEST_CASE(testIQLIfStatement)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt, false), false));
+  members.emplace_back("b", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("a", 0, 0, lhs);
+  recTy.setArrayInt32("a", 1, 0, lhs);
+  recTy.setArrayInt32("a", 2, 0, lhs);
+  recTy.setArrayInt32("a", 3, 0, lhs);
+  recTy.setArrayInt32("a", 4, 0, lhs);
+
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       types, 
+			       "IF b < 5 SET a[2] = b");
+    recTy.setInt32("b", 10, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 4, lhs));
+    recTy.setInt32("b", 4, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(4, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 4, lhs));
+  }
+  recTy.GetFree()->free(lhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLIfElseStatement)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt, false), false));
+  members.emplace_back("b", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("a", 0, 0, lhs);
+  recTy.setArrayInt32("a", 1, 0, lhs);
+  recTy.setArrayInt32("a", 2, 0, lhs);
+  recTy.setArrayInt32("a", 3, 0, lhs);
+  recTy.setArrayInt32("a", 4, 0, lhs);
+
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       types, 
+			       "IF b < 5 SET a[2] = b ELSE SET a[3] = b");
+    recTy.setInt32("b", 10, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 4, lhs));
+    recTy.setInt32("b", 4, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(4, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 4, lhs));
+  }
+  recTy.GetFree()->free(lhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLIfStatementBlock)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt, false), false));
+  members.emplace_back("b", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("a", 0, 0, lhs);
+  recTy.setArrayInt32("a", 1, 0, lhs);
+  recTy.setArrayInt32("a", 2, 0, lhs);
+  recTy.setArrayInt32("a", 3, 0, lhs);
+  recTy.setArrayInt32("a", 4, 0, lhs);
+
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       types, 
+			       "IF b < 5 BEGIN SET a[2] = b; SET a[4] = 2*b; END");
+    recTy.setInt32("b", 10, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 4, lhs));
+    recTy.setInt32("b", 4, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(4, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(8, recTy.getArrayInt32("a", 4, lhs));
+  }
+  recTy.GetFree()->free(lhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLIfElseStatementBlock)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt, false), false));
+  members.emplace_back("b", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("a", 0, 0, lhs);
+  recTy.setArrayInt32("a", 1, 0, lhs);
+  recTy.setArrayInt32("a", 2, 0, lhs);
+  recTy.setArrayInt32("a", 3, 0, lhs);
+  recTy.setArrayInt32("a", 4, 0, lhs);
+
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       types, 
+			       "IF b < 5 BEGIN SET a[2] = b; SET a[4] = 2*b; END ELSE BEGIN SET a[1] = 3*b; SET a[3] = 4*b; END");
+    recTy.setInt32("b", 10, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(30, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(40, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 4, lhs));
+    recTy.setInt32("b", 4, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(30, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(4, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(40, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(8, recTy.getArrayInt32("a", 4, lhs));
+  }
+  recTy.GetFree()->free(lhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLIfElseNestedStatement)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt, false), false));
+  members.emplace_back("b", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("a", 0, 0, lhs);
+  recTy.setArrayInt32("a", 1, 0, lhs);
+  recTy.setArrayInt32("a", 2, 0, lhs);
+  recTy.setArrayInt32("a", 3, 0, lhs);
+  recTy.setArrayInt32("a", 4, 0, lhs);
+
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       types, 
+			       "IF b < 5 IF b % 2 = 0 SET a[2] = b ELSE SET a[1] = b ELSE IF b % 2 = 0 SET a[3] = b ELSE SET a[4] = b");
+    recTy.setInt32("b", 10, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 4, lhs));
+    recTy.setInt32("b", 4, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(4, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 4, lhs));
+    recTy.setInt32("b", 11, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(4, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(11, recTy.getArrayInt32("a", 4, lhs));
+    recTy.setInt32("b", 3, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(3, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(4, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(11, recTy.getArrayInt32("a", 4, lhs));
+  }
+  recTy.GetFree()->free(lhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLIfStatementNestedWhile)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt, false), false));
+  members.emplace_back("b", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("a", 0, 0, lhs);
+  recTy.setArrayInt32("a", 1, 0, lhs);
+  recTy.setArrayInt32("a", 2, 0, lhs);
+  recTy.setArrayInt32("a", 3, 0, lhs);
+  recTy.setArrayInt32("a", 4, 0, lhs);
+
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       types, 
+			       "DECLARE i INTEGER\n"
+                               "IF b < 5\n"
+                               "BEGIN\n"
+                               "  SET i = b\n"                               
+                               "  WHILE i >= 0 DO\n"
+                               "    SET a[i] = b\n"
+                               "    SET i = i - 1\n"
+                               "  END WHILE\n"
+                               "END\n");
+    recTy.setInt32("b", 10, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 4, lhs));
+    recTy.setInt32("b", 3, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(3, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(3, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(3, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(3, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getArrayInt32("a", 4, lhs));
+  }
+  recTy.GetFree()->free(lhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLIfElseStatementNestedWhile)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt, false), false));
+  members.emplace_back("b", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("a", 0, 0, lhs);
+  recTy.setArrayInt32("a", 1, 0, lhs);
+  recTy.setArrayInt32("a", 2, 0, lhs);
+  recTy.setArrayInt32("a", 3, 0, lhs);
+  recTy.setArrayInt32("a", 4, 0, lhs);
+
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       types, 
+			       "DECLARE i INTEGER\n"
+                               "IF b < 5\n"
+                               "BEGIN\n"
+                               "  SET i = b\n"                               
+                               "  WHILE i >= 0 DO\n"
+                               "    SET a[i] = b\n"
+                               "    SET i = i - 1\n"
+                               "  END WHILE\n"
+                               "END\n"
+                               "ELSE\n"
+                               "BEGIN\n"
+                               "  SET i = 4\n"                               
+                               "  WHILE i >= 0 DO\n"
+                               "    SET a[i] = b\n"
+                               "    SET i = i - 1\n"
+                               "  END WHILE\n"
+                               "END\n");
+    recTy.setInt32("b", 10, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 4, lhs));
+    recTy.setInt32("b", 3, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(3, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(3, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(3, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(3, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 4, lhs));
+  }
+  recTy.GetFree()->free(lhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLWhileNestedIfElseStatement)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.emplace_back("a", FixedArrayType::Get(ctxt, 5, Int32Type::Get(ctxt, false), false));
+  members.emplace_back("b", Int32Type::Get(ctxt, false));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setArrayInt32("a", 0, 1, lhs);
+  recTy.setArrayInt32("a", 1, -1, lhs);
+  recTy.setArrayInt32("a", 2, -1, lhs);
+  recTy.setArrayInt32("a", 3, 1, lhs);
+  recTy.setArrayInt32("a", 4, 1, lhs);
+
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       types, 
+			       "DECLARE i INTEGER\n"
+                               "SET i = 4\n"
+                               "WHILE i >= 0 DO\n"
+                               "  IF a[i] >= 0\n"
+                               "    SET a[i] = b\n"
+                               "  ELSE\n"
+                               "    SET a[i] = -b\n"
+                               "  SET i = i - 1\n"
+                               "END WHILE\n");
+    recTy.setInt32("b", 10, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 0, lhs));
+    BOOST_CHECK_EQUAL(-10, recTy.getArrayInt32("a", 1, lhs));
+    BOOST_CHECK_EQUAL(-10, recTy.getArrayInt32("a", 2, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 3, lhs));
+    BOOST_CHECK_EQUAL(10, recTy.getArrayInt32("a", 4, lhs));
+  }
+  recTy.GetFree()->free(lhs);
+}
+
 BOOST_AUTO_TEST_CASE(testIQLArrayInt32Concat)
 {
   testArrayInt32Concat(false, false);

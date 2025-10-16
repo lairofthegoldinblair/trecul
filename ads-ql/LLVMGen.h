@@ -350,6 +350,13 @@ extern "C" {
 					   void * retAttrs);
 
   /**
+   * Construct an IF/ELSE/END statement block
+   */
+  void IQLToLLVMBeginIf(IQLCodeGenerationContextRef ctxt);
+  void IQLToLLVMBeginElse(IQLCodeGenerationContextRef ctxt);
+  void IQLToLLVMEndIf(IQLCodeGenerationContextRef ctxt, IQLToLLVMValueRef condVal);
+
+  /**
    * Builder for switch statements
    */
   void IQLToLLVMBeginSwitch(IQLCodeGenerationContextRef ctxt);

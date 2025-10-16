@@ -627,6 +627,24 @@ IQLToLLVMValueRef IQLToLLVMEndIfThenElse(IQLCodeGenerationContextRef ctxtRef,
 				       (const FieldType *) retAttrs));
 }
 
+void IQLToLLVMBeginIf(IQLCodeGenerationContextRef ctxtRef)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  ctxt->buildBeginIf();
+}
+
+void IQLToLLVMBeginElse(IQLCodeGenerationContextRef ctxtRef)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  ctxt->buildBeginElse();
+}
+
+void IQLToLLVMEndIf(IQLCodeGenerationContextRef ctxtRef, IQLToLLVMValueRef condVal)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  ctxt->buildEndIf(unwrap(condVal));
+}
+
 void IQLToLLVMBeginSwitch(IQLCodeGenerationContextRef ctxtRef)
 {
   CodeGenerationContext * ctxt = unwrap(ctxtRef);
