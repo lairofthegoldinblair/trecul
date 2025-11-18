@@ -1757,7 +1757,7 @@ void RuntimeSortVerifyOperator::onEvent(RuntimePort * port)
       mState = WRITE;
       return;
     case WRITE:
-      write(port, mInput, false);
+      write(port, mInput, RecordBuffer::isEOS(mInput));
       mPrevious = mInput;
       if (RecordBuffer::isEOS(mPrevious)) 
 	break;
