@@ -191,6 +191,7 @@ enable_testing()
 # to be generating
 # CTestTesting.cmake files in subdirectories (sigh)...
 add_test(ads-ql-unit-test ${CMAKE_CURRENT_BINARY_DIR}/ads-ql/test/ads-ql-test)
+add_test(ads-ql-serialization-unit-test ${CMAKE_CURRENT_BINARY_DIR}/ads-ql/test/ads-ql-serialization-test)
 add_test(ads-df-unit-test ${CMAKE_CURRENT_BINARY_DIR}/ads-df/test/ads-df-test)
 add_test(ads-df-parser-test ${CMAKE_CURRENT_BINARY_DIR}/ads-df/test/parser-test)
 add_test(http-operator-test ${CMAKE_CURRENT_BINARY_DIR}/ads-df/test/http-operator-test)

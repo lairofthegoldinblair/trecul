@@ -762,7 +762,7 @@ void LogicalFileWrite::check(PlanCheckContext& ctxt)
   }
   if (mHeaderFile.size()) 
     checkPath(ctxt, mHeaderFile);
-  mPrint = new TreculPrintOperation(ctxt.getCodeGenerator(), getInput(0)->getRecordType());
+  mPrint = new TreculPrintOperation(ctxt.getCodeGenerator(), getInput(0)->getRecordType(), boost::algorithm::iequals("binary", mMode));
   mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), getInput(0)->getRecordType());
 }
 

@@ -35,3 +35,7 @@
 add_executable(ads-ql-test test.cc)
 
 target_link_libraries( ads-ql-test ads-ql ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} )
+
+add_executable(ads-ql-serialization-test serialization_test.cc)
+
+target_link_libraries( ads-ql-serialization-test ads-ql ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} )

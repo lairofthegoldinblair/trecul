@@ -539,6 +539,7 @@ CodeGenerationContext::CodeGenerationContext()
   LLVMMemcmpIntrinsic(NULL),
   LLVMContext(new llvm::LLVMContext()),
   LLVMModule(new llvm::Module("my cool JIT", *LLVMContext)),
+  LLVMSerializationCopyFunction(NULL),
   LLVMBuilder(NULL),
   LLVMDecContextPtrType(NULL),
   LLVMDecimal128Type(NULL),
@@ -1419,6 +1420,27 @@ CodeGenerationContext::CodeGenerationContext()
 
   // Print Functions
   numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalPrintBinary", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0), 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(getSerializationStateBaseType(), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalDeserializeCopy", funTy);
+
+  numArguments = 0;
+  argumentTypes[numArguments++] = llvm::PointerType::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0), 0);
+  argumentTypes[numArguments++] = llvm::Type::getInt64Ty(*this->LLVMContext);
+  argumentTypes[numArguments++] = llvm::PointerType::get(getSerializationStateBaseType(), 0);
+  funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext), llvm::ArrayRef(&argumentTypes[0], numArguments), 0);
+  libFunVal = LoadAndValidateExternalFunction("InternalSerializeCopy", funTy);
+
+  numArguments = 0;
   argumentTypes[numArguments++] = llvm::PointerType::get(this->LLVMVarcharType, 0);
   argumentTypes[numArguments++] = llvm::Type::getInt8Ty(*this->LLVMContext);
   argumentTypes[numArguments++] = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
@@ -2163,6 +2185,671 @@ void CodeGenerationContext::buildPrint(const IQLToLLVMValue * val, const FieldTy
   callArgs[1] = ostrPointer;
   b->CreateCall(charFn->getFunctionType(), charFn, llvm::ArrayRef(&callArgs[0], 2), "");  
   buildEndIf(pred);
+}
+
+void CodeGenerationContext::buildRecordTypePrintBinary(const RecordType * recordType)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Value * ostrPointer = b->CreateLoad(b->getPtrTy(), lookupBasePointer("__OutputStreamPointer__")->getValue(this));
+  llvm::Value * callArgs[3];
+  llvm::Function * fn = LLVMModule->getFunction("InternalPrintBinary");
+  // Output to end of record
+  const IQLToLLVMValue * basePointer = lookupBasePointer("__BasePointer__");
+  llvm::Value * start = b->CreateLoad(b->getPtrTy(), basePointer->getValue(this));
+  llvm::Value * end = b->CreateGEP(b->getInt8Ty(), start, b->getInt64(recordType->GetAllocSize()), "");
+  callArgs[0] = start;
+  callArgs[1] = end;
+  callArgs[2] = ostrPointer;
+  b->CreateCall(fn->getFunctionType(), fn, llvm::ArrayRef(&callArgs[0], 3), "");
+  // Then output any variable length data by doing depth first search of the value tree
+  for(auto memberIt = recordType->begin_members(); memberIt != recordType->end_members(); ++memberIt) {
+    const IQLToLLVMValue * field = buildVariableRef(memberIt->GetName().c_str(), memberIt->GetType());
+    buildPrintBinary(field, memberIt->GetType());
+  }
+}
+
+void CodeGenerationContext::buildPrintBinary(const IQLToLLVMValue * val, const FieldType * ft)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Value * ostrPointer = b->CreateLoad(b->getPtrTy(), lookupBasePointer("__OutputStreamPointer__")->getValue(this));
+
+  llvm::Value * callArgs[3];
+  llvm::Function * fn = LLVMModule->getFunction("InternalPrintBinary");
+
+  // // Checking for NULL (last parameter in call means we are checking IsNotNull)
+  const IQLToLLVMValue * pred = buildIsNull(val, ft, Int32Type::Get(ft->getContext()), true);
+  buildBeginIf();
+  switch(ft->GetEnum()) {
+  case FieldType::VARCHAR:
+    {
+      const IQLToLLVMValue * isLargePred = buildVarArrayIsLarge(val);
+      buildBeginIf();
+      callArgs[0] = buildLargeVarcharGetStart(val->getValue(this));
+      callArgs[1] = buildLargeVarcharGetEnd(val->getValue(this));
+      callArgs[2] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::ArrayRef(&callArgs[0], 3), "");
+      buildEndIf(isLargePred);
+      break;
+    }
+  case FieldType::CHAR:
+  case FieldType::BIGDECIMAL:
+  case FieldType::INT8:
+  case FieldType::INT16:
+  case FieldType::INT32:
+  case FieldType::INT64:
+  case FieldType::INTERVAL:
+  case FieldType::FLOAT:
+  case FieldType::DOUBLE:
+  case FieldType::DATETIME:
+  case FieldType::DATE:
+  case FieldType::IPV4:
+  case FieldType::CIDRV4:
+  case FieldType::IPV6:
+  case FieldType::CIDRV6:
+    // Nothing to be done for any of these because they are always fixed length
+    break;
+  case FieldType::VARIABLE_ARRAY:
+    {
+      // Copy array null bitmap (if any) and data
+      const VariableArrayType * arrType = dynamic_cast<const VariableArrayType *>(ft);
+      BOOST_ASSERT(nullptr != arrType);
+      std::pair<llvm::Value *, llvm::Value *> rng = buildVariableArrayGetPtrRange(val, arrType);
+      callArgs[0] = rng.first;
+      callArgs[1] = rng.second;
+      callArgs[2] = ostrPointer;
+      b->CreateCall(fn->getFunctionType(), fn, llvm::ArrayRef(&callArgs[0], 3), "");      
+      // Fall through to FIXED_ARRAY case
+    }
+  case FieldType::FIXED_ARRAY:
+    {
+      const SequentialType * arrType = dynamic_cast<const SequentialType *>(ft);
+      BOOST_ASSERT(nullptr != arrType);
+      const FieldType * eltType = arrType->getElementType();
+      // TODO: Skip this loop if element type is copyable
+      // Loop over the array and print binary
+      // Constants one is used frequently
+      const IQLToLLVMValue * one  = buildTrue();
+      const IQLToLLVMValue * zero  = buildFalse();
+      // INTEGER type used frequently in this method
+      FieldType * int32Type = Int32Type::Get(ft->getContext());
+
+      // DECLARE idx = 0
+      // Allocate and initialize counter
+      llvm::Value * allocAVal = buildEntryBlockAlloca(b->getInt32Ty(),"idx");
+      const IQLToLLVMValue * counter = IQLToLLVMRValue::get(this, allocAVal, IQLToLLVMValue::eLocal);
+      IQLToLLVMLocal * counterLValue = IQLToLLVMLocal::get(this, IQLToLLVMTypedValue(counter, int32Type));
+      buildSetNullableValue(counterLValue, buildFalse(), int32Type, int32Type);
+      
+      const IQLToLLVMValue * endIdx = IQLToLLVMRValue::get(this, getArraySize(val, ft), IQLToLLVMValue::eLocal);
+      
+      whileBegin();
+
+      // while (idx < endIdx)
+      const IQLToLLVMValue * loopPred = buildCompare(buildRef(counter, int32Type), int32Type, endIdx, int32Type, int32Type, IQLToLLVMOpLT);
+      whileStatementBlock(loopPred, int32Type);
+
+      const IQLToLLVMValue * idx = buildRef(counter, int32Type);
+      const IQLToLLVMValue * elt = buildArrayRef(val, ft, idx, int32Type, eltType);
+      buildPrintBinary(elt, eltType);
+
+      // SET idx = idx + 1
+      buildSetNullableValue(counterLValue, buildAdd(buildRef(counter, int32Type), int32Type, one, int32Type, int32Type), int32Type, int32Type);  
+      whileFinish();      
+
+      break;
+    }
+  case FieldType::STRUCT:
+    {
+      const RecordType * structType = dynamic_cast<const RecordType *>(ft);
+      // llvm::Value * start = val->getValue(this);
+      // llvm::Value * end = b->CreateGEP(b->getInt8Ty(), start, b->getInt64(structType->GetAllocSize()), "");
+      // callArgs[0] = start;
+      // callArgs[1] = end;
+      // callArgs[2] = ostrPointer;
+      // b->CreateCall(fn->getFunctionType(), fn, llvm::ArrayRef(&callArgs[0], 3), "");
+      
+      for(std::size_t i=0; i < structType->GetSize(); ++i) {
+        const FieldType * eltType = structType->getElementType(i);
+        const IQLToLLVMValue * idx = IQLToLLVMRValue::get(this, b->getInt64(i), IQLToLLVMValue::eLocal);
+        const IQLToLLVMValue * elt = buildRowRef(val, ft, idx, Int64Type::Get(ft->getContext()), eltType);
+        buildPrintBinary(elt, eltType);
+      }
+      // if (0 == structType->GetSize()) {
+      //   return;
+      // }
+      // // Write NULL bitmap if it exists
+      // const FieldType * firstEltType = structType->getElementType(0);
+      // const IQLToLLVMValue * firstIdx = IQLToLLVMRValue::get(this, b->getInt64(i), IQLToLLVMValue::eLocal);
+      // const IQLToLLVMValue * firstElt = buildRowRef(val, ft, firstIdx, Int64Type::Get(ft->getContext()), firstEltType);
+      // FieldAddress recordStart;
+      // const IQLToLLVMValue * toCopyStart = structType->hasNullFields() ? val : nullptr;
+      // std::size_t toCopyEnd = structType->hasNullFields() ? firstElt : nullptr;
+      // for(std::size_t i=0; i < structType->GetSize(); ++i) {
+      //   const FieldType * eltType = structType->getElementType(i);
+      //   const IQLToLLVMValue * idx = IQLToLLVMRValue::get(this, b->getInt64(i), IQLToLLVMValue::eLocal);
+      //   const IQLToLLVMValue * elt = buildRowRef(val, ft, idx, Int64Type::Get(ft->getContext()), eltType);
+      //   if (eltType->isCopyable()) {
+      //     if (nullptr == toCopyStart) {
+      //       // Initialize new copy run
+      //       toCopyStart = elt;
+      //     }
+      //     if (i < structType->GetSize()-1) {
+      //       const FieldType * nextEltType = structType->getElementType(i+1);
+      //       const IQLToLLVMValue * nextIdx = IQLToLLVMRValue::get(this, b->getInt64(i+1), IQLToLLVMValue::eLocal);
+      //       toCopyEnd = buildRowRef(val, ft, nextIdx, Int64Type::Get(ft->getContext()), nextEltType);
+      //     } else {
+      //       llvm::Value * start = toCopyStart->getValue(this);
+      //       llvm::Value * end = b->CreateGEP(b->getInt8Ty(), val, b->getInt64(structType->GetAllocSize()), "")
+      //         callArgs[0] = b->CreateLoad(b->getPtrTy(), start);
+      //       callArgs[1] = b->CreateLoad(b->getPtrTy(), end);
+      //       callArgs[2] = ostrPointer;
+      //       b->CreateCall(fn->getFunctionType(), fn, llvm::ArrayRef(&callArgs[0], 3), "");
+      //       return;
+      //     }
+      //   } else {
+      //     if (toCopyStart != toCopyEnd) {
+      //       // End of a copy run, so output
+      //       callArgs[0] = b->CreateLoad(b->getPtrTy(), toCopyStart->getValue(this));
+      //       callArgs[1] = b->CreateLoad(b->getPtrTy(), toCopyEnd->getValue(this));
+      //       callArgs[2] = ostrPointer;
+      //       b->CreateCall(fn->getFunctionType(), fn, llvm::ArrayRef(&callArgs[0], 3), "");
+      //     }
+      //     buildPrintBinary(elt, eltType);
+      //   }
+      // }
+      break;
+    }
+  default:
+    throw std::runtime_error("Print not implemented");
+  }
+  buildEndIf(pred);
+}
+
+llvm::StructType * CodeGenerationContext::getSerializationStateTypeByDepth(std::size_t depth)
+{
+  if (LLVMSerializationStateType.size() <= depth) {
+    LLVMSerializationStateType.resize(depth+1, nullptr);
+  }
+  if (nullptr == LLVMSerializationStateType[depth]) {
+    std::vector<llvm::Type *> serializationStateMembers;
+    // Output Ptr
+    serializationStateMembers.push_back(llvm::PointerType::get(llvm::Type::getInt8Ty(*LLVMContext), 0));
+    // Output End Ptr
+    serializationStateMembers.push_back(llvm::PointerType::get(llvm::Type::getInt8Ty(*LLVMContext), 0));
+    // State enum
+    serializationStateMembers.push_back(llvm::Type::getInt64Ty(*LLVMContext));
+    // Indexes for array iteration
+    for(std::size_t i=0; i<2*depth; ++i) {
+      serializationStateMembers.push_back(llvm::Type::getInt64Ty(*LLVMContext));
+    }
+    LLVMSerializationStateType[depth] =
+      llvm::StructType::get(*LLVMContext, llvm::ArrayRef(&serializationStateMembers[0], serializationStateMembers.size()), false);
+  }
+  return LLVMSerializationStateType[depth];
+}
+
+llvm::StructType * CodeGenerationContext::getSerializationStateBaseType()
+{
+  return getSerializationStateTypeByDepth(0);
+}
+
+llvm::StructType * CodeGenerationContext::getSerializationStateType(const RecordType * ty)
+{
+  return getSerializationStateTypeByDepth(ty->getDepth());
+}
+
+llvm::Function * CodeGenerationContext::getSerializationCopyHelper()
+{
+  if (nullptr == LLVMSerializationCopyFunction) {
+    static std::string funName = "__SerializationCopyHelper__";
+    llvm::LLVMContext * c = this->LLVMContext;
+    llvm::IRBuilder<> * b = this->LLVMBuilder;
+
+    llvm::Type * int8PtrTy = llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0);
+    llvm::Type * int8PtrPtrTy = llvm::PointerType::get(int8PtrTy, 0);
+    llvm::Type * statePtrTy = llvm::PointerType::get(getSerializationStateBaseType(), 0);
+    std::vector<llvm::Type *> argumentTypes;
+    argumentTypes.push_back(int8PtrPtrTy);
+    argumentTypes.push_back(int8PtrTy);
+    argumentTypes.push_back(statePtrTy);
+    llvm::FunctionType * funTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*this->LLVMContext),
+                                                         llvm::ArrayRef(&argumentTypes[0], argumentTypes.size()),
+                                                         0);
+    this->LLVMSerializationCopyFunction = llvm::Function::Create(funTy, llvm::GlobalValue::ExternalLinkage, funName.c_str(), this->LLVMModule);
+    llvm::BasicBlock * entryBlock = llvm::BasicBlock::Create(*this->LLVMContext, "EntryBlock", this->LLVMSerializationCopyFunction);
+    this->LLVMBuilder->SetInsertPoint(entryBlock);
+    llvm::Value * input =  b->CreateAlloca(argumentTypes[0]);
+    llvm::Value * inputEnd =  b->CreateAlloca(argumentTypes[1]);
+    llvm::Value * state =  b->CreateAlloca(argumentTypes[2]);
+    llvm::Value * inputAvail = b->CreateAlloca(b->getInt64Ty());
+    llvm::Value * outputAvail = b->CreateAlloca(b->getInt64Ty());
+    llvm::Value * numToCopy = b->CreateAlloca(b->getInt64Ty());
+    b->CreateStore(&LLVMSerializationCopyFunction->arg_begin()[0], input);
+    b->CreateStore(&LLVMSerializationCopyFunction->arg_begin()[1], inputEnd);
+    b->CreateStore(&LLVMSerializationCopyFunction->arg_begin()[2], state);
+    // inputAvail = *inputEnd - input
+    b->CreateStore(b->CreateSub(b->CreatePtrToInt(b->CreateLoad(int8PtrTy, inputEnd), b->getInt64Ty()),
+                                b->CreatePtrToInt(b->CreateLoad(int8PtrTy, b->CreateLoad(int8PtrPtrTy, input)), b->getInt64Ty())),
+                   inputAvail);
+    // outputAvail = state->outputEnd - state->output
+    b->CreateStore(b->CreateSub(b->CreatePtrToInt(b->CreateLoad(int8PtrTy, b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(statePtrTy, state), 1)), b->getInt64Ty()),
+                                b->CreatePtrToInt(b->CreateLoad(int8PtrTy, b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(statePtrTy, state), 0)), b->getInt64Ty())),
+                   outputAvail);
+    // numToCopy = inputAvail < outputAvail ? inputAvail : outputAvail
+    llvm::BasicBlock * thenBlock = llvm::BasicBlock::Create(*c, "then", LLVMSerializationCopyFunction);
+    llvm::BasicBlock * elseBlock = llvm::BasicBlock::Create(*c, "else", LLVMSerializationCopyFunction);
+    llvm::BasicBlock * mergeBlock = llvm::BasicBlock::Create(*c, "ifcont", LLVMSerializationCopyFunction);
+    b->CreateCondBr(b->CreateICmpULE(inputAvail, outputAvail), thenBlock, elseBlock);
+    b->SetInsertPoint(thenBlock);
+    b->CreateStore(b->CreateLoad(b->getInt64Ty(), inputAvail), numToCopy);
+    b->CreateBr(mergeBlock);
+    b->SetInsertPoint(elseBlock);
+    b->CreateStore(b->CreateLoad(b->getInt64Ty(), outputAvail), numToCopy);
+    b->CreateBr(mergeBlock);
+    b->SetInsertPoint(mergeBlock);
+    // memcpy(output, input, numToCopy)
+    llvm::Value * memcpyArgs[5];
+    llvm::Function * fn = llvm::cast<llvm::Function>(LLVMMemcpyIntrinsic);
+    memcpyArgs[0] = b->CreateLoad(int8PtrTy, b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(statePtrTy, state), 0));
+    memcpyArgs[1] = b->CreateLoad(int8PtrTy, b->CreateLoad(int8PtrPtrTy, input));
+    memcpyArgs[2] = b->CreateLoad(b->getInt64Ty(), numToCopy);
+    memcpyArgs[3] = b->getInt32(1);
+    memcpyArgs[4] = b->getInt1(0);
+    b->CreateCall(fn->getFunctionType(), fn, llvm::ArrayRef(&memcpyArgs[0], 5), "");
+    // state->output = &state->output[numToCopy]
+    llvm::Value * outputPtr = b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(statePtrTy, state), 0);
+    b->CreateStore(b->CreateGEP(b->getInt8Ty(), b->CreateLoad(int8PtrTy, outputPtr), b->CreateLoad(b->getInt64Ty(), numToCopy)),
+                   outputPtr);
+    // *input = &(*input[numToCopy])
+    llvm::Value * inputPtr = b->CreateLoad(int8PtrPtrTy, input);
+    b->CreateStore(b->CreateGEP(b->getInt8Ty(), b->CreateLoad(int8PtrTy, inputPtr), b->CreateLoad(b->getInt64Ty(), numToCopy)),
+                   inputPtr);
+    b->CreateRetVoid();
+  }
+  return LLVMSerializationCopyFunction;
+}
+
+void CodeGenerationContext::buildAsyncSerializeCopyBlock(llvm::BasicBlock * doneBlock, llvm::BasicBlock * againBlock, bool isDeserialize)
+{
+  llvm::Function * copyHelper = LLVMModule->getFunction(isDeserialize ? "InternalDeserializeCopy"    : "InternalSerializeCopy");
+  llvm::IRBuilder<> * b = this->LLVMBuilder;
+  std::array<llvm::Value *, 3> copyHelperArgs;
+  copyHelperArgs[0] = b->CreateLoad(b->getPtrTy(), lookupBasePointer("__BufferPointer__")->getValue(this));
+  copyHelperArgs[1] = b->CreateLoad(b->getPtrTy(), lookupBasePointer("__BufferEnd__")->getValue(this));
+  copyHelperArgs[2] = b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this));
+  b->CreateCall(copyHelper->getFunctionType(), copyHelper, llvm::ArrayRef(&copyHelperArgs[0], 3), "");
+  // Check if we copied everything
+  // if(_SerializationState__->output >= _SerializationState_->ouptutEnd)
+  llvm::Value * zeroIsDone = b->CreateICmpUGE(b->CreateLoad(b->getPtrTy(), b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 0)),
+                                              b->CreateLoad(b->getPtrTy(), b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 1)));
+  b->CreateCondBr(zeroIsDone, doneBlock, againBlock);
+}
+
+void CodeGenerationContext::buildAsyncSerializeAgainBlock(llvm::BasicBlock * returnBlock, std::size_t stateIdx)
+{
+  llvm::IRBuilder<> * b = this->LLVMBuilder;
+  // _SerializationState_->state = switchBlocks.size()
+  b->CreateStore(b->getInt64(stateIdx),
+                 b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 2));
+  // _ReturnValue_ = false
+  b->CreateStore(b->getInt32(0),
+                 b->CreateLoad(b->getPtrTy(),
+                               lookup("__ReturnValue__")->getValuePointer(this)->getValue(this)));
+  b->CreateBr(returnBlock);
+}
+
+void CodeGenerationContext::buildSerializeMember(const IQLToLLVMValue * val,
+                                                   const FieldType * ft,
+                                                   std::size_t depth,
+                                                   llvm::StructType * stateType,
+                                                   llvm::BasicBlock * returnBlock,
+                                                   std::vector<llvm::BasicBlock *> & switchBlocks,
+                                                   llvm::BasicBlock * & lastDoneBlock,
+                                                   bool isDeserialize)
+{
+  llvm::LLVMContext * c = this->LLVMContext;
+  llvm::IRBuilder<> * b = this->LLVMBuilder;
+  switch(ft->GetEnum()) {
+  case FieldType::VARCHAR:
+    {
+      // Must copy this puppy
+      llvm::BasicBlock * initBlock = llvm::BasicBlock::Create(*c, "varcharInit", LLVMFunction);
+      if (nullptr != lastDoneBlock) {
+        b->SetInsertPoint(lastDoneBlock);
+        b->CreateBr(initBlock);
+      }
+      b->SetInsertPoint(initBlock);
+      const IQLToLLVMValue * isNullPred = buildIsNull(val, ft, Int32Type::Get(ft->getContext()), true);
+      buildBeginIf();
+      // Copy if large varchar
+      const IQLToLLVMValue * isLargePred = buildVarArrayIsLarge(val);
+      buildBeginIf();
+      llvm::BasicBlock * copyBlock = llvm::BasicBlock::Create(*c, "varcharCopy", LLVMFunction);
+      llvm::BasicBlock * doneBlock = llvm::BasicBlock::Create(*c, "varcharDone", LLVMFunction);
+      llvm::BasicBlock * againBlock = llvm::BasicBlock::Create(*c, "varcharAgain", LLVMFunction);
+
+      if (isDeserialize) {
+        // Allocate from serialized size and set data ptr
+        buildLargeVarcharAllocate(val->getValue(this), buildLargeVarcharGetSize(val->getValue(this)), false);
+      }
+      // _SerializationState_->output = varchar.start
+      b->CreateStore(buildLargeVarcharGetStart(val->getValue(this)),
+                     b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 0));
+      // _SerializationState_->outputEnd = varchar.end
+      b->CreateStore(buildLargeVarcharGetEnd(val->getValue(this)),
+                     b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 1));
+      b->CreateBr(copyBlock);
+
+      b->SetInsertPoint(copyBlock);
+      buildAsyncSerializeCopyBlock(doneBlock, againBlock, isDeserialize);
+
+      b->SetInsertPoint(againBlock);
+      buildAsyncSerializeAgainBlock(returnBlock, switchBlocks.size());
+
+      // If we are done copying then branch to merge block of large varchar if
+      b->SetInsertPoint(doneBlock);
+
+      switchBlocks.push_back(copyBlock);
+      buildEndIf(isLargePred);
+      buildEndIf(isNullPred);
+      lastDoneBlock = b->GetInsertBlock();
+      break;
+    }
+  case FieldType::FIXED_ARRAY:
+  case FieldType::VARIABLE_ARRAY:
+    {
+      // Must copy this puppy
+      llvm::BasicBlock * initBlock = llvm::BasicBlock::Create(*c, "varArrayInit", LLVMFunction);
+      if (nullptr != lastDoneBlock) {
+        b->SetInsertPoint(lastDoneBlock);
+        b->CreateBr(initBlock);
+      }
+      b->SetInsertPoint(initBlock);
+      const IQLToLLVMValue * isNullPred = buildIsNull(val, ft, Int32Type::Get(ft->getContext()), true);
+      buildBeginIf();
+
+      // Variable array we must initialize the array since the buffer it isn't stored inline
+      if (FieldType::VARIABLE_ARRAY == ft->GetEnum()) {
+        llvm::BasicBlock * copyBlock = llvm::BasicBlock::Create(*c, "varArrayCopy", LLVMFunction);
+        llvm::BasicBlock * doneBlock = llvm::BasicBlock::Create(*c, "varArrayDone", LLVMFunction);
+        llvm::BasicBlock * againBlock = llvm::BasicBlock::Create(*c, "varArrayAgain", LLVMFunction);
+
+        // Allocate from serialized size and set data ptr
+        const VariableArrayType * varArrayTy = dynamic_cast<const VariableArrayType *>(ft);
+
+        if (isDeserialize) {
+          buildVariableArrayAllocate(val->getValue(this), varArrayTy, buildVarArrayGetSize(val->getValue(this)), false);
+        }
+
+        auto bounds = buildVariableArrayGetPtrRange(val, varArrayTy);
+        // _SerializationState_->output = varchar.start
+        b->CreateStore(bounds.first,
+                       b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 0));
+        // _SerializationState_->outputEnd = varchar.end
+        b->CreateStore(bounds.second,
+                       b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 1));
+        b->CreateBr(copyBlock);
+
+        b->SetInsertPoint(copyBlock);
+        buildAsyncSerializeCopyBlock(doneBlock, againBlock, isDeserialize);
+
+        b->SetInsertPoint(againBlock);
+        buildAsyncSerializeAgainBlock(returnBlock, switchBlocks.size());
+
+        b->SetInsertPoint(doneBlock);
+
+        switchBlocks.push_back(copyBlock);
+      }
+      // Iterate over each member and deserialize as needed
+      // Initialize the loop counter also get the size of the array as 64 bit int
+      auto eltType = dynamic_cast<const SequentialType *>(ft)->getElementType();
+      llvm::Value * loopCounter = b->CreateStructGEP(stateType, b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 3+2*depth);
+      b->CreateStore(b->getInt64(0), loopCounter);
+      llvm::Value * loopEnd = b->CreateStructGEP(stateType, b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 3+2*depth+1);
+      b->CreateStore(b->CreateZExt(getArraySize(val, ft), b->getInt64Ty()), loopEnd); 
+      
+      llvm::BasicBlock * condBlock = llvm::BasicBlock::Create(*c, "arrayLoopCond", LLVMFunction);
+      llvm::BasicBlock * bodyBlock = llvm::BasicBlock::Create(*c, "arrayLoopBody", LLVMFunction);
+      llvm::BasicBlock * contBlock = llvm::BasicBlock::Create(*c, "arrayLoopContinue", LLVMFunction);
+      b->CreateBr(condBlock);
+      b->SetInsertPoint(condBlock);
+      b->CreateCondBr(b->CreateICmpULT(b->CreateLoad(b->getInt64Ty(), loopCounter), b->CreateLoad(b->getInt64Ty(), loopEnd)), bodyBlock, contBlock);
+      b->SetInsertPoint(bodyBlock);
+      const IQLToLLVMValue * idx = IQLToLLVMRValue::get(this, b->CreateTrunc(b->CreateLoad(b->getInt64Ty(), loopCounter), b->getInt32Ty()), IQLToLLVMValue::eLocal);
+      const IQLToLLVMValue * elt = buildArrayRef(val, ft, idx, Int32Type::Get(ft->getContext()), eltType);      
+      llvm::BasicBlock * bodyLastDoneBlock = b->GetInsertBlock();
+      buildSerializeMember(elt, eltType, depth+1, stateType, returnBlock, switchBlocks, bodyLastDoneBlock, isDeserialize);
+      b->SetInsertPoint(bodyLastDoneBlock);
+      // Increment counter
+      b->CreateStore(b->CreateAdd(b->getInt64(1), b->CreateLoad(b->getInt64Ty(), loopCounter)), loopCounter);      
+      b->CreateBr(condBlock);
+      b->SetInsertPoint(contBlock);      
+      buildEndIf(isNullPred);
+      lastDoneBlock = b->GetInsertBlock();
+    }
+    break;
+  case FieldType::STRUCT:
+    {
+      // Must copy this puppy
+      llvm::BasicBlock * initBlock = llvm::BasicBlock::Create(*c, "structInit", LLVMFunction);
+      if (nullptr != lastDoneBlock) {
+        b->SetInsertPoint(lastDoneBlock);
+        b->CreateBr(initBlock);
+      }
+      b->SetInsertPoint(initBlock);
+      const IQLToLLVMValue * isNullPred = buildIsNull(val, ft, Int32Type::Get(ft->getContext()), true);
+      buildBeginIf();
+      lastDoneBlock = b->GetInsertBlock();
+      const RecordType * structType = dynamic_cast<const RecordType *>(ft);
+      for(std::size_t i=0; i < structType->GetSize(); ++i) {
+        const FieldType * eltType = structType->getElementType(i);
+        const IQLToLLVMValue * idx = IQLToLLVMRValue::get(this, b->getInt64(i), IQLToLLVMValue::eLocal);
+        const IQLToLLVMValue * elt = buildRowRef(val, ft, idx, Int64Type::Get(ft->getContext()), eltType);
+        buildSerializeMember(elt, eltType, depth, stateType, returnBlock, switchBlocks, lastDoneBlock, isDeserialize);
+      }
+      buildEndIf(isNullPred);
+      lastDoneBlock = b->GetInsertBlock();
+      break;
+    }
+  default:
+    break;
+  }
+}
+
+void CodeGenerationContext::buildRecordTypeSerialize(const RecordType * recordType, bool isDeserialize)
+{
+  llvm::IRBuilder<> * b = this->LLVMBuilder;
+  llvm::LLVMContext * c = this->LLVMContext;
+
+  // For efficiency defer the creation of the switch statement until all
+  // blocks are known.
+  std::vector<llvm::BasicBlock *> switchBlocks;
+  llvm::BasicBlock * initialBlock = b->GetInsertBlock();
+
+  llvm::BasicBlock * returnBlock = llvm::BasicBlock::Create(*c, "final", LLVMFunction);
+
+  //
+  // Add default block settting _ReturnValue_ true
+  //
+  llvm::BasicBlock * defaultBlock = llvm::BasicBlock::Create(*c, "default", LLVMFunction);
+  b->SetInsertPoint(defaultBlock);
+  b->CreateStore(b->getInt64(-1),
+                 b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 2));
+  b->CreateStore(b->getInt32(1),
+                 b->CreateLoad(b->getPtrTy(),
+                               lookup("__ReturnValue__")->getValuePointer(this)->getValue(this)));
+  b->CreateBr(returnBlock);
+
+  llvm::BasicBlock * lastDoneBlock = nullptr;
+
+  {
+    // Block 0 : Copy the top level buffer
+    // First setup the output pointers
+    llvm::BasicBlock * initBlock = llvm::BasicBlock::Create(*c, "init", LLVMFunction);
+    llvm::BasicBlock * copyBlock = llvm::BasicBlock::Create(*c, "copy", LLVMFunction);
+    llvm::BasicBlock * doneBlock = llvm::BasicBlock::Create(*c, "done", LLVMFunction);
+    llvm::BasicBlock * againBlock = llvm::BasicBlock::Create(*c, "again", LLVMFunction);
+    if (nullptr != lastDoneBlock) {
+      b->SetInsertPoint(lastDoneBlock);
+      b->CreateBr(initBlock);
+    }
+    lastDoneBlock = doneBlock;
+    b->SetInsertPoint(initBlock);
+    // _SerializationState_->output = basePointer
+    b->CreateStore(b->CreateLoad(b->getPtrTy(), lookupBasePointer("__BasePointer__")->getValue(this)), 
+                   b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 0));
+    // _SerializationState_->outputEnd = &basePointer[recordType->GetAllocSize()]
+    b->CreateStore(b->CreateGEP(b->getInt8Ty(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__BasePointer__")->getValue(this)), b->getInt64(recordType->GetAllocSize())),
+                   b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 1));
+    b->CreateBr(copyBlock);
+    switchBlocks.push_back(initBlock);
+
+    b->SetInsertPoint(copyBlock);
+    buildAsyncSerializeCopyBlock(doneBlock, againBlock, isDeserialize);
+
+    b->SetInsertPoint(againBlock);
+    buildAsyncSerializeAgainBlock(returnBlock, switchBlocks.size());
+  
+    switchBlocks.push_back(copyBlock);
+  }
+
+  // Perform any per-member deserialization starting at array depth zero
+  for(auto it = recordType->begin_members(); it != recordType->end_members(); ++it) {
+    buildSerializeMember(buildVariableRef(it->GetName().c_str(), it->GetType()), it->GetType(), 0, getSerializationStateType(recordType), returnBlock, switchBlocks, lastDoneBlock, isDeserialize);
+  }
+
+  // The last done block should branch to the default block (which returns true)
+  b->SetInsertPoint(lastDoneBlock);
+  b->CreateBr(defaultBlock);
+  
+  //
+  // Back to initial block to add the switch instruction itself
+  //
+  // switch(_SerializationState_->state)
+  b->SetInsertPoint(initialBlock);
+  llvm::Value * switchStateValue = b->CreateLoad(b->getInt64Ty(), b->CreateStructGEP(getSerializationStateBaseType(), b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 2));
+  llvm::SwitchInst * si = llvm::SwitchInst::Create(switchStateValue,
+                                                   defaultBlock, 
+						   switchBlocks.size(),
+						   initialBlock);
+  for(std::size_t i=0; i<switchBlocks.size(); ++i) {
+    si->addCase(b->getInt64(i), switchBlocks[i]);
+  }
+
+  // Set to final block for CreateRetVoid
+  b->SetInsertPoint(returnBlock);
+}
+
+void CodeGenerationContext::buildSerializeMemberLength(const IQLToLLVMValue * val,
+                                                       const FieldType * ft,
+                                                       std::size_t depth,
+                                                       llvm::StructType * stateType)
+{
+  llvm::LLVMContext * c = this->LLVMContext;
+  llvm::IRBuilder<> * b = this->LLVMBuilder;
+  switch(ft->GetEnum()) {
+  case FieldType::VARCHAR:
+    {
+      const IQLToLLVMValue * isNullPred = buildIsNull(val, ft, Int32Type::Get(ft->getContext()), true);
+      buildBeginIf();
+      // Copy if large varchar
+      const IQLToLLVMValue * isLargePred = buildVarArrayIsLarge(val);
+      buildBeginIf();
+
+      // Add length of the varchar
+      b->CreateStore(b->CreateAdd(b->CreateLoad(b->getInt32Ty(), b->CreateLoad(b->getPtrTy(),
+                                                                               lookup("__ReturnValue__")->getValuePointer(this)->getValue(this))),
+                                  b->CreateAdd(buildLargeVarcharGetSize(val->getValue(this)), b->getInt32(1))),
+                     b->CreateLoad(b->getPtrTy(),
+                                   lookup("__ReturnValue__")->getValuePointer(this)->getValue(this)));
+      
+      buildEndIf(isLargePred);
+      buildEndIf(isNullPred);
+      break;
+    }
+  case FieldType::FIXED_ARRAY:
+  case FieldType::VARIABLE_ARRAY:
+    {
+      const IQLToLLVMValue * isNullPred = buildIsNull(val, ft, Int32Type::Get(ft->getContext()), true);
+      buildBeginIf();
+      auto arrayType = dynamic_cast<const SequentialType *>(ft);
+      auto eltType = arrayType->getElementType();
+
+      // Variable array we must initialize the array since the buffer it isn't stored inline
+      if (FieldType::VARIABLE_ARRAY == ft->GetEnum()) {
+        // Add length of the vararray
+        b->CreateStore(b->CreateAdd(b->CreateLoad(b->getInt32Ty(), b->CreateLoad(b->getPtrTy(),
+                                                                                 lookup("__ReturnValue__")->getValuePointer(this)->getValue(this))),
+                                    buildVariableArrayAllocationLength(arrayType, buildVarArrayGetSize(val->getValue(this)))),
+                       b->CreateLoad(b->getPtrTy(),
+                                     lookup("__ReturnValue__")->getValuePointer(this)->getValue(this)));
+      }
+      // Iterate over each member and deserialize as needed
+      // Initialize the loop counter also get the size of the array as 64 bit int
+      llvm::Value * loopCounter = b->CreateStructGEP(stateType, b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 3+2*depth);
+      b->CreateStore(b->getInt64(0), loopCounter);
+      llvm::Value * loopEnd = b->CreateStructGEP(stateType, b->CreateLoad(b->getPtrTy(), lookupBasePointer("__SerializationState__")->getValue(this)), 3+2*depth+1);
+      b->CreateStore(b->CreateZExt(getArraySize(val, ft), b->getInt64Ty()), loopEnd); 
+      
+      llvm::BasicBlock * condBlock = llvm::BasicBlock::Create(*c, "arrayLoopCond", LLVMFunction);
+      llvm::BasicBlock * bodyBlock = llvm::BasicBlock::Create(*c, "arrayLoopBody", LLVMFunction);
+      llvm::BasicBlock * contBlock = llvm::BasicBlock::Create(*c, "arrayLoopContinue", LLVMFunction);
+      b->CreateBr(condBlock);
+      b->SetInsertPoint(condBlock);
+      b->CreateCondBr(b->CreateICmpULT(b->CreateLoad(b->getInt64Ty(), loopCounter), b->CreateLoad(b->getInt64Ty(), loopEnd)), bodyBlock, contBlock);
+      b->SetInsertPoint(bodyBlock);
+      const IQLToLLVMValue * idx = IQLToLLVMRValue::get(this, b->CreateTrunc(b->CreateLoad(b->getInt64Ty(), loopCounter), b->getInt32Ty()), IQLToLLVMValue::eLocal);
+      const IQLToLLVMValue * elt = buildArrayRef(val, ft, idx, Int32Type::Get(ft->getContext()), eltType);      
+      buildSerializeMemberLength(elt, eltType, depth+1, stateType);
+      // Increment counter
+      b->CreateStore(b->CreateAdd(b->getInt64(1), b->CreateLoad(b->getInt64Ty(), loopCounter)), loopCounter);      
+      b->CreateBr(condBlock);
+      b->SetInsertPoint(contBlock);      
+      buildEndIf(isNullPred);
+    }
+    break;
+  case FieldType::STRUCT:
+    {
+      const IQLToLLVMValue * isNullPred = buildIsNull(val, ft, Int32Type::Get(ft->getContext()), true);
+      buildBeginIf();
+      const RecordType * structType = dynamic_cast<const RecordType *>(ft);
+      for(std::size_t i=0; i < structType->GetSize(); ++i) {
+        const FieldType * eltType = structType->getElementType(i);
+        const IQLToLLVMValue * idx = IQLToLLVMRValue::get(this, b->getInt64(i), IQLToLLVMValue::eLocal);
+        const IQLToLLVMValue * elt = buildRowRef(val, ft, idx, Int64Type::Get(ft->getContext()), eltType);
+        buildSerializeMemberLength(elt, eltType, depth, stateType);
+      }
+      buildEndIf(isNullPred);
+      break;
+    }
+  default:
+    break;
+  }
+}
+
+void CodeGenerationContext::buildRecordTypeDeserialize(const RecordType * recordType)
+{
+  buildRecordTypeSerialize(recordType, true);
+}
+
+void CodeGenerationContext::buildRecordTypeSerialize(const RecordType * recordType)
+{
+  buildRecordTypeSerialize(recordType, false);
+}
+
+void CodeGenerationContext::buildRecordTypeSerializeLength(const RecordType * recordType)
+{
+  llvm::IRBuilder<> * b = this->LLVMBuilder;
+
+  // Length of base buffer
+  b->CreateStore(b->getInt32(recordType->GetAllocSize()),
+                 b->CreateLoad(b->getPtrTy(),
+                               lookup("__ReturnValue__")->getValuePointer(this)->getValue(this)));  
+
+  // Add length of any variable length data in the tree
+  for(auto it = recordType->begin_members(); it != recordType->end_members(); ++it) {
+    buildSerializeMemberLength(buildVariableRef(it->GetName().c_str(), it->GetType()), it->GetType(), 0, getSerializationStateType(recordType));
+  }
 }
 
 const IQLToLLVMLValue * 
@@ -3928,6 +4615,18 @@ void CodeGenerationContext::buildArrayCopyableCopy(const IQLToLLVMValue * e,
   }
 }
 
+llvm::Value *
+CodeGenerationContext::buildVariableArrayAllocationLength(const SequentialType * arrayType, llvm::Value * arrayLen)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Value * toAlloc = b->CreateMul(arrayLen, b->getInt32(arrayType->getElementType()->GetAllocSize()));
+  if (arrayType->getElementType()->isNullable()) {
+    llvm::Value * nullBitmaskLength = b->CreateLShr(b->CreateAdd(arrayLen, b->getInt32(7)), 3);
+    toAlloc = b->CreateAdd(toAlloc, nullBitmaskLength);
+  }
+  return toAlloc;
+}
+
 llvm::Value * CodeGenerationContext::buildVariableArrayAllocate(const SequentialType * arrayType, llvm::Value * arrayLen, bool trackAllocation)
 {
   llvm::Value * arr = buildEntryBlockAlloca(arrayType, "");
@@ -3939,15 +4638,10 @@ void CodeGenerationContext::buildVariableArrayAllocate(llvm::Value * e, const Se
 {
   llvm::IRBuilder<> * b = LLVMBuilder;
   // Allocate storage for the VARIABLE_ARRAY
-  llvm::Value * toAlloc = b->CreateMul(arrayLen, b->getInt32(arrayType->getElementType()->GetAllocSize()));
-  if (arrayType->getElementType()->isNullable()) {
-    llvm::Value * nullBitmaskLength = b->CreateLShr(b->CreateAdd(arrayLen, b->getInt32(7)), 3);
-    toAlloc = b->CreateAdd(toAlloc, nullBitmaskLength);
-  }
   llvm::Value * callArgs[5];
   llvm::Function * fn = LLVMModule->getFunction("InternalVarcharAllocate");
   callArgs[0] = arrayLen;
-  callArgs[1] = toAlloc;
+  callArgs[1] = buildVariableArrayAllocationLength(arrayType, arrayLen);
   callArgs[2] = e;
   callArgs[3] = b->getInt32(trackAllocation ? 1 : 0);
   callArgs[4] = b->CreateLoad(LLVMDecContextPtrType, getContextArgumentRef());
@@ -5143,6 +5837,25 @@ CodeGenerationContext::buildVarArrayIsSmall(llvm::Value * varcharPtr)
 }
 
 llvm::Value * 
+CodeGenerationContext::buildVarArrayIsLarge(llvm::Value * varcharPtr)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  // Access first bit of the structure to see if large or small.
+  llvm::Value * firstByte = 
+    b->CreateLoad(b->getInt8Ty(), b->CreateBitCast(varcharPtr, b->getPtrTy()));
+  return 
+    b->CreateICmpNE(b->CreateAnd(b->getInt8(1U),
+        			 firstByte),
+        	    b->getInt8(0U));
+}
+
+const IQLToLLVMValue *
+CodeGenerationContext::buildVarArrayIsLarge(const IQLToLLVMValue * varcharPtr)
+{
+  return buildCompareResult(buildVarArrayIsLarge(varcharPtr->getValue(this)));
+}
+        
+llvm::Value * 
 CodeGenerationContext::buildVarArrayGetSize(llvm::Value * varcharPtr)
 {
   llvm::LLVMContext * c = LLVMContext;
@@ -5195,6 +5908,20 @@ CodeGenerationContext::buildVarArrayGetPtr(llvm::Value * varcharPtr, llvm::Type 
                           retTy);
 }
 
+std::pair<llvm::Value *, llvm::Value *>
+CodeGenerationContext::buildVariableArrayGetPtrRange(const IQLToLLVMValue * e, const VariableArrayType * ty)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Value * dataPtr = buildVarArrayGetPtr(e->getValue(this), b->getPtrTy());
+  llvm::Value * firstDWord = b->CreateLoad(b->getInt32Ty(),
+                                           b->CreateStructGEP(LLVMVarcharType, e->getValue(this), 0));
+  llvm::Value * numElements = b->CreateAShr(b->CreateAnd(b->getInt32(0xfffffffe),
+                                                         firstDWord),  
+                                            b->getInt32(1U));
+  llvm::Value * sz = buildVariableArrayAllocationLength(ty, numElements);
+  return std::make_pair(dataPtr, b->CreateGEP(b->getInt8Ty(), dataPtr, b->CreateSExt(sz, b->getInt64Ty()), ""));
+}
+
 llvm::Value * 
 CodeGenerationContext::buildVarcharGetPtr(llvm::Value * varcharPtr)
 {
@@ -5223,6 +5950,53 @@ CodeGenerationContext::buildVarcharGetPtr(llvm::Value * varcharPtr)
   b->CreateBr(contBB);
   b->SetInsertPoint(contBB);
   return b->CreateLoad(b->getPtrTy(), ret);
+}
+
+llvm::Value * 
+CodeGenerationContext::buildLargeVarcharGetStart(llvm::Value * varcharPtr)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  return b->CreateLoad(b->getPtrTy(),
+                       b->CreateStructGEP(LLVMVarcharType, varcharPtr, 2));
+}
+
+llvm::Value * 
+CodeGenerationContext::buildLargeVarcharGetEnd(llvm::Value * varcharPtr)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Value * start = b->CreateLoad(b->getPtrTy(),
+                                      b->CreateStructGEP(LLVMVarcharType, varcharPtr, 2));
+  llvm::Value * firstDWord = b->CreateLoad(b->getInt32Ty(),
+                                           b->CreateStructGEP(LLVMVarcharType, varcharPtr, 0));
+  llvm::Value * len = b->CreateAShr(b->CreateAnd(b->getInt32(0xfffffffe),
+                                                 firstDWord),  
+                                    b->getInt32(1U));
+  // Add one to len for null terminator
+  return b->CreateGEP(b->getInt8Ty(), start, b->CreateAdd(len, b->getInt32(1)), "");
+}
+
+llvm::Value * CodeGenerationContext::buildLargeVarcharGetSize(llvm::Value * varcharPtr)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  llvm::Value * firstDWord = b->CreateLoad(b->getInt32Ty(),
+                                           b->CreateStructGEP(LLVMVarcharType, varcharPtr, 0));
+  return b->CreateAShr(b->CreateAnd(b->getInt32(0xfffffffe),
+                                    firstDWord),  
+                       b->getInt32(1U));
+}
+
+void CodeGenerationContext::buildLargeVarcharAllocate(llvm::Value * e, llvm::Value * arrayLen, bool trackAllocation)
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+  // Allocate storage for the VARCHAR, set Large bit and length
+  llvm::Value * callArgs[5];
+  llvm::Function * fn = LLVMModule->getFunction("InternalVarcharAllocate");
+  callArgs[0] = arrayLen;
+  callArgs[1] = b->CreateAdd(arrayLen, b->getInt32(1));
+  callArgs[2] = e;
+  callArgs[3] = b->getInt32(trackAllocation ? 1 : 0);
+  callArgs[4] = b->CreateLoad(LLVMDecContextPtrType, getContextArgumentRef());
+  b->CreateCall(fn->getFunctionType(), fn, llvm::ArrayRef(&callArgs[0], 5), "");
 }
 
 const IQLToLLVMValue * CodeGenerationContext::buildCompareResult(llvm::Value * boolVal)
@@ -8293,6 +9067,38 @@ void CodeGenerationContext::createRecordTypeOperation(const RecordType * input,
   argumentTypes.push_back(llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0));
   argumentTypes.push_back(llvm::PointerType::get(llvm::Type::getInt8Ty(*this->LLVMContext), 0));
   argumentTypes.push_back(llvm::Type::getInt32Ty(*this->LLVMContext));
+  // Create the function object with its arguments (these go into the
+  // new freshly created symbol table).
+  ConstructFunction(suggestedName, argumentNames, argumentTypes);
+  // Inject the members of the input struct into the symbol table.
+  this->addInputRecordType("input", "__BasePointer__", input);
+  // Special context entry for output record required by 
+  // transfer but not by record type op
+  this->IQLMoveSemantics = 0;
+  this->IQLOutputRecord = nullptr;
+  suggestedName = LLVMFunction->getName();
+}
+
+void CodeGenerationContext::createSerializationOperation(const RecordType * input,
+                                                         std::string& suggestedName)
+{
+  llvm::IRBuilder<> * b = this->LLVMBuilder;
+  reinitialize();
+  
+  std::vector<std::string> argumentNames;
+  argumentNames.push_back("__BasePointer__");
+  argumentNames.push_back("__BufferPointer__");
+  argumentNames.push_back("__BufferEnd__");
+  argumentNames.push_back("__SerializationState__");
+  argumentNames.push_back("__ReturnValue__");
+  argumentNames.push_back("__DecimalContext__");
+  std::vector<llvm::Type *> argumentTypes;
+  argumentTypes.push_back(b->getPtrTy());
+  argumentTypes.push_back(b->getPtrTy());
+  argumentTypes.push_back(b->getPtrTy());
+  argumentTypes.push_back(b->getPtrTy());
+  argumentTypes.push_back(b->getPtrTy());
+  argumentTypes.push_back(b->getPtrTy());
   // Create the function object with its arguments (these go into the
   // new freshly created symbol table).
   ConstructFunction(suggestedName, argumentNames, argumentTypes);

@@ -518,6 +518,39 @@ extern "C" void InternalDecimalFromChar(const char * arg,
   ::decimal128FromString(ret, arg, ctxt->getDecimalContext());
 }
 
+extern "C" void InternalPrintBinary(const char * begin,
+                                    const char * end,
+                                    uint8_t * ostr)
+{
+  if (ostr != nullptr && begin != nullptr && end != nullptr) {
+    reinterpret_cast<std::ostream *>(ostr)->write(begin, std::distance(begin, end));
+  }
+}
+
+extern "C" void InternalDeserializeCopy(const char ** input,
+                                      const char * inputEnd,
+                                      TreculSerializationState * state)
+{
+  auto inputAvail = (inputEnd - *input);
+  auto outputAvail = (state->outputEnd - state->output);
+  auto to_copy = std::min(inputAvail, outputAvail);
+  ::memcpy(state->output, *input, to_copy);
+  state->output = &state->output[to_copy];
+  *input = &(*input)[to_copy];
+}
+
+extern "C" void InternalSerializeCopy(char ** output,
+                                      char * outputEnd,
+                                      TreculSerializationState * state)
+{
+  auto inputAvail = (state->outputEnd - state->output);
+  auto outputAvail = (outputEnd - *output);
+  auto to_copy = std::min(inputAvail, outputAvail);
+  ::memcpy(*output, state->output, to_copy);
+  state->output = &state->output[to_copy];
+  *output = &(*output)[to_copy];
+}
+
 static void printEscaped(const char * begin, int32_t sz, 
                          char escapeChar, std::ostream& ostr)
 {
@@ -2127,9 +2160,11 @@ TreculFreeOperation::TreculFreeOperation(CodeGenerationContext & codeGen, const 
 {
 }
 
-TreculPrintOperation::TreculPrintOperation(CodeGenerationContext & codeGen, const RecordType * recordType)
+TreculPrintOperation::TreculPrintOperation(CodeGenerationContext & codeGen, const RecordType * recordType, bool isBinary)
   :
-  TreculRecordOperations(codeGen, recordType, "RecordTypePrint", [&codeGen, recordType]() { codeGen.buildRecordTypePrint(recordType, '\t', '\n', '\\'); })
+  TreculRecordOperations(codeGen, recordType, "RecordTypePrint", isBinary ?
+                         std::function<void()>([&codeGen, recordType]() { codeGen.buildRecordTypePrintBinary(recordType); }) :
+                         std::function<void()>([&codeGen, recordType]() { codeGen.buildRecordTypePrint(recordType, '\t', '\n', '\\'); }))
 {
 }
 
@@ -2142,6 +2177,68 @@ void TreculRecordPrintRuntime::imbue(std::ostream& ostr)
     new boost::gregorian::date_facet("%Y-%m-%d");
   ostr.imbue(std::locale(std::locale(ostr.getloc(), facet), dateFacet));
   ostr << std::fixed << std::setprecision(9);
+}
+
+TreculRecordSerialize::TreculRecordSerialize(CodeGenerationContext & codeGen,
+                                         const RecordType * recordType,
+                                         const std::string& funName)
+  :
+  mFunName(funName)
+{
+  // Create the LLVM function and populate variables in
+  // symbol table to prepare for code gen.
+  codeGen.createSerializationOperation(recordType, mFunName);
+  codeGen.buildRecordTypeSerialize(recordType);
+  codeGen.completeFunctionContext();
+}
+
+TreculRecordSerialize::~TreculRecordSerialize()
+{
+}
+
+TreculRecordDeserialize::TreculRecordDeserialize(CodeGenerationContext & codeGen,
+                                             const RecordType * recordType,
+                                             const std::string& funName)
+  :
+  mFunName(funName)
+{
+  // Create the LLVM function and populate variables in
+  // symbol table to prepare for code gen.
+  codeGen.createSerializationOperation(recordType, mFunName);
+  codeGen.buildRecordTypeDeserialize(recordType);
+  codeGen.completeFunctionContext();
+}
+
+TreculRecordDeserialize::~TreculRecordDeserialize()
+{
+}
+
+void TreculSerializationState::deleter::operator()(TreculSerializationState * ptr) const
+{
+  ::free(ptr);
+}
+
+TreculSerializationState::pointer TreculSerializationState::get(const RecordType * ty)
+{
+  std::size_t sz = sizeof(TreculSerializationState) + 2*sizeof(std::size_t)*ty->getDepth();
+  void * ptr =  ::malloc(sz);
+  ::memset(ptr, 0, sz);
+  return pointer((TreculSerializationState *) ptr);
+}
+
+TreculRecordSerializedLength::TreculRecordSerializedLength(CodeGenerationContext & codeGen,
+                                                     const RecordType * recordType,
+                                                     const std::string& funName)
+  :
+  mFunName(funName)
+{
+  codeGen.createSerializationOperation(recordType, mFunName);
+  codeGen.buildRecordTypeSerializeLength(recordType);
+  codeGen.completeFunctionContext();
+}
+
+TreculRecordSerializedLength::~TreculRecordSerializedLength()
+{
 }
 
 void TreculTransferRuntime::execute(RecordBuffer & source, RecordBuffer & target, class InterpreterContext * ctxt, bool isSourceMove) const
@@ -2498,9 +2595,13 @@ RecordTypeFreeOperation::RecordTypeFreeOperation(const RecordType * recordType)
 {
 }
 
-RecordTypePrintOperation::RecordTypePrintOperation(const RecordType * recordType)
+RecordTypePrintOperation::RecordTypePrintOperation(const RecordType * recordType, bool isBinary)
   :
-  RecordTypeOperations(recordType, "RecordTypePrint", [this, recordType]() { this->mContext->buildRecordTypePrint(recordType, '\t', '\n', '\\'); })
+  RecordTypeOperations(recordType, "RecordTypePrint",
+                       isBinary ? 
+                       std::function<void()>([this, recordType]() { this->mContext->buildRecordTypePrintBinary(recordType); }) :
+                       std::function<void()>([this, recordType]() { this->mContext->buildRecordTypePrint(recordType, '\t', '\n', '\\'); }))
+
 {
 }
 
@@ -2889,7 +2990,7 @@ TreculFunctionRuntime::~TreculFunctionRuntime()
 
 int32_t TreculFunctionRuntime::execute(RecordBuffer sourceA, RecordBuffer sourceB, class InterpreterContext * ctxt) const
 {
-  int32_t ret;
+  int32_t ret{0};
   (*mFunction)((char *) sourceA.Ptr, (char *) sourceB.Ptr, &ret, ctxt);    
   ctxt->clear();
   return ret;

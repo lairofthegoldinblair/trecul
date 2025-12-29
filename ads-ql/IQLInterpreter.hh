@@ -103,7 +103,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mFunName);
   }
   BOOST_SERIALIZATION_SPLIT_MEMBER()
-public:
+  public:
   TreculFunctionReference()
   {
   }
@@ -366,7 +366,7 @@ public:
 class TreculPrintOperation : public TreculRecordOperations
 {
 public:
-  TreculPrintOperation(CodeGenerationContext & codeGen, const RecordType * recordType);
+  TreculPrintOperation(CodeGenerationContext & codeGen, const RecordType * recordType, bool isBinary = false);
 };
 
 class TreculRecordFreeRuntime
@@ -424,6 +424,201 @@ public:
   void print(RecordBuffer buf, std::ostream& ostr, bool outputRecordDelimiter=true) const
   {
     (*mFunction)((char *) buf.Ptr, (char *)&ostr, outputRecordDelimiter);
+  }
+};
+
+/**
+ * Create code to asynchronously serialize a Trecul record
+ */
+class TreculRecordSerialize
+{
+private:
+  std::string mFunName;
+
+public:
+  /**
+   * Compile a function to serialize a Trecul record of type recordType
+   */
+  TreculRecordSerialize(CodeGenerationContext & codeGen,
+                        const RecordType * recordType,
+                        const std::string& funName);
+  
+  TreculRecordSerialize(CodeGenerationContext & codeGen,
+                        const RecordType * recordType)
+    :
+    TreculRecordSerialize(codeGen, recordType, "serialize")
+  {
+  }
+  
+  ~TreculRecordSerialize();
+
+  TreculFunctionReference getReference() const
+  {
+    return TreculFunctionReference(mFunName);
+  }
+};
+
+/**
+ * Create code to asynchronously deserialize a Trecul record
+ */
+class TreculRecordDeserialize
+{
+private:
+  std::string mFunName;
+
+public:
+  /**
+   * Compile a function to deserialize a Trecul record of type recordType
+   */
+  TreculRecordDeserialize(CodeGenerationContext & codeGen,
+                        const RecordType * recordType,
+                        const std::string& funName);
+
+  TreculRecordDeserialize(CodeGenerationContext & codeGen,
+                        const RecordType * recordType)
+    :
+    TreculRecordDeserialize(codeGen, recordType, "deserialize")
+  {
+  }
+  
+  ~TreculRecordDeserialize();
+
+  TreculFunctionReference getReference() const
+  {
+    return TreculFunctionReference(mFunName);
+  }
+};
+
+struct TreculSerializationState
+{
+  uint8_t * output{nullptr};
+  uint8_t * outputEnd{nullptr};
+  int64_t state{0};
+
+  struct deleter
+  {
+    void operator()(TreculSerializationState * ptr) const;
+  };
+  typedef std::unique_ptr<TreculSerializationState, deleter> pointer;
+  static pointer get(const RecordType * ty);
+};
+
+class TreculRecordSerializeRuntime
+{
+public:
+  typedef void (*LLVMFuncType)(char*, char **, char*, TreculSerializationState *, int32_t * , class InterpreterContext *);
+private:
+  LLVMFuncType mFunction;
+public:
+  TreculRecordSerializeRuntime(LLVMFuncType func)
+    :
+    mFunction(func)
+  {
+  }
+  TreculRecordSerializeRuntime()
+    :
+    mFunction(nullptr)
+  {
+  }
+  operator bool() const
+  {
+    return mFunction != nullptr;
+  }
+  bool serialize(const RecordBuffer & buf, char * & output, char * outputEnd, TreculSerializationState & state, class InterpreterContext * ctxt) const
+  {
+    int32_t ret=0;
+    (*mFunction)((char *) buf.Ptr, &output, outputEnd, &state, &ret, ctxt);
+    return ret > 0;
+  }
+};
+
+class TreculRecordSerializedLengthRuntime
+{
+public:
+  typedef void (*LLVMFuncType)(char*, char **, char*, TreculSerializationState *, int32_t * , class InterpreterContext *);
+private:
+  LLVMFuncType mFunction;
+public:
+  TreculRecordSerializedLengthRuntime(LLVMFuncType func)
+    :
+    mFunction(func)
+  {
+  }
+  TreculRecordSerializedLengthRuntime()
+    :
+    mFunction(nullptr)
+  {
+  }
+  operator bool() const
+  {
+    return mFunction != nullptr;
+  }
+  std::size_t length(RecordBuffer & buf, TreculSerializationState & state, class InterpreterContext * ctxt) const
+  {
+    int32_t ret=0;
+    char * dummy{nullptr};
+    (*mFunction)((char *) buf.Ptr, &dummy, nullptr, &state, &ret, ctxt);
+    return ret;
+  }
+};
+
+class TreculRecordDeserializeRuntime
+{
+public:
+  typedef void (*LLVMFuncType)(char*, const char **, const char*, TreculSerializationState *, int32_t * , class InterpreterContext *);
+private:
+  LLVMFuncType mFunction;
+public:
+  TreculRecordDeserializeRuntime(LLVMFuncType func)
+    :
+    mFunction(func)
+  {
+  }
+  TreculRecordDeserializeRuntime()
+    :
+    mFunction(nullptr)
+  {
+  }
+  operator bool() const
+  {
+    return mFunction != nullptr;
+  }
+  bool deserialize(RecordBuffer & buf, const char * & input, const char * inputEnd, TreculSerializationState & state, class InterpreterContext * ctxt) const
+  {
+    int32_t ret=0;
+    (*mFunction)((char *) buf.Ptr, &input, inputEnd, &state, &ret, ctxt);
+    return ret > 0;
+  }
+};
+
+/**
+ * Create code to calculate serialized lengtb of a Trecul record
+ */
+class TreculRecordSerializedLength
+{
+private:
+  std::string mFunName;
+
+public:
+  /**
+   * Compile a function to serialize a Trecul record of type recordType
+   */
+  TreculRecordSerializedLength(CodeGenerationContext & codeGen,
+                              const RecordType * recordType,
+                              const std::string& funName);
+  
+  TreculRecordSerializedLength(CodeGenerationContext & codeGen,
+                              const RecordType * recordType)
+    :
+    TreculRecordSerializedLength(codeGen, recordType, "serializeLength")
+  {
+  }
+  
+  ~TreculRecordSerializedLength();
+
+  TreculFunctionReference getReference() const
+  {
+    return TreculFunctionReference(mFunName);
   }
 };
 
@@ -499,17 +694,17 @@ public:
    * the inputs.  TODO: Support aliasing or multi-part names to disambiguate.
    */
   TreculInPlaceUpdate(class DynamicRecordContext& recCtxt, 
-                          class CodeGenerationContext & codeGen,
-			  const std::string & funName, 
-			  const std::vector<const RecordType *>& sources, 
-			  const std::string& statements);
+                      class CodeGenerationContext & codeGen,
+                      const std::string & funName, 
+                      const std::vector<const RecordType *>& sources, 
+                      const std::string& statements);
 
   TreculInPlaceUpdate(class DynamicRecordContext& recCtxt, 
-                          class CodeGenerationContext & codeGen,
-			  const std::string & funName, 
-			  const std::vector<const RecordType *>& sources, 
-			  const std::vector<boost::dynamic_bitset<> >& sourceMasks,
-			  const std::string& statements);
+                      class CodeGenerationContext & codeGen,
+                      const std::string & funName, 
+                      const std::vector<const RecordType *>& sources, 
+                      const std::vector<boost::dynamic_bitset<> >& sourceMasks,
+                      const std::string& statements);
 
   ~TreculInPlaceUpdate();
 
@@ -1090,10 +1285,10 @@ private:
     initImpl();
   }
   BOOST_SERIALIZATION_SPLIT_MEMBER()
-public:
+  public:
   IQLRecordTypeOperationModule()
-    :
-    mFunction(nullptr),
+  :
+  mFunction(nullptr),
     mImpl(nullptr)
   {
   }
@@ -1161,7 +1356,7 @@ public:
 class RecordTypePrintOperation : public RecordTypeOperations
 {
 public:
-  RecordTypePrintOperation(const RecordType * recordType);
+  RecordTypePrintOperation(const RecordType * recordType, bool isBinary = false);
 };
 
 class IQLTransferModule

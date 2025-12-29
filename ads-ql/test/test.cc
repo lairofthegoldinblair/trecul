@@ -40,6 +40,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
+#include "CodeGenerationContext.hh"
 #include "IQLInterpreter.hh"
 #include "IQLExpression.hh"
 #include "SuperFastHash.h"

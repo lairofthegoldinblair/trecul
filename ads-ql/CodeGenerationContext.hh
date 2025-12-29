@@ -53,6 +53,7 @@ namespace llvm {
   class Function;
   class LLVMContext;
   class Type;
+  class StructType;
   class Value;
   namespace legacy {
     class FunctionPassManager;
@@ -64,6 +65,7 @@ class CharType;
 class SequentialType;
 class StructType;
 class FixedArrayType;
+class VariableArrayType;
 class RecordType;
 class FieldAddress;
 class BitcpyOp;
@@ -468,6 +470,9 @@ private:
    * Private Interface to the variable length datatype (including VARCHAR)
    */
   llvm::Value * buildVarArrayIsSmall(llvm::Value * varcharPtr);
+  llvm::Value * buildVarArrayIsLarge(llvm::Value * varcharPtr);
+  const IQLToLLVMValue * buildVarArrayIsLarge(const IQLToLLVMValue * varcharPtr);
+
 
   /**
    * Add INTERVAL and DATE/DATETIME.  Put return value in ret.
@@ -565,6 +570,8 @@ private:
                               const SequentialType * argType,
                               llvm::Value * ret, 
                               const SequentialType * retType);
+  // Length of allocated data for VARIABLE_ARRAY with arrayLen elements.
+  llvm::Value * buildVariableArrayAllocationLength(const SequentialType * arrayType, llvm::Value * arrayLen);
   // Alloca a VARIABLE_ARRAY and dynamically allocate storage for arrayLen elements.
   llvm::Value * buildVariableArrayAllocate(const SequentialType * arrayType, llvm::Value * arrayLen, bool trackAllocation);
   // dynamically allocate storage for arrayLen elements in a pointer to VARIABLE_ARRAY
@@ -609,8 +616,42 @@ private:
    */
   void saveAggregateContext(CodeGenerationFunctionContext * fCtxt);
 
+  /**
+   * Methods for creating (async) serialization/deserialization code
+   */
+
+  // Get and if needed create the serialization state base type
+  llvm::StructType * getSerializationStateBaseType();
+  llvm::StructType * getSerializationStateTypeByDepth(std::size_t depth);
+  llvm::StructType * getSerializationStateType(const RecordType * ty);
+
+  /**
+   * Get and if needed create a helper function in the module for memcpy'ing and advancing pointers
+   * for serialization state
+   */
+  llvm::Function * getSerializationCopyHelper();
+  
+  void buildAsyncSerializeCopyBlock(llvm::BasicBlock * doneBlock, llvm::BasicBlock * againBlock, bool isDeserialze);
+  void buildAsyncSerializeAgainBlock(llvm::BasicBlock * returnBlock, std::size_t stateIdx);
+  void buildSerializeMember(const IQLToLLVMValue * val,
+                            const FieldType * ft,
+                            std::size_t depth,
+                            llvm::StructType * stateType,
+                            llvm::BasicBlock * returnBlock,
+                            std::vector<llvm::BasicBlock *> & switchBlocks,
+                            llvm::BasicBlock * & lastDoneBlock,
+                            bool isDeserialize);
+  void buildRecordTypeSerialize(const RecordType * recordType, bool isDeserialize);
+  void buildSerializeMemberLength(const IQLToLLVMValue * val,
+                                  const FieldType * ft,
+                                  std::size_t depth,
+                                  llvm::StructType * stateType);
+  
   llvm::LLVMContext * LLVMContext;
   llvm::Module * LLVMModule;
+  // Indexed by depth of the corresponding record type
+  std::vector<llvm::StructType *> LLVMSerializationStateType;
+  llvm::Function *  LLVMSerializationCopyFunction;
 public:
   llvm::IRBuilder<> * LLVMBuilder;
   llvm::Type * LLVMInt8Type;
@@ -683,6 +724,31 @@ public:
    * Print a value
    */
   void buildPrint(const IQLToLLVMValue * val, const FieldType * ft, char fieldDelimiter, char escapeChar);
+
+  /**
+   * Print a record in binary format
+   */
+  void buildRecordTypePrintBinary(const RecordType * recordType);
+
+  /** 
+   * Print a value in binary format
+   */
+  void buildPrintBinary(const IQLToLLVMValue * val, const FieldType * ft);
+
+  /**
+   * Asynchronous deserializaiton of a record
+   */
+  void buildRecordTypeSerialize(const RecordType * recordType);
+
+  /**
+   * Asynchronous deserializaiton of a record
+   */
+  void buildRecordTypeDeserialize(const RecordType * recordType);
+  
+  /**
+   * Build function that calculates length of a serialized record
+   */
+  void buildRecordTypeSerializeLength(const RecordType * recordType);
 
   /**
    * Lookup an l-value in the symbol table.
@@ -1218,6 +1284,10 @@ public:
    */
   llvm::Value * buildVarcharGetSize(llvm::Value * varcharPtr);
   llvm::Value * buildVarcharGetPtr(llvm::Value * varcharPtr);
+  llvm::Value * buildLargeVarcharGetSize(llvm::Value * varcharPtr);
+  llvm::Value * buildLargeVarcharGetStart(llvm::Value * varcharPtr);
+  llvm::Value * buildLargeVarcharGetEnd(llvm::Value * varcharPtr);
+  void buildLargeVarcharAllocate(llvm::Value * varcharPtr, llvm::Value * arrayLen, bool trackAllocation);
 
   /**
    * Interface to the FIXED_ARRAY datatype.
@@ -1232,6 +1302,7 @@ public:
    */
   llvm::Value * buildVarArrayGetSize(llvm::Value * varcharPtr);
   llvm::Value * buildVarArrayGetPtr(llvm::Value * varcharPtr, llvm::Type * retTy);
+  std::pair<llvm::Value *, llvm::Value *> buildVariableArrayGetPtrRange(const IQLToLLVMValue * e, const VariableArrayType * ty);  
   llvm::Value * getVariableArrayData(const IQLToLLVMValue * e, const FieldType * ty);
   llvm::Value * getVariableArrayData(llvm::Value * ptr, const FieldType * ty);
   llvm::Value * getVariableArrayNull(const IQLToLLVMValue * e, const FieldType * ty);
@@ -1611,6 +1682,8 @@ public:
                       std::string & suggestedName);
   void createRecordTypeOperation(const RecordType * input,
                                  std::string& suggestedName);
+  void createSerializationOperation(const RecordType * input,
+                                    std::string& suggestedName);
   void createTransferFunction(const RecordType * input,
 			      const RecordType * output,
                               std::string& suggestedFunName);

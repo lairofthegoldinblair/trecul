@@ -2095,6 +2095,31 @@ RecordType::~RecordType()
 {
 }
 
+static std::size_t depthFinder(const FieldType * ft)
+{
+    switch(ft->GetEnum()) {
+    case FieldType::VARIABLE_ARRAY:
+    case FieldType::FIXED_ARRAY:
+      {
+        return depthFinder(dynamic_cast<const SequentialType *>(ft)->getElementType()) + 1;
+      }
+    case FieldType::STRUCT:
+      {
+        const RecordType * rt = dynamic_cast<const RecordType *>(ft);
+        std::size_t ret = 0;
+        for(auto it = rt->begin_members(), e = rt->end_members(); it != e; ++it) {
+          auto tmp = depthFinder(it->getType());
+          if (tmp > ret) {
+            ret = tmp;
+          }
+        }
+        return ret;
+      }
+    default:
+      return 0;
+    }
+}
+
 void RecordType::init(bool isSubrecord)
 {
   bool isAnonymous = true;
@@ -2166,6 +2191,9 @@ void RecordType::init(bool isSubrecord)
     mDeserialize = std::shared_ptr<RecordTypeDeserialize>(new RecordTypeDeserialize(mAllocSize, offsets));
     mPrint = std::shared_ptr<RecordTypePrint>(new RecordTypePrint(this));
   }
+
+  // Maximum nesting level of arrays
+  mDepth = depthFinder(this);
 }
 
 const RecordTypeMalloc * RecordType::GetMalloc() const
@@ -2377,6 +2405,16 @@ const FieldType * RecordType::clone(bool nullable) const
 {
   if (nullable == isNullable()) return this;
   return RecordType::Get(getContext(), mMembers, nullable, !mFree);
+}
+
+bool RecordType::isCopyable() const
+{
+  for(const auto & member : mMembers) {
+    if (!member.getType()->isCopyable()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 RecordType * RecordType::Get(DynamicRecordContext& ctxt, 

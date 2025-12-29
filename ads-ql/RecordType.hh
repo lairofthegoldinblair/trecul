@@ -1080,6 +1080,10 @@ public:
   {
     return false;
   }
+  virtual bool isCopyable() const
+  {
+    return true;
+  }
 
 
   /**
@@ -1116,6 +1120,10 @@ public:
   llvm::Value * getMinValue(CodeGenerationContext * ctxt) const;
   llvm::Value * getMaxValue(CodeGenerationContext * ctxt) const;
   llvm::Value * getZero(CodeGenerationContext * ctxt) const;
+  bool isCopyable() const override
+  {
+    return false;
+  }
 };
 
 class CharType : public FieldType
@@ -1598,6 +1606,10 @@ public:
   {
     return GetDataSize();
   }
+  bool isCopyable() const override
+  {
+    return getElementType()->isCopyable();
+  }  
   /**
    * Append my state to an md5 hash
    */
@@ -1640,6 +1652,10 @@ public:
   std::size_t GetAllocSize() const
   {
     return sizeof(Vararray);
+  }
+  bool isCopyable() const override
+  {
+    return false;
   }
   /**
    * Append my state to an md5 hash
@@ -2202,6 +2218,7 @@ private:
   std::map<std::string, std::size_t> mMemberNames;
   std::size_t mAlignment = 0;
   std::size_t mAllocSize = 0;
+  std::size_t mDepth{0};
 
   std::shared_ptr<RecordTypeMalloc> mMalloc;
   std::shared_ptr<RecordTypeFree> mFree;
@@ -2418,6 +2435,10 @@ public:
   {
     return mMembers.size();
   }
+  std::size_t getDepth() const
+  {
+    return mDepth;
+  }
   /**
    * Append my state to an md5 hash
    */
@@ -2428,6 +2449,8 @@ public:
   std::string toString() const;
 
   const FieldType * clone(bool nullable) const;
+
+  bool isCopyable() const override;
 
   llvm::Type * LLVMGetType(CodeGenerationContext * ctxt) const;
 
