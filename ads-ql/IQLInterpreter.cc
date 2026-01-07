@@ -2220,7 +2220,19 @@ void TreculSerializationState::deleter::operator()(TreculSerializationState * pt
 
 TreculSerializationState::pointer TreculSerializationState::get(const RecordType * ty)
 {
-  std::size_t sz = sizeof(TreculSerializationState) + 2*sizeof(std::size_t)*ty->getDepth();
+  TreculSerializationStateFactory f(ty);
+  return f.create();
+}
+
+TreculSerializationStateFactory::TreculSerializationStateFactory(const RecordType * ty)
+  :
+  mDepth(nullptr != ty ? ty->getDepth() : 0)
+{
+}
+
+TreculSerializationStateFactory::pointer  TreculSerializationStateFactory::create() const
+{
+  std::size_t sz = sizeof(TreculSerializationState) + 2*sizeof(std::size_t)*mDepth;
   void * ptr =  ::malloc(sz);
   ::memset(ptr, 0, sz);
   return pointer((TreculSerializationState *) ptr);

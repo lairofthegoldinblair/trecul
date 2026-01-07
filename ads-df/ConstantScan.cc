@@ -39,11 +39,12 @@ class RuntimeConstantScanOperator : public RuntimeOperatorBase<RuntimeConstantSc
 private:
   enum State { START, WRITE, WRITE_EOF };
   State mState;
-  std::vector<std::vector<uint8_t> >::const_iterator mInput;
-  uint8_t * mBufferIt;
-  uint8_t * mBufferEnd;
+  std::vector<std::vector<char> >::const_iterator mInput;
+  const char * mBufferIt;
+  const char * mBufferEnd;
+  InterpreterContext * mRuntimeContext;
   RecordBuffer mRecordBuffer;
-  RecordBufferIterator mRecordBufferIt;
+  TreculSerializationStateFactory::pointer mSerializationState;
 public:
   RuntimeConstantScanOperator(RuntimeOperator::Services& services, 
 			      const RuntimeConstantScanOperatorType& opType);
@@ -54,25 +55,30 @@ public:
 };
 
 RuntimeConstantScanOperatorType::RuntimeConstantScanOperatorType(const RecordType * input,
+                                                                 const TreculRecordDeserialize & deserialize,
 								 const std::vector<RecordBuffer>& inputs)
   :
-  mDeserialize(input->getDeserialize()),
+  mSerializationStateFactory(input),
+  mDeserializeRef(deserialize.getReference()),
   mMalloc(input->getMalloc())
 {
-  const RecordTypeSerialize& serializer(input->getSerialize());
+  char * outputBufferStart = NULL;
+  char * outputBufferEnd = NULL;
+  char * outputBufferIt = NULL;
 
-  uint8_t * outputBufferStart = NULL;
-  uint8_t * outputBufferEnd = NULL;
-  uint8_t * outputBufferIt = NULL;
-
+  
+  CodeGenerationContext codeGenCtxt;
+  TreculRecordSerialize s(codeGenCtxt, input, "serializeFun");
+  auto treculModule = std::make_unique<TreculModule>(codeGenCtxt);
+  auto serializer = treculModule->getFunction<TreculRecordSerializeRuntime>(s.getReference());
+  InterpreterContext runtimeCtxt;
+  auto state = mSerializationStateFactory.create();
   for(std::vector<RecordBuffer>::const_iterator buf = inputs.begin();
       buf != inputs.end();
       ++buf) {
-    RecordBufferIterator recordBufferIt;
-    recordBufferIt.init(*buf);
-
+    state->state = 0;
     // Serialize the record appending new buffers as needed.
-    while (!serializer.doit(outputBufferIt, outputBufferEnd, recordBufferIt, *buf)) {
+    while (!serializer.serialize(*buf, outputBufferIt, outputBufferEnd, *state, &runtimeCtxt)) {
       BOOST_ASSERT(outputBufferIt == outputBufferEnd);
       // If we are working on a buffer, record the length used
       if (outputBufferStart) {
@@ -80,7 +86,7 @@ RuntimeConstantScanOperatorType::RuntimeConstantScanOperatorType(const RecordTyp
 	mBuffers.back().resize((std::size_t) (outputBufferIt - outputBufferStart));
       }
       // Allocate a new output buffer and setup pointers.
-      mBuffers.push_back(std::vector<uint8_t> ());
+      mBuffers.push_back(std::vector<char> ());
       mBuffers.back().resize(512*1024, 0);
       outputBufferStart = &mBuffers.back()[0];
       outputBufferIt = outputBufferStart;
@@ -98,6 +104,11 @@ RuntimeConstantScanOperatorType::~RuntimeConstantScanOperatorType()
 {
 }
 
+void RuntimeConstantScanOperatorType::loadFunctions(TreculModule & m) 
+{
+  mDeserialize = m.getFunction<TreculRecordDeserializeRuntime>(mDeserializeRef);
+}
+
 RuntimeOperator * RuntimeConstantScanOperatorType::create(RuntimeOperator::Services & s) const
 {
   return new RuntimeConstantScanOperator(s, *this);
@@ -110,12 +121,15 @@ RuntimeConstantScanOperator::RuntimeConstantScanOperator(RuntimeOperator::Servic
   RuntimeOperatorBase<RuntimeConstantScanOperatorType>(services, opType),
   mState(START),
   mBufferIt(NULL),
-  mBufferEnd(NULL)
+  mBufferEnd(NULL),
+  mRuntimeContext(new InterpreterContext()),
+  mSerializationState(opType.mSerializationStateFactory.create())
 {
 }
 
 RuntimeConstantScanOperator::~RuntimeConstantScanOperator()
 {
+  delete mRuntimeContext;
 }
 
 void RuntimeConstantScanOperator::start()
@@ -131,23 +145,21 @@ void RuntimeConstantScanOperator::onEvent(RuntimePort * port)
     for(mInput = getMyOperatorType().mBuffers.begin();
 	mInput != getMyOperatorType().mBuffers.end();
 	++mInput) {
-      // TODO: Fix const correctness of deserialize methods
-      mBufferIt = const_cast<uint8_t *>(&mInput->front());
+      mBufferIt = &mInput->front();
       mBufferEnd = mBufferIt + mInput->size();
       // Deserialize records, write them and return buffer
       while(mBufferIt < mBufferEnd) {
 	if (mRecordBuffer == RecordBuffer()) {
 	  mRecordBuffer = getMyOperatorType().mMalloc.malloc();
-	  mRecordBufferIt.init(mRecordBuffer);
+          mSerializationState->state = 0;
 	}
-	if(getMyOperatorType().mDeserialize.Do(mBufferIt, mBufferEnd, mRecordBufferIt, mRecordBuffer)) {
+	if(getMyOperatorType().mDeserialize.deserialize(mRecordBuffer, mBufferIt, mBufferEnd, *mSerializationState, mRuntimeContext)) {
 	  requestWrite(0);
 	  mState = WRITE;
 	  return;
 	case WRITE:
 	  write(port, mRecordBuffer, false);
 	  mRecordBuffer = RecordBuffer();
-	  mRecordBufferIt.clear();
 	} else {
 	  BOOST_ASSERT(mBufferIt == mBufferEnd);
 	}

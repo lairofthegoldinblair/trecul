@@ -472,9 +472,11 @@ private:
   char mEscapeChar;
   std::string mCommentLine;
   const RecordType * mFormat;
+  TreculRecordDeserialize * mDeserialization;
   TreculFreeOperation * mFree;
 
-  void internalCreate(class RuntimePlanBuilder& plan);  
+  void internalCreate(class RuntimePlanBuilder& plan) override;
+  const TreculRecordDeserialize & internalDeserialization() const override;
   std::string readFormatFile(const std::string& formatFile);
 public:
   LogicalFileRead();
@@ -496,7 +498,9 @@ public:
   // What file(s) am I parsing?
   file_input_type mFileInput;
   // Importer instructions
-  RecordTypeDeserialize mDeserialize;
+  TreculSerializationStateFactory mSerializationStateFactory;
+  TreculFunctionReference mDeserializeRef;
+  TreculRecordDeserializeRuntime mDeserialize;
   // Create new records
   RecordTypeMalloc mMalloc;
   // My chunk strategy
@@ -515,7 +519,8 @@ public:
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
     ar & BOOST_SERIALIZATION_NVP(mFileInput);
-    ar & BOOST_SERIALIZATION_NVP(mDeserialize);
+    ar & BOOST_SERIALIZATION_NVP(mSerializationStateFactory);
+    ar & BOOST_SERIALIZATION_NVP(mDeserializeRef);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
     ar & BOOST_SERIALIZATION_NVP(mChunkStrategy);
     ar & BOOST_SERIALIZATION_NVP(mInputBufferSize);
@@ -530,20 +535,25 @@ public:
 
 public:
   InternalFileParserOperatorType(const RecordType * recordType,
+                                 const TreculRecordDeserialize & deserialize,
 				 const file_input_type & file,
                                  const chunk_strategy_type & chunkStrategy)
     :
     RuntimeOperatorType("InternalFileParserOperatorType"),
     mFileInput(file),
+    mSerializationStateFactory(recordType),
+    mDeserializeRef(deserialize.getReference()),
     mChunkStrategy(chunkStrategy),
     mInputBufferSize(128*1024),
     mDeleteOnCompletion(false)
   {
-    mDeserialize = recordType->getDeserialize();
     mMalloc = recordType->getMalloc();
   }
 
-  InternalFileParserOperatorType(const RecordTypeDeserialize& deserialize,
+  // N.B. A InternalFileParserOperatorType created this way cannot be serialized since it
+  // has no valid mDeserializeRef.    This is used within the sort operator to create subplans at runtime.
+  InternalFileParserOperatorType(const TreculRecordDeserializeRuntime& deserialize,
+                                 const TreculSerializationStateFactory & serializationStateFactory,
 				 const RecordTypeMalloc& mallocFn,
                                  const file_input_type & file,
 				 const chunk_strategy_type & chunkStrategy,
@@ -552,6 +562,7 @@ public:
     :
     RuntimeOperatorType("InternalFileParserOperatorType"),
     mFileInput(file),
+    mSerializationStateFactory(serializationStateFactory),
     mDeserialize(deserialize),
     mMalloc(mallocFn),
     mChunkStrategy(chunkStrategy),
@@ -564,7 +575,10 @@ public:
   {
   }
 
-  void loadFunctions(TreculModule & ) override {}
+  void loadFunctions(TreculModule & m) override
+  {
+    mDeserialize = m.getFunction<TreculRecordDeserializeRuntime>(mDeserializeRef);
+  }
 
   RuntimeOperator * create(RuntimeOperator::Services & services) const;
 };
@@ -597,9 +611,11 @@ private:
   uint8_t * mBuffer;
   uint8_t * mBufferIt;
   uint8_t * mBufferEnd;
+  InterpreterContext * mRuntimeContext;
   // The record buffer I am importing into
   RecordBuffer mRecordBuffer;
-  RecordBufferIterator mRecordBufferIt;
+  // Serialization state
+  TreculSerializationStateFactory::pointer mSerializationState;  
   // Records imported
   uint64_t mRecordsImported;
   // op type
@@ -625,12 +641,15 @@ public:
 			     const operator_type& opType)
     :
     _ReaderContext(services, *static_cast<const RuntimeOperatorType *>(&opType)),
+    mRuntimeContext(new InterpreterContext),
+    mSerializationState(opType.mSerializationStateFactory.create()),
     mRecordsImported(0)
   {
   }
 
   ~InternalFileParserOperator()
   {
+    delete mRuntimeContext;
   }
 
   /**
@@ -653,7 +672,20 @@ public:
 
     mState = START;
     mRecordsImported = 0;
+    mSerializationState->state = 0;
     onEvent(NULL);
+  }
+
+  bool deserialize()
+  {
+    auto tmp = reinterpret_cast<const char *>(mBufferIt);
+    bool ret = getMyOperatorType().mDeserialize.deserialize(mRecordBuffer,
+                                                            tmp, 
+                                                            reinterpret_cast<const char *>(mBufferEnd),
+                                                            *mSerializationState, 
+                                                            mRuntimeContext);
+    mBufferIt = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(tmp));
+    return ret;
   }
 
   void onEvent(port_type port)
@@ -683,19 +715,16 @@ public:
 	    while(mBufferIt < mBufferEnd) {
 	      if (mRecordBuffer.Ptr == NULL) {
 		mRecordBuffer = getMyOperatorType().mMalloc.malloc();
-		mRecordBufferIt.init(mRecordBuffer);
+                mSerializationState->state = 0;
 	      }
-	      if(getMyOperatorType().mDeserialize.Do(mBufferIt, 
-						     mBufferEnd, 
-						     mRecordBufferIt, 
-						     mRecordBuffer)) {
+	      if(deserialize()) {
 		_ReaderContext::requestWrite(0);
 		mState = WRITE;
 		return;
 	      case WRITE:
 		_ReaderContext::write(port, mRecordBuffer, false);
 		mRecordBuffer = RecordBuffer(NULL);
-		mRecordBufferIt.clear();
+                mSerializationState->state = 0;
 		mRecordsImported += 1;
 	      } 
 	    }
@@ -742,6 +771,7 @@ private:
   std::string mHeaderFile;
   TreculPrintOperation * mPrint;
   TreculFreeOperation * mFree;
+  TreculRecordSerialize * mSerialization;
   TreculTransfer * mFileNameExpr;
   TreculFreeOperation * mFileNameExprFree;
   int32_t mMaxRecords;
@@ -762,7 +792,9 @@ public:
 class InternalFileWriteOperatorType : public RuntimeOperatorType
 {
 public:
-  RecordTypeSerialize mSerialize;
+  TreculSerializationStateFactory mSerializationStateFactory;
+  TreculFunctionReference mSerializeRef;
+  TreculRecordSerializeRuntime mSerialize;
   TreculFunctionReference mFreeRef;
   TreculRecordFreeRuntime mFree;
   std::string mFile;
@@ -772,7 +804,8 @@ public:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mSerialize);
+    ar & BOOST_SERIALIZATION_NVP(mSerializationStateFactory);
+    ar & BOOST_SERIALIZATION_NVP(mSerializeRef);
     ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mFile);
   }
@@ -782,25 +815,31 @@ public:
 public:
   InternalFileWriteOperatorType(const std::string& opName,
 				const RecordType * ty,
+                                const TreculRecordSerialize & serialize,
                                 const TreculFreeOperation & freeFunctor,
 				const std::string& file)
     :
     RuntimeOperatorType(opName.c_str()),
-    mSerialize(ty->getSerialize()),
+    mSerializationStateFactory(ty),
+    mSerializeRef(serialize.getReference()),
     mFreeRef(freeFunctor.getReference()),
     mFile(file)
   {
   }
   // This constructor is used by the sort operator at runtime so we
-  // need the actual free function and not just the referenc (i.e.
+  // need the actual free function and not just the reference (i.e.
   // the TreculModule isn't available to load fromt the reference).
   InternalFileWriteOperatorType(const std::string& opName,
-				const RecordTypeSerialize& serialize,
+                                const TreculSerializationStateFactory & serializationStateFactory,
+				const TreculFunctionReference& serializeRef,
+				const TreculRecordSerializeRuntime& serialize,
 				const TreculFunctionReference & freeRef,
 				const TreculRecordFreeRuntime & freeFn,
 				const std::string& file)
     :
     RuntimeOperatorType(opName.c_str()),
+    mSerializationStateFactory(serializationStateFactory),
+    mSerializeRef(serializeRef),
     mSerialize(serialize),
     mFreeRef(freeRef),
     mFree(freeFn),
@@ -809,6 +848,7 @@ public:
   }
   void loadFunctions(TreculModule & m) override
   {
+    mSerialize = m.getFunction<TreculRecordSerializeRuntime>(mSerializeRef);
     mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
   }  
   RuntimeOperator * create(RuntimeOperator::Services& services) const;
@@ -1050,6 +1090,9 @@ private:
   TreculFunction * mKeyEq;
   TreculFunction * mPresortedKeyEq;
   TreculFunction * mPresortedKeyLessThanEq;
+  TreculRecordSerialize * mSerialization;
+  TreculRecordDeserialize * mDeserialization;
+  TreculRecordSerializedLength * mSerializedLength;
   std::string mTempDir;
   std::size_t mMemory;
 public:
@@ -1078,8 +1121,13 @@ private:
   TreculFunctionReference mPresortedLessThanEqualsFunRef;
   TreculFunctionRuntime mPresortedLessThanEqualsFun;
   // Serialize and deserialize for on disk sort runs
-  RecordTypeSerialize mSerialize;
-  RecordTypeDeserialize mDeserialize;
+  TreculSerializationStateFactory mSerializationStateFactory;
+  TreculFunctionReference mSerializeRef;
+  TreculRecordSerializeRuntime mSerialize;
+  TreculFunctionReference mDeserializeRef;
+  TreculRecordDeserializeRuntime mDeserialize;
+  TreculFunctionReference mSerializedLengthRef;
+  TreculRecordSerializedLengthRuntime mSerializedLength;
   // Malloc and free for disk sort runs
   RecordTypeMalloc mMalloc;
   TreculFunctionReference mFreeRef;
@@ -1099,8 +1147,10 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mLessThanFunRef);
     ar & BOOST_SERIALIZATION_NVP(mPresortedEqualsFunRef);
     ar & BOOST_SERIALIZATION_NVP(mPresortedLessThanEqualsFunRef);
-    ar & BOOST_SERIALIZATION_NVP(mSerialize);
-    ar & BOOST_SERIALIZATION_NVP(mDeserialize);
+    ar & BOOST_SERIALIZATION_NVP(mSerializationStateFactory);
+    ar & BOOST_SERIALIZATION_NVP(mSerializeRef);
+    ar & BOOST_SERIALIZATION_NVP(mDeserializeRef);
+    ar & BOOST_SERIALIZATION_NVP(mSerializedLengthRef);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
     ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mTempDir);
@@ -1114,6 +1164,9 @@ private:
 public:
   RuntimeSortOperatorType(const RecordType * input,
                           const TreculFreeOperation & freeFunctor,
+                          const TreculRecordSerialize & serialize,
+                          const TreculRecordDeserialize & deserialize,
+                          const TreculRecordSerializedLength & serializedLength,
 			  const TreculFunction * keyPrefix,
 			  const TreculFunction * lessFun,
 			  const TreculFunction * presortedEquals,
@@ -1126,8 +1179,10 @@ public:
     mLessThanFunRef(nullptr != lessFun ? lessFun->getReference() : TreculFunctionReference()),
     mPresortedEqualsFunRef(nullptr != presortedEquals ? presortedEquals->getReference() : TreculFunctionReference()),
     mPresortedLessThanEqualsFunRef(nullptr != presortedLessThanEquals ? presortedLessThanEquals->getReference() : TreculFunctionReference()),
-    mSerialize(input->getSerialize()),
-    mDeserialize(input->getDeserialize()),
+    mSerializationStateFactory(input),
+    mSerializeRef(serialize.getReference()),
+    mDeserializeRef(deserialize.getReference()),
+    mSerializedLengthRef(serializedLength.getReference()),
     mMalloc(input->getMalloc()),
     mFreeRef(freeFunctor.getReference()),
     mTempDir(tempDir),
@@ -1141,6 +1196,9 @@ public:
   void loadFunctions(TreculModule & m) override
   {
     mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
+    mSerialize = m.getFunction<TreculRecordSerializeRuntime>(mSerializeRef);
+    mDeserialize = m.getFunction<TreculRecordDeserializeRuntime>(mDeserializeRef);
+    mSerializedLength = m.getFunction<TreculRecordSerializedLengthRuntime>(mSerializedLengthRef);
     if (!mKeyPrefixRef.empty()) {
       mKeyPrefix = m.getFunction<TreculFunctionRuntime>(mKeyPrefixRef);
     }

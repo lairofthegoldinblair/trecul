@@ -373,8 +373,11 @@ class InterProcessFifoSpec : public IntraProcessFifoSpec
 {
 protected:
   int32_t mTag;
-  RecordTypeDeserialize mDeserialize;
-  RecordTypeSerialize mSerialize;
+  TreculSerializationStateFactory mSerializationStateFactory;
+  TreculFunctionReference mDeserializeRef;
+  TreculRecordDeserializeRuntime mDeserialize;
+  TreculFunctionReference mSerializeRef;
+  TreculRecordSerializeRuntime mSerialize;
   TreculFunctionReference mFreeRef;
   TreculRecordFreeRuntime mFree;
   RecordTypeMalloc mMalloc;
@@ -386,8 +389,9 @@ protected:
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(IntraProcessFifoSpec);
     ar & BOOST_SERIALIZATION_NVP(mTag);
-    ar & BOOST_SERIALIZATION_NVP(mDeserialize);
-    ar & BOOST_SERIALIZATION_NVP(mSerialize);
+    ar & BOOST_SERIALIZATION_NVP(mSerializationStateFactory);
+    ar & BOOST_SERIALIZATION_NVP(mDeserializeRef);
+    ar & BOOST_SERIALIZATION_NVP(mSerializeRef);
     ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
   }
@@ -402,12 +406,15 @@ public:
 		       AssignedOperatorType * targetOperator, int32_t targetPort,
 		       bool buffered, bool locallyBuffered, int32_t tag, 
 		       const RecordType * ty,
+                       const TreculFunctionReference & serializeRef,
+                       const TreculFunctionReference & deserializeRef,
                        const TreculFunctionReference & freeRef)
     :
     IntraProcessFifoSpec(sourceOperator, sourcePort, targetOperator, targetPort, locallyBuffered, buffered),
     mTag(tag),
-    mDeserialize(ty->getDeserialize()),
-    mSerialize(ty->getSerialize()),
+    mSerializationStateFactory(ty),
+    mDeserializeRef(deserializeRef),
+    mSerializeRef(serializeRef),
     mFreeRef(freeRef),
     mMalloc(ty->getMalloc())
   {
@@ -417,13 +424,18 @@ public:
   }
 
   int32_t getTag() const { return mTag; }
-  const RecordTypeDeserialize& getDeserialize() const { return mDeserialize; }
-  const RecordTypeSerialize& getSerialize() const { return mSerialize; }
+  const TreculSerializationStateFactory & getSerializationStateFactory() const { return mSerializationStateFactory; }
+  const TreculRecordDeserializeRuntime& getDeserialize() const { return mDeserialize; }
+  const TreculFunctionReference& getDeserializeRef() const { return mDeserializeRef; }
+  const TreculRecordSerializeRuntime& getSerialize() const { return mSerialize; }
+  const TreculFunctionReference& getSerializeRef() const { return mSerializeRef; }
   const TreculRecordFreeRuntime& getFree() const { return mFree; }
   const TreculFunctionReference& getFreeRef() const { return mFreeRef; }
   const RecordTypeMalloc& getMalloc() const { return mMalloc; }
   void loadFunctions(TreculModule & m)
   {
+    mSerialize = m.getFunction<TreculRecordSerializeRuntime>(mSerializeRef);
+    mDeserialize = m.getFunction<TreculRecordDeserializeRuntime>(mDeserializeRef);
     mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
   }  
 };
@@ -537,22 +549,26 @@ public:
    * a partitioner and the target is a collector.
    */
   void connectCrossbar(RuntimeOperatorType * source, RuntimeOperatorType * target, const RecordType * ty,
+                       const TreculRecordSerialize & serializeFunctor, const TreculRecordDeserialize & deserializeFunctor,
 		       const TreculFreeOperation & freeFunctor, bool buffered, bool locallyBuffered);
   void connectCrossbar(RuntimeOperatorType * source, RuntimeOperatorType * target, const RecordType * ty,
+                       const TreculFunctionReference & serializeRef, const TreculFunctionReference & deserializeRef,
 		       const TreculFunctionReference & freeRef, bool buffered, bool locallyBuffered);
   /**
    * Connect a partitioner running on a single partition with an operator running
    * on 1 or more partitions.
    */
   void connectBroadcast(RuntimeOperatorType * source, RuntimeOperatorType * target, int32_t targetPort,
-                        const RecordType * ty, const TreculFunctionReference & freeRef,
+                        const RecordType * ty, const TreculFunctionReference & serializeRef,
+                        const TreculFunctionReference & deserializeRef, const TreculFunctionReference & freeRef,
 			bool buffered, bool locallyBuffered);
   /**
    * Connect a partitioner an operator running on 1 or more partitions with a collector
    * running on a single partition.
    */
   void connectCollect(RuntimeOperatorType * source, int32_t sourcePort, RuntimeOperatorType * target,
-                      const RecordType * ty, const TreculFunctionReference & freeRef,
+                      const RecordType * ty, const TreculFunctionReference & serializeRef,
+                      const TreculFunctionReference & deserializeRef, const TreculFunctionReference & freeRef,
 		      bool buffered, bool locallyBuffered);
 
   /**

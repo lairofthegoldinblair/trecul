@@ -1,0 +1,5 @@
+r = read_block[file="simple_binary.bin"];
+s = deserialize[format="a BIGINT"];
+r -> s;
+w = write[file="output.txt", mode="text"];
+s -> w;

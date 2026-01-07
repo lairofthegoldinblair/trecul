@@ -503,6 +503,24 @@ struct TreculSerializationState
   static pointer get(const RecordType * ty);
 };
 
+class TreculSerializationStateFactory
+{
+public:
+  typedef TreculSerializationState::pointer pointer;
+private:
+  uint32_t mDepth;
+  // Serialization
+  friend class boost::serialization::access;
+  template <class Archive>
+  void serialize(Archive & ar, const unsigned int version) 
+  {
+    ar & BOOST_SERIALIZATION_NVP(mDepth);
+  }
+public:
+  TreculSerializationStateFactory(const RecordType * ty = nullptr);
+  pointer create() const;
+};
+
 class TreculRecordSerializeRuntime
 {
 public:

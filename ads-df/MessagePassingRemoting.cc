@@ -163,7 +163,9 @@ void MessagePassingRemoting::addRemoteSource(const InterProcessFifoSpec& spec,
                                                                      1000000 + tag));
   RuntimeOperator * sendAvailable = createOperator(mSendAvailableTypes.back(), sourcePartition);
 
-  mSenderTypes.push_back(new RuntimeMessageSendOperatorType(spec.getSerialize(),
+  mSenderTypes.push_back(new RuntimeMessageSendOperatorType(spec.getSerializationStateFactory(),
+                                                            spec.getSerializeRef(),
+                                                            spec.getSerialize(),
                                                             spec.getFreeRef(),
                                                             spec.getFree(),
                                                             targetPartition,
@@ -200,7 +202,9 @@ void MessagePassingRemoting::addRemoteTarget(const InterProcessFifoSpec& spec,
                                                                      dataAvailableTag));
   RuntimeOperator * dataAvailable = createOperator(mDataAvailableTypes.back(), targetPartition);
 
-  mReceiverTypes.push_back(new RuntimeMessageReceiverOperatorType(spec.getDeserialize(),
+  mReceiverTypes.push_back(new RuntimeMessageReceiverOperatorType(spec.getSerializationStateFactory(),
+                                                                  spec.getDeserializeRef(),
+                                                                  spec.getDeserialize(),
                                                                   spec.getMalloc(),
                                                                   sourcePartition,
                                                                   tag));

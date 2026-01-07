@@ -505,12 +505,15 @@ RuntimeMessageReceiverOperator::RuntimeMessageReceiverOperator(RuntimeOperator::
   mSourceRank(ty.mRank),
   mSourceTag(ty.mTag),
   mRequest(MPI_REQUEST_NULL),
+  mRuntimeContext(new InterpreterContext()),
+  mSerializationState(ty.mSerializationStateFactory.create()),
   mIsDone(false)
 {
 }
 
 RuntimeMessageReceiverOperator::~RuntimeMessageReceiverOperator()
 {
+  delete mRuntimeContext;
 }
   
 void RuntimeMessageReceiverOperator::start()
@@ -518,6 +521,14 @@ void RuntimeMessageReceiverOperator::start()
   mIsDone = false;
   mState = START;
   onEvent(NULL);
+}
+
+bool RuntimeMessageReceiverOperator::deserialize()
+{
+  const char * tmp = reinterpret_cast<char *>(mBufferIt);
+  bool ret = getMyOperatorType().mDeserialize.deserialize(mRecordBuffer, tmp, reinterpret_cast<char *>(mBufferEnd), *mSerializationState, mRuntimeContext);
+  mBufferIt = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(tmp));
+  return ret;
 }
 
 void RuntimeMessageReceiverOperator::onEvent(RuntimePort * port)
@@ -633,16 +644,16 @@ void RuntimeMessageReceiverOperator::onEvent(RuntimePort * port)
       while(mBufferIt < mBufferEnd) {
 	if (mRecordBuffer.Ptr == NULL) {
 	  mRecordBuffer = getMyOperatorType().mMalloc.malloc();
-	  mRecordBufferIt.init(mRecordBuffer);
+          mSerializationState->state = 0;
 	}
-	if(getMyOperatorType().mDeserialize.Do(mBufferIt, mBufferEnd, mRecordBufferIt, mRecordBuffer)) {
+	if(deserialize()) {
 	  requestWrite(RECORD_OUTPUT);
 	  mState = WRITE;
 	  return;
 	case WRITE:
 	  write(port, mRecordBuffer, false);
 	  mRecordBuffer = RecordBuffer(NULL);
-	  mRecordBufferIt.clear();
+          mSerializationState->state = 0;
 	} 
       }
 
@@ -818,12 +829,15 @@ RuntimeMessageSendOperator::RuntimeMessageSendOperator(RuntimeOperator::Services
   mSourceRank(ty.mRank),
   mSourceTag(ty.mTag),
   mRequest(MPI_REQUEST_NULL),
+  mRuntimeContext(new InterpreterContext()),
+  mSerializationState(ty.mSerializationStateFactory.create()),
   mIsDone(false)
 {
 }
 
 RuntimeMessageSendOperator::~RuntimeMessageSendOperator()
 {
+  delete mRuntimeContext;
 }
 
 void RuntimeMessageSendOperator::start()
@@ -831,6 +845,14 @@ void RuntimeMessageSendOperator::start()
   mIsDone = false;
   mState = START;
   onEvent(NULL);
+}
+
+bool RuntimeMessageSendOperator::serialize()
+{
+  char * tmp = reinterpret_cast<char *>(mBufferIt);
+  bool ret = getMyOperatorType().mSerialize.serialize(mRecordBuffer, tmp, reinterpret_cast<char *>(mBufferEnd), *mSerializationState, mRuntimeContext);
+  mBufferIt = reinterpret_cast<uint8_t *>(tmp);
+  return ret;
 }
 
 void RuntimeMessageSendOperator::onEvent(RuntimePort * port)
@@ -881,7 +903,7 @@ void RuntimeMessageSendOperator::onEvent(RuntimePort * port)
 	      // std::cout << "RuntimeMessageSendOperator::onEvent : input record from pid=" << getpid() << std::endl; 
 	    read(port, mRecordBuffer);
 	    if (!RecordBuffer::isEOS(mRecordBuffer)) {
-	      mRecordBufferIt.init(mRecordBuffer);
+              mSerializationState->state = 0;
 	    } else {
 	      // std::cout << "RuntimeMessageSendOperator::onEvent : input EOS from pid=" << getpid() << std::endl; 
 	      // Set the EOF flag and break out of this loop.
@@ -893,11 +915,11 @@ void RuntimeMessageSendOperator::onEvent(RuntimePort * port)
 	}
 	// Try to serialize the whole thing.  This can fail if we exhaust the available output
 	// buffer.
-	if (getMyOperatorType().mSerialize.doit(mBufferIt, mBufferEnd, mRecordBufferIt, mRecordBuffer)) {
+	if (serialize()) {
 	  // Done with it so free record.
 	  getMyOperatorType().mFree.free(mRecordBuffer);
 	  mRecordBuffer = RecordBuffer();
-	  mRecordBufferIt.clear();
+          mSerializationState->state = 0;
 	} else {
 	  BOOST_ASSERT(mBufferIt == mBufferEnd);
 	}

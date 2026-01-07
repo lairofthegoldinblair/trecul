@@ -203,6 +203,8 @@ public:
     OpTypePort Source;
     OpTypePort Target;
     const RecordType * Type;
+    TreculFunctionReference Serialize;
+    TreculFunctionReference Deserialize;
     TreculFunctionReference Free;
     bool Buffered;
     InternalEdge()
@@ -227,12 +229,16 @@ public:
 		 RuntimeOperatorType * targetOpType,
 		 std::size_t targetPort,
                  const RecordType * ty,
+                 const TreculRecordSerialize & serializeFunctor,
+                 const TreculRecordDeserialize & deserializeFunctor,
                  const TreculFreeOperation & freeFunctor,
 		 bool buffered)
       :
       Source(sourceOpType, sourcePort),
       Target(targetOpType, targetPort),
       Type(ty),
+      Serialize(serializeFunctor.getReference()),
+      Deserialize(deserializeFunctor.getReference()),
       Free(freeFunctor.getReference()),
       Buffered(buffered)
     {
@@ -298,12 +304,14 @@ public:
   }
   void connect(RuntimeOperatorType * sourceType, std::size_t sourcePort,
 	       RuntimeOperatorType * targetType, std::size_t targetPort,
-               const RecordType * ty, const TreculFreeOperation & freeFunctor,
+               const RecordType * ty, const TreculRecordSerialize & serializeFunctor,
+               const TreculRecordDeserialize & deserializeFunctor, const TreculFreeOperation & freeFunctor,
 	       bool buffered=true)
   {
     mInternalEdges.push_back(InternalEdge(sourceType, sourcePort,
 					  targetType, targetPort,
-                                          ty, freeFunctor,
+                                          ty, serializeFunctor,
+                                          deserializeFunctor, freeFunctor,
 					  buffered));
   }
   typedef std::vector<RuntimeOperatorType *>::iterator optype_iterator;
@@ -2362,6 +2370,8 @@ class LogicalExchange : public LogicalOperator
 {  
 private:
   TreculFunction * mHashFunction;
+  TreculRecordSerialize * mSerialize;
+  TreculRecordDeserialize * mDeserialize;
   TreculFreeOperation * mFree;
   TreculFunction * mKeyPrefix;
   TreculFunction * mKeyEq;

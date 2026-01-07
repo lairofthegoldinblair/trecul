@@ -35,6 +35,7 @@
 #ifndef __CONSTANT_SCAN_HH__
 #define __CONSTANT_SCAN_HH__
 
+#include "CodeGenerationContext.hh"
 #include "LogicalOperator.hh"
 #include "RuntimeOperator.hh"
 
@@ -42,16 +43,19 @@ class RuntimeConstantScanOperatorType : public RuntimeOperatorType
 {
   friend class RuntimeConstantScanOperator;
 private:
-  RecordTypeDeserialize mDeserialize;
+  TreculSerializationStateFactory mSerializationStateFactory;
+  TreculFunctionReference mDeserializeRef;
+  TreculRecordDeserializeRuntime mDeserialize;
   RecordTypeMalloc mMalloc;
-  std::vector<std::vector<uint8_t> > mBuffers;
+  std::vector<std::vector<char> > mBuffers;
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mDeserialize);
+    ar & BOOST_SERIALIZATION_NVP(mSerializationStateFactory);
+    ar & BOOST_SERIALIZATION_NVP(mDeserializeRef);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);    
     ar & BOOST_SERIALIZATION_NVP(mBuffers);
   }
@@ -60,9 +64,10 @@ private:
   }
 public:
   RuntimeConstantScanOperatorType(const RecordType * input,
+                                  const TreculRecordDeserialize & deserialize,
 				  const std::vector<RecordBuffer>& inputs);
   ~RuntimeConstantScanOperatorType();
-  void loadFunctions(TreculModule & ) override {}
+  void loadFunctions(TreculModule & m) override;
   RuntimeOperator * create(RuntimeOperator::Services & s) const;
 };
 

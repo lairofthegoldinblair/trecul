@@ -3234,6 +3234,8 @@ BOOST_DATA_TEST_CASE(testException, boost::unit_test::data::make({ 1, 2, 4, 16})
   TreculFunction trivialHash(ctxt, ctxt.getCodeGenerator(), "hash", std::vector<const RecordType*>({ &emptyTy, &emptyTy }), "0");
   RuntimeHashPartitionerOperatorType * partType = new RuntimeHashPartitionerOperatorType(trivialHash);
   partType->setPartitionConstraint(RuntimePartitionConstraint({0}));
+  TreculRecordSerialize serializeOp(ctxt.getCodeGenerator(), &emptyTy);
+  TreculRecordDeserialize deserializeOp(ctxt.getCodeGenerator(), &emptyTy);
   TreculFreeOperation freeOp(ctxt.getCodeGenerator(), &emptyTy);
   RuntimeDevNullOperatorType * dnType = new RuntimeDevNullOperatorType(freeOp);
   RuntimeOperatorPlan plan(num_partitions,true);
@@ -3241,7 +3243,8 @@ BOOST_DATA_TEST_CASE(testException, boost::unit_test::data::make({ 1, 2, 4, 16})
   plan.addOperatorType(partType);
   plan.addOperatorType(dnType);
   plan.connectStraight(leftType, 0, partType, 0, true, true);
-  plan.connectBroadcast(partType, dnType, 0, &emptyTy, freeOp.getReference(), true, true);
+  plan.connectBroadcast(partType, dnType, 0, &emptyTy, serializeOp.getReference(),
+                        deserializeOp.getReference(), freeOp.getReference(), true, true);
   plan.setModule(std::make_unique<TreculModule>(ctxt.getCodeGenerator().takeModule()));
   plan.loadFunctions();
   RuntimeProcess p;

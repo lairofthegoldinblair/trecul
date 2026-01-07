@@ -46,6 +46,7 @@
 #include "AsyncRecordParser.hh"
 #include "GzipOperator.hh"
 #include "TcpOperator.hh"
+#include "SerializeOperator.hh"
 #include "HttpOperator.hh"
 #include "FileWriteOperator.hh"
 #include "QueryStringOperator.hh"
@@ -132,6 +133,7 @@ BOOST_CLASS_EXPORT(GenericParserOperatorType<ExplicitChunkStrategy>);
 BOOST_CLASS_EXPORT(GenericParserOperatorType<SerialChunkStrategy>);
 BOOST_CLASS_EXPORT(RuntimeConstantScanOperatorType);
 BOOST_CLASS_EXPORT(RuntimeGunzipOperatorType);
+BOOST_CLASS_EXPORT(RuntimeDeserializeOperatorType);
 
 #if defined(TRECUL_HAS_HADOOP)
 BOOST_CLASS_EXPORT(HdfsWritableFileFactory);
@@ -381,6 +383,8 @@ void DataflowGraphBuilder::nodeStart(const char * type,
     mCurrentOp = new LogicalConstantSink();
   } else if (boost::algorithm::iequals("copy", type)) {
     mCurrentOp = new CopyOp();
+  } else if (boost::algorithm::iequals("deserialize", type)) {
+    mCurrentOp = new LogicalDeserialize();
   } else if (boost::algorithm::iequals("emit", type)) {
 #if defined(TRECUL_HAS_HADOOP)
     mCurrentOp = new LogicalEmit();
@@ -544,7 +548,10 @@ std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(LogicalPlan & 
       if(t.first->isCollector()) {
         plan->connectCrossbar(s.first,
                               t.first,
-                              (*it)->getRecordType(), TreculFreeOperation(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                              (*it)->getRecordType(),
+                              TreculRecordSerialize(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                              TreculRecordDeserialize(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                              TreculFreeOperation(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
                               true, true);
       } else {
         if (s.first->getPartitionConstraint().size() != 1) {
@@ -552,7 +559,10 @@ std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(LogicalPlan & 
         }
         plan->connectBroadcast(s.first,
                                t.first, t.second, 
-                               (*it)->getRecordType(), TreculFreeOperation(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                               (*it)->getRecordType(),
+                               TreculRecordSerialize(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                               TreculRecordDeserialize(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                               TreculFreeOperation(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
                                true, true);
       }
     } else if(!t.first->isCollector()) {
@@ -565,7 +575,10 @@ std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(LogicalPlan & 
       }
       plan->connectCollect(s.first, s.second, 
                            t.first, 
-                           (*it)->getRecordType(), TreculFreeOperation(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                           (*it)->getRecordType(),
+                           TreculRecordSerialize(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                           TreculRecordDeserialize(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
+                           TreculFreeOperation(logicalPlan.getContext().getCodeGenerator(), (*it)->getRecordType()).getReference(),
                            true, true);
     }
   }
@@ -576,7 +589,8 @@ std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(LogicalPlan & 
       if(it->Target.OpType->isCollector()) {
         plan->connectCrossbar(it->Source.OpType,
                               it->Target.OpType,
-                              it->Type, it->Free,
+                              it->Type, it->Serialize,
+                              it->Deserialize, it->Free,
                               it->Buffered, true);
       } else {
         if (it->Source.OpType->getPartitionConstraint().size() != 1) {
@@ -584,7 +598,8 @@ std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(LogicalPlan & 
         }
         plan->connectBroadcast(it->Source.OpType,
                                it->Target.OpType, it->Target.Index, 
-                               it->Type, it->Free,
+                               it->Type, it->Serialize,
+                               it->Deserialize, it->Free,
                                it->Buffered, true);
       }
     } else if(!it->Target.OpType->isCollector()) {
@@ -597,7 +612,8 @@ std::shared_ptr<RuntimeOperatorPlan> DataflowGraphBuilder::create(LogicalPlan & 
       }
       plan->connectCollect(it->Source.OpType, it->Source.Index, 
                            it->Target.OpType, 
-                           it->Type, it->Free,
+                           it->Type, it->Serialize,
+                           it->Deserialize, it->Free,
                            it->Buffered, true);
     }
   }

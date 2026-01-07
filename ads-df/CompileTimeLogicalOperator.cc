@@ -69,8 +69,10 @@ void CompileTimeLogicalOperator::create(class RuntimePlanBuilder& plan)
     p.run();
     // OK.  Now we can create the constant scan and
     // insert into the plan.
+    
     RuntimeConstantScanOperatorType * scan = 
       new RuntimeConstantScanOperatorType(getOutput(0)->getRecordType(),
+                                          internalDeserialization(),
 					  sink->getSink());
     plan.addOperatorType(scan);
     plan.mapOutputPort(this, 0, scan, 0);  

@@ -32,6 +32,8 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <boost/date_time/posix_time/posix_time.hpp>
+
 #include "CodeGenerationContext.hh"
 #include "IQLInterpreter.hh"
 #include "SuperFastHash.h"
@@ -2125,5 +2127,100 @@ BOOST_FIXTURE_TEST_CASE(DeserializeVariableArrayOfVariableArraysOneShot, SyncSer
   BOOST_CHECK(checkFieldEqual("a", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("b", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("c", outputBuf, deserializeBuf));
+}
+
+class Utils
+{
+public:
+  static uint8_t nibble_from_hex_char(char c)
+  {
+    return '0' <= c && c <= '9' ? c - '0' :
+      'a' <= c && c <= 'f' ? c - 'a' + 10 :
+      c - 'A' + 10;
+  }
+
+  static std::vector<uint8_t> vector_from_hex_string(const std::string_view str)
+  {
+    std::vector<uint8_t> ret;
+    if (str.size() % 2 != 0) {
+      throw std::runtime_error("Must be even length string");
+    }
+    // TODO: Handle leading 0x if present                                                                                                                                                                                              
+    if (str[0] == '0' && str[1] == 'x') {
+    }
+
+    for(std::size_t i=0; i<str.size(); i += 2) {
+      uint8_t val = nibble_from_hex_char(str[i]) << 4 | nibble_from_hex_char(str[i+1]);
+      ret.push_back(val);
+    }
+    return ret;
+  }
+};
+
+BOOST_FIXTURE_TEST_CASE(DeserializeMultipleRecords, SyncSerializeAsyncDeserializeTestFixture)
+{
+  std::string expected1 = "This is a varchar";
+  std::string expected2 = "This line has negatives";
+  std::string expected3 = "This line has positves";
+  decimal128 expectedDec1, expectedDec2, expectedDec3;
+  ::decimal128FromString(&expectedDec1, "778234.33323", runtimeCtxt.getDecimalContext());
+  ::decimal128FromString(&expectedDec2, "-7772734.5555", runtimeCtxt.getDecimalContext());
+  ::decimal128FromString(&expectedDec3, "6626663.88", runtimeCtxt.getDecimalContext());
+
+  auto buf = Utils::vector_from_hex_string("5c93030000000000caf21cd4c8500000a3cdd8d21d0000000000000000c006222300000000000000800c009cf67f000061616161616161610000000000000000003f8946a6bff102b97625000000000054686973206973206120766172636861720057268aff00000000140364e4df8e1ff2d51677fa1d00000000000000000007a22f00000000000000c00c009cf67f0000626262626262626200000000000000000000e897749ff002bf6725000000000054686973206c696e6520686173206e656761746976657300f918eb050000000081f9c0dd721b1401ce992d360000000000000000008007222d00000000000000f01a019cf67f00006363636363636363000000000000000040c958fa35e8f502f18525000000000054686973206c696e652068617320706f73697476657300");
+  // a INTEGER, b BIGINT, c DECIMAL, e VARCHAR, f CHAR(8), g DATETIME, h DATE
+  std::vector<RecordMember> members;
+  members.emplace_back("a", Int32Type::Get(ctxt));
+  members.emplace_back("b", Int64Type::Get(ctxt));
+  members.emplace_back("c", DecimalType::Get(ctxt));
+  members.emplace_back("e", VarcharType::Get(ctxt));
+  members.emplace_back("f", CharType::Get(ctxt, 8));
+  members.emplace_back("g", DatetimeType::Get(ctxt));
+  members.emplace_back("h", DateType::Get(ctxt));
+  outputType = new RecordType(ctxt, members);
+  state = TreculSerializationState::get(outputType);
+  BOOST_CHECK_EQUAL(buf.size(), 3U*outputType->GetAllocSize() + expected1.size() + expected2.size() + expected3.size() + 3U);
+  auto deserializer = makeDeserializer();
+  const char * input = reinterpret_cast<const char *>(buf.data());
+  const char * inputStart = input;
+  const char * inputEnd = input + buf.size();
+  RecordBuffer deserializeBuf = outputType->getMalloc().malloc();
+  bool ret = deserializer.deserialize(deserializeBuf, input, inputEnd, *state.get(), &runtimeCtxt);
+  BOOST_CHECK(ret);
+  BOOST_CHECK_EQUAL(input, inputStart + outputType->GetAllocSize() + expected1.size() + 1);
+  BOOST_CHECK_EQUAL(234332, outputType->getInt32("a", deserializeBuf));
+  BOOST_CHECK_EQUAL(88823482348234LL, outputType->getInt64("b", deserializeBuf));
+  BOOST_CHECK_EQUAL(0, ::memcmp(&expectedDec1, outputType->getFieldAddress("c").getDecimalPtr(deserializeBuf), sizeof(decimal128)));
+  BOOST_CHECK_EQUAL(0, ::strcmp(expected1.c_str(), outputType->getVarcharPtr("e", deserializeBuf)->c_str()));
+  BOOST_CHECK_EQUAL(0, ::strcmp("aaaaaaaa", outputType->getFieldAddress("f").getCharPtr(deserializeBuf)));
+  BOOST_CHECK_EQUAL(boost::posix_time::time_from_string("2011-01-09 12:12:12"), outputType->getFieldAddress("g").getDatetime(deserializeBuf));
+  BOOST_CHECK_EQUAL(boost::gregorian::from_string("2010-01-28"), outputType->getFieldAddress("h").getDate(deserializeBuf));
+  outputType->getFree().free(deserializeBuf);
+  deserializeBuf = outputType->getMalloc().malloc();
+  state->state = 0;
+  ret = deserializer.deserialize(deserializeBuf, input, inputEnd, *state.get(), &runtimeCtxt);
+  BOOST_CHECK(ret);
+  BOOST_CHECK_EQUAL(input, inputStart + 2*outputType->GetAllocSize() + expected1.size() + expected2.size() + 2);
+  BOOST_CHECK_EQUAL(-7723433, outputType->getInt32("a", deserializeBuf));
+  BOOST_CHECK_EQUAL(-999923499992349932LL, outputType->getInt64("b", deserializeBuf));
+  BOOST_CHECK_EQUAL(0, ::memcmp(&expectedDec2, outputType->getFieldAddress("c").getDecimalPtr(deserializeBuf), sizeof(decimal128)));
+  BOOST_CHECK_EQUAL(0, ::strcmp(expected2.c_str(), outputType->getVarcharPtr("e", deserializeBuf)->c_str()));
+  BOOST_CHECK_EQUAL(0, ::strcmp("bbbbbbbb", outputType->getFieldAddress("f").getCharPtr(deserializeBuf)));
+  BOOST_CHECK_EQUAL(boost::posix_time::time_from_string("2000-12-25 00:00:00"), outputType->getFieldAddress("g").getDatetime(deserializeBuf));
+  BOOST_CHECK_EQUAL(boost::gregorian::from_string("1999-07-31"), outputType->getFieldAddress("h").getDate(deserializeBuf));
+  outputType->getFree().free(deserializeBuf);
+  deserializeBuf = outputType->getMalloc().malloc();
+  state->state = 0;
+  ret = deserializer.deserialize(deserializeBuf, input, inputEnd, *state.get(), &runtimeCtxt);
+  BOOST_CHECK(ret);
+  BOOST_CHECK_EQUAL(input, inputStart + 3*outputType->GetAllocSize() + expected1.size() + expected2.size() + expected3.size() + 3);
+  BOOST_CHECK_EQUAL(99293433, outputType->getInt32("a", deserializeBuf));
+  BOOST_CHECK_EQUAL(77717273732774273LL, outputType->getInt64("b", deserializeBuf));
+  BOOST_CHECK_EQUAL(0, ::memcmp(&expectedDec3, outputType->getFieldAddress("c").getDecimalPtr(deserializeBuf), sizeof(decimal128)));
+  BOOST_CHECK_EQUAL(0, ::strcmp(expected3.c_str(), outputType->getVarcharPtr("e", deserializeBuf)->c_str()));
+  BOOST_CHECK_EQUAL(0, ::strcmp("cccccccc", outputType->getFieldAddress("f").getCharPtr(deserializeBuf)));
+  BOOST_CHECK_EQUAL(boost::posix_time::time_from_string("2048-02-11 22:25:01"), outputType->getFieldAddress("g").getDatetime(deserializeBuf));
+  BOOST_CHECK_EQUAL(boost::gregorian::from_string("2020-09-28"), outputType->getFieldAddress("h").getDate(deserializeBuf));
+  outputType->getFree().free(deserializeBuf);
 }
 

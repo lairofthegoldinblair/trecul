@@ -69,6 +69,7 @@ RecordParser.cc
 RuntimeOperator.cc 
 RuntimePlan.cc 
 RuntimeProcess.cc
+SerializeOperator.cc
 ServiceCompletionPort.cc
 StreamBufferBlock.cc
 TableMetadata.cc

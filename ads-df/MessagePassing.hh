@@ -242,7 +242,9 @@ class RuntimeMessageReceiverOperatorType : public RuntimeOperatorType
 {
   friend class RuntimeMessageReceiverOperator;
 private:
-  RecordTypeDeserialize mDeserialize;
+  TreculSerializationStateFactory mSerializationStateFactory;
+  TreculFunctionReference mDeserializeRef;
+  TreculRecordDeserializeRuntime mDeserialize;
   RecordTypeMalloc mMalloc;
   int mRank;
   int mTag;
@@ -252,7 +254,8 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mDeserialize);
+    ar & BOOST_SERIALIZATION_NVP(mSerializationStateFactory);
+    ar & BOOST_SERIALIZATION_NVP(mDeserializeRef);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
     ar & BOOST_SERIALIZATION_NVP(mRank);
     ar & BOOST_SERIALIZATION_NVP(mTag);
@@ -264,12 +267,16 @@ private:
   {
   }
 public:
-  RuntimeMessageReceiverOperatorType(const RecordTypeDeserialize & deserializeFunctor,
-			  const RecordTypeMalloc & mallocFunctor,
-			  int rank,
-			  int tag)
+  RuntimeMessageReceiverOperatorType(const TreculSerializationStateFactory & factory,
+                                     const TreculFunctionReference & deserializeRef,
+                                     const TreculRecordDeserializeRuntime & deserializeFunctor,
+                                     const RecordTypeMalloc & mallocFunctor,
+                                     int rank,
+                                     int tag)
     :
     RuntimeOperatorType("RuntimeMessageReceiverOperatorType"),
+    mSerializationStateFactory(factory),
+    mDeserializeRef(deserializeRef),
     mDeserialize(deserializeFunctor),
     mMalloc(mallocFunctor),
     mRank(rank),
@@ -282,6 +289,7 @@ public:
   RuntimeOperator * create(RuntimeOperator::Services& s) const;
   void loadFunctions(TreculModule & m) override
   {
+    mDeserialize = m.getFunction<TreculRecordDeserializeRuntime>(mDeserializeRef);
   }
 };
 
@@ -303,11 +311,13 @@ private:
   int mSourceTag;
   MPI_Request mRequest;
   RecordBuffer mRecordBuffer;
-  RecordBufferIterator mRecordBufferIt;
+  InterpreterContext * mRuntimeContext;
+  TreculSerializationStateFactory::pointer mSerializationState;  
   bool mIsDone;
   // int64_t mTotalAvailable;
   // int32_t mAvailableCap;
   // bool mAvailableClosed;
+  bool deserialize();
 public:
   RuntimeMessageReceiverOperator(RuntimeOperator::Services& services, const RuntimeMessageReceiverOperatorType& ty);
   ~RuntimeMessageReceiverOperator();
@@ -413,7 +423,9 @@ class RuntimeMessageSendOperatorType : public RuntimeOperatorType
 {
   friend class RuntimeMessageSendOperator;
 private:
-  RecordTypeSerialize mSerialize;
+  TreculSerializationStateFactory mSerializationStateFactory;
+  TreculFunctionReference mSerializeRef;
+  TreculRecordSerializeRuntime mSerialize;
   TreculFunctionReference mFreeRef;
   TreculRecordFreeRuntime mFree;
   int mRank;
@@ -424,7 +436,8 @@ private:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mSerialize);
+    ar & BOOST_SERIALIZATION_NVP(mSerializationStateFactory);
+    ar & BOOST_SERIALIZATION_NVP(mSerializeRef);
     ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mRank);
     ar & BOOST_SERIALIZATION_NVP(mTag);
@@ -436,14 +449,18 @@ private:
   {
   }
 public:
-  RuntimeMessageSendOperatorType(const RecordTypeSerialize & serializeFunctor,
+  RuntimeMessageSendOperatorType(const TreculSerializationStateFactory & factory,
+                                 const TreculFunctionReference & serializeRef,
+                                 const TreculRecordSerializeRuntime & serializeOp,
                                  const TreculFunctionReference & freeRef,
                                  const TreculRecordFreeRuntime & freeOp,
                                  int rank,
                                  int tag)
     :
     RuntimeOperatorType("RuntimeMessageSendOperatorType"),
-    mSerialize(serializeFunctor),
+    mSerializationStateFactory(factory),
+    mSerializeRef(serializeRef),
+    mSerialize(serializeOp),
     mFreeRef(freeRef),
     mFree(freeOp),
     mRank(rank),
@@ -457,6 +474,7 @@ public:
   RuntimeOperator * create(RuntimeOperator::Services& s) const;
   void loadFunctions(TreculModule & m) override
   {
+    mSerialize = m.getFunction<TreculRecordSerializeRuntime>(mSerializeRef);
     mFree = m.getFunction<TreculRecordFreeRuntime>(mFreeRef);
   }
 };
@@ -479,8 +497,12 @@ private:
   int mSourceTag;
   MPI_Request mRequest;
   RecordBuffer mRecordBuffer;
-  RecordBufferIterator mRecordBufferIt;
+  InterpreterContext * mRuntimeContext;
+  TreculSerializationStateFactory::pointer mSerializationState;  
+
   bool mIsDone;
+
+  bool serialize();
 public:
   RuntimeMessageSendOperator(RuntimeOperator::Services & s, const RuntimeMessageSendOperatorType & ty);
   ~RuntimeMessageSendOperator();

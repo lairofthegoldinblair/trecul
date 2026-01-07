@@ -37,6 +37,8 @@
 
 #include "LogicalOperator.hh"
 
+class TreculRecordDeserialize;
+
 /**
  * An operator that supports an option for compile time execution.
  */
@@ -54,6 +56,11 @@ protected:
    */
   virtual void internalCreate(class RuntimePlanBuilder& plan) = 0;
   
+  /**
+   * Subclasses override this to provide deserialzer.
+   */
+  virtual const TreculRecordDeserialize & internalDeserialization() const = 0;
+
   /**
    * Create the operator with desired initialization of constantScan.
    */

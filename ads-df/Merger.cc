@@ -184,6 +184,7 @@ public:
 private:
   enum State { START, READ };
   State mState;
+  InterpreterContext * mRuntimeContext;
   const InternalFileWriteOperatorType &  getWriteType()
   {
     return *reinterpret_cast<const InternalFileWriteOperatorType *>(&_WriterContext::getOperatorType());
@@ -210,9 +211,10 @@ private:
   Block mBlocks[2];
   std::size_t mCurrentBlock;
   ConcurrentBlockingFifo<int32_t> mWriteCompletionQueue;
+  // Serialization state
+  TreculSerializationStateFactory::pointer mSerializationState;
   // The record buffer I am writing
   RecordBuffer mRecordBuffer;
-  RecordBufferIterator mRecordBufferIt;
   bool mIsDone;
   /**
    * We only allow a single outstanding write.
@@ -243,6 +245,7 @@ private:
   {
     return *static_cast<const operator_type *>(&_WriterContext::getOperatorType());
   }
+  bool serialize();
 public:
   RecordWriter(services_type& services, const RuntimeOperatorType& opType);
   ~RecordWriter();
@@ -272,9 +275,11 @@ RecordWriter<_WriterContext>::RecordWriter(services_type& services,
   :
   _WriterContext(services, opType),
   mState(START),
+  mRuntimeContext(new InterpreterContext()),
   mFileSystem(NULL),
   mFile(NULL),
   mCurrentBlock(0),
+  mSerializationState(getMyOperatorType().mSerializationStateFactory.create()),
   mIsDone(false),
   mOperationsOutstanding(0)
 {
@@ -288,6 +293,7 @@ RecordWriter<_WriterContext>::RecordWriter(services_type& services,
 template <class _WriterContext>
 RecordWriter<_WriterContext>::~RecordWriter()
 {
+  delete mRuntimeContext;
   delete [] mBlocks[0].mBufferStart;
   delete [] mBlocks[1].mBufferStart;
 }
@@ -302,6 +308,7 @@ void RecordWriter<_WriterContext>::start()
   mBlocks[0].mBufferPtr = mBlocks[0].mBufferStart;
   mBlocks[1].mBufferPtr = mBlocks[1].mBufferStart;
   mCurrentBlock = 0;
+  mSerializationState->state = 0;
 
   // Open file system and file
   mFileSystem = file_traits::openFor(getWriteType().mFile.c_str());
@@ -332,6 +339,19 @@ void RecordWriter<_WriterContext>::writeBuffer()
   mBlocks[mCurrentBlock].mBufferPtr=mBlocks[mCurrentBlock].mBufferStart;
   mCurrentBlock = (mCurrentBlock + 1) % 2;
   BOOST_ASSERT(mBlocks[mCurrentBlock].mState == Block::COMPLETED);
+}
+
+template <class _WriterContext>
+bool RecordWriter<_WriterContext>::serialize()
+{
+  auto tmp = reinterpret_cast<char *>(mBlocks[mCurrentBlock].mBufferPtr);
+  bool ret = getMyOperatorType().mSerialize.serialize(mRecordBuffer,
+                                                      tmp, 
+                                                      reinterpret_cast<char *>(mBlocks[mCurrentBlock].mBufferEnd), 
+                                                      *mSerializationState, 
+                                                      mRuntimeContext);
+  mBlocks[mCurrentBlock].mBufferPtr = reinterpret_cast<uint8_t *>(tmp);
+  return ret;
 }
 
 template <class _WriterContext>
@@ -368,7 +388,7 @@ void RecordWriter<_WriterContext>::onEvent(port_type port)
 	  {
 	    _WriterContext::read(port, mRecordBuffer);
 	    if (!RecordBuffer::isEOS(mRecordBuffer)) {
-	      mRecordBufferIt.init(mRecordBuffer);
+              mSerializationState->state = 0;
 	    } else {
 	      // Set the EOF flag and break out of this loop.
 	      mIsDone = true;
@@ -378,14 +398,11 @@ void RecordWriter<_WriterContext>::onEvent(port_type port)
 	}
 	// Try to serialize the whole thing.  This can fail if we exhaust the available output
 	// buffer.
-	if (getMyOperatorType().mSerialize.doit(mBlocks[mCurrentBlock].mBufferPtr, 
-						mBlocks[mCurrentBlock].mBufferEnd, 
-						mRecordBufferIt, 
-						mRecordBuffer)) {
+	if (serialize()) {
 	  // Done with it so free record.
 	  getMyOperatorType().mFree.free(mRecordBuffer);
 	  mRecordBuffer = RecordBuffer();
-	  mRecordBufferIt.clear();
+          mSerializationState->state = 0;
 	} else {
 	  BOOST_ASSERT(mBlocks[mCurrentBlock].mBufferPtr == 
 		       mBlocks[mCurrentBlock].mBufferEnd);
@@ -438,12 +455,14 @@ LogicalFileRead::LogicalFileRead()
   mRecordSeparator('\n'),
   mEscapeChar('\\'),
   mFormat(nullptr),
+  mDeserialization(nullptr),
   mFree(nullptr)
 {
 }
 
 LogicalFileRead::~LogicalFileRead()
 {
+  delete mDeserialization;
   delete mFree;
 }
 
@@ -568,6 +587,8 @@ void LogicalFileRead::check(PlanCheckContext& ctxt)
                                               referenced.end());
       getOutput(0)->setRecordType(outputRecordType);
       mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), outputRecordType);
+      // Always create because this operator could be evaluated at compile time
+      mDeserialization = new TreculRecordDeserialize(ctxt.getCodeGenerator(), outputRecordType, "deserialize");
     } catch(std::exception& ex) {
       ctxt.logError(*this, *formatParam, ex.what());
     }
@@ -586,6 +607,7 @@ void LogicalFileRead::internalCreate(class RuntimePlanBuilder& plan)
   RuntimeOperatorType * opType = NULL;
   if(boost::algorithm::iequals("binary", mMode)) {
     opType = new binary_op_type(getOutput(0)->getRecordType(),
+                                *mDeserialization,
 				mFile,
                                 binary_op_type::chunk_strategy_type());
   } else if (mBucketed) {
@@ -621,11 +643,18 @@ void LogicalFileRead::internalCreate(class RuntimePlanBuilder& plan)
   plan.mapOutputPort(this, 0, opType, 0);  
 }
 
+const TreculRecordDeserialize & LogicalFileRead::internalDeserialization() const
+{
+  BOOST_ASSERT(nullptr != mDeserialization);
+  return *mDeserialization;
+}
+
 LogicalFileWrite::LogicalFileWrite()
   :
   mMode("binary"),
   mPrint(nullptr),
   mFree(nullptr),
+  mSerialization(nullptr),
   mFileNameExpr(nullptr),
   mFileNameExprFree(nullptr),
   mMaxRecords(0),
@@ -638,6 +667,7 @@ LogicalFileWrite::~LogicalFileWrite()
 {
   delete mPrint;
   delete mFree;
+  delete mSerialization;
   delete mFileNameExpr;
   delete mFileNameExprFree;
 }
@@ -764,6 +794,9 @@ void LogicalFileWrite::check(PlanCheckContext& ctxt)
     checkPath(ctxt, mHeaderFile);
   mPrint = new TreculPrintOperation(ctxt.getCodeGenerator(), getInput(0)->getRecordType(), boost::algorithm::iequals("binary", mMode));
   mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), getInput(0)->getRecordType());
+  if (boost::algorithm::iequals("binary", mMode)) {
+    mSerialization = new TreculRecordSerialize(ctxt.getCodeGenerator(), getInput(0)->getRecordType(), "serialize");
+  }
 }
 
 void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
@@ -800,6 +833,7 @@ void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
   } else if (boost::algorithm::iequals("binary", mMode)) {
     opType = new InternalFileWriteOperatorType("write",
 					       getInput(0)->getRecordType(),
+                                               *mSerialization,
                                                *mFree,
 					       uri->getPath());
   } else {
@@ -1019,6 +1053,9 @@ LogicalSort::LogicalSort()
   mKeyEq(nullptr),
   mPresortedKeyEq(nullptr),
   mPresortedKeyLessThanEq(nullptr),
+  mSerialization(nullptr),
+  mDeserialization(nullptr),
+  mSerializedLength(nullptr),
   mMemory(128*1024*1024)
 {
 }
@@ -1030,6 +1067,9 @@ LogicalSort::~LogicalSort()
   delete mKeyEq;
   delete mPresortedKeyEq;
   delete mPresortedKeyLessThanEq;
+  delete mSerialization;
+  delete mDeserialization;
+  delete mSerializedLength;
 }
 
 void LogicalSort::check(PlanCheckContext& ctxt)
@@ -1066,6 +1106,9 @@ void LogicalSort::check(PlanCheckContext& ctxt)
   const RecordType * input = getInput(0)->getRecordType();
   getOutput(0)->setRecordType(input);
   mFree = new TreculFreeOperation(ctxt.getCodeGenerator(), input);
+  mSerialization = new TreculRecordSerialize(ctxt.getCodeGenerator(), input, "serialize");
+  mDeserialization = new TreculRecordDeserialize(ctxt.getCodeGenerator(), input, "deserialize");
+  mSerializedLength = new TreculRecordSerializedLength(ctxt.getCodeGenerator(), input, "serializedLength");
   
   // Validate that the keys exist and are sortable.
   checkFieldsExist(ctxt, sortKeys, 0);
@@ -1091,6 +1134,9 @@ void LogicalSort::create(class RuntimePlanBuilder& plan)
   RuntimeOperatorType * opType = 
     new RuntimeSortOperatorType(getInput(0)->getRecordType(),
                                 *mFree,
+                                *mSerialization,
+                                *mDeserialization,
+                                *mSerializedLength,
 				mKeyPrefix, 
 				mKeyEq,
 				mPresortedKeyEq,
@@ -1132,6 +1178,10 @@ private:
    */
   bool mInputDone;
 
+  // Serialization state
+  TreculSerializationStateFactory::pointer mSerializationState;
+  class InterpreterContext * mRuntimeContext;
+  
   // For writing of sort runs to disk
   InternalFileWriteOperatorType * mWriterType;
   RecordWriter<SortWriterContext> * mWriter;  
@@ -1238,6 +1288,8 @@ private:
   std::vector<std::pair<SortNode*,SortNode*> > mSortRuns;
   // Tournament tree for merging mini-runs
   LoserTree<RecordBuffer,NotPred<RecordTypeEquals> >mMergeTree;
+  // Serialization state
+  TreculSerializationStateFactory::pointer mSerializationState;  
   // Done reading input?
   bool mInputDone;
 public:
@@ -1258,6 +1310,8 @@ RuntimeSortOperator::RuntimeSortOperator(RuntimeOperator::Services& services,
   mLessFunction(opType.mLessThanFun, new InterpreterContext()),
   mSortTicks(0),
   mSortRuns(opType.mMemoryAllowed),
+  mSerializationState(getMyOperatorType().mSerializationStateFactory.create()),
+  mRuntimeContext(new InterpreterContext),
   mInputDone(false),
   mWriterType(NULL),
   mWriter(NULL)
@@ -1271,6 +1325,7 @@ RuntimeSortOperator::~RuntimeSortOperator()
   }
   delete mWriterType;
   delete mWriter;
+  delete mRuntimeContext;
   freeMergeGraph();
 }
 
@@ -1286,7 +1341,7 @@ return (uint64_t)hi << 32 | lo;
 
 void RuntimeSortOperator::addSortRun()
 {
-  std::size_t sz = getMyOperatorType().mSerialize.getRecordLength(mInput);
+  std::size_t sz = getMyOperatorType().mSerializedLength.length(mInput, *mSerializationState, mRuntimeContext);
   uint32_t keyPrefix = 
     getMyOperatorType().mKeyPrefix.execute(mInput, 
                                             NULL, 
@@ -1323,6 +1378,8 @@ void RuntimeSortOperator::writeSortRun(SortRun & sortRuns)
     // Write a sort run to disk
     mWriterType = 
       new InternalFileWriteOperatorType("sortInternalWriter",
+					getMyOperatorType().mSerializationStateFactory,
+					getMyOperatorType().mSerializeRef,
 					getMyOperatorType().mSerialize,
 					getMyOperatorType().mFreeRef, 
 					getMyOperatorType().mFree, 
@@ -1399,6 +1456,7 @@ void RuntimeSortOperator::buildMergeGraph()
       it != mSortFiles.end();
       ++it) {   
     op_type * readOpType = new op_type(getMyOperatorType().mDeserialize,
+                                       getMyOperatorType().mSerializationStateFactory,
 				       getMyOperatorType().mMalloc,
 				       *it,
                                        op_type::chunk_strategy_type(),
@@ -1589,12 +1647,15 @@ RuntimeSortOperator::RuntimeSortOperator(RuntimeOperator::Services& services,
   mCurrentRunStart(NULL),
   mCurrentRunPtr(NULL),
   mCurrentRunEnd(NULL),
+  mSerializationState(getMyOperatorType().mSerializationStateFactory.create()),
+  mRuntimeContext(new InterpreterContext),
   mInputDone(false)
 {
 }
 
 RuntimeSortOperator::~RuntimeSortOperator()
 {
+  delete mRuntimeContext;
 }
 
 void RuntimeSortOperator::start()

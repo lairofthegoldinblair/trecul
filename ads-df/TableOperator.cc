@@ -122,6 +122,9 @@ private:
   const RecordType * mColumnGroupFormat;
   
   TreculFreeOperation * mColumnGroupTypeFree;
+  TreculRecordSerialize * mColumnGroupTypeSerialize;
+  TreculRecordDeserialize * mColumnGroupTypeDeserialize;
+  TreculRecordSerializedLength * mColumnGroupTypeSerializedLength;
   TreculFunction * mKeyPrefixFun;
   TreculFunction * mKeyLessThanFun;
   TreculFunction * mPresortedEqFun;
@@ -299,6 +302,9 @@ ColumnGroupOutput::ColumnGroupOutput(PlanCheckContext& ctxt,
 				     const std::set<std::string>& referenced)
   :
   mColumnGroupTypeFree(nullptr),
+  mColumnGroupTypeSerialize(nullptr),
+  mColumnGroupTypeDeserialize(nullptr),
+  mColumnGroupTypeSerializedLength(nullptr),
   mKeyPrefixFun(nullptr),
   mKeyLessThanFun(nullptr),
   mPresortedEqFun(nullptr),
@@ -329,6 +335,9 @@ ColumnGroupOutput::ColumnGroupOutput(PlanCheckContext& ctxt,
 ColumnGroupOutput::~ColumnGroupOutput()
 {
   delete mColumnGroupTypeFree;
+  delete mColumnGroupTypeSerialize;
+  delete mColumnGroupTypeDeserialize;
+  delete mColumnGroupTypeSerializedLength;
   for(std::map<int32_t, TableColumnGroupVersionOutput *>::iterator it=mOutputs.begin();
       it != mOutputs.end();
       ++it) {
@@ -377,6 +386,9 @@ void ColumnGroupOutput::check(PlanCheckContext & ctxt)
   if (version.size()) {
     const RecordType * input = ColumnGroupType;
     mColumnGroupTypeFree = new TreculFreeOperation(ctxt.getCodeGenerator(), ColumnGroupType);
+    mColumnGroupTypeSerialize = new TreculRecordSerialize(ctxt.getCodeGenerator(), ColumnGroupType, "serialize");
+    mColumnGroupTypeDeserialize = new TreculRecordDeserialize(ctxt.getCodeGenerator(), ColumnGroupType, "deserialize");
+    mColumnGroupTypeSerializedLength = new TreculRecordSerializedLength(ctxt.getCodeGenerator(), ColumnGroupType, "serializedLength");
     std::vector<SortKey> versionSortKeys;
     versionSortKeys.emplace_back(version, SortKey::DESC);
     const std::vector<std::string>& primaryKey = Metadata->getTable()->getPrimaryKey();
@@ -457,6 +469,9 @@ RuntimeOperatorType * ColumnGroupOutput::create(RuntimePlanBuilder& plan,
   RuntimeOperatorType * sortTy = 
     new RuntimeSortOperatorType(ColumnGroupType,
                                 *mColumnGroupTypeFree,
+                                *mColumnGroupTypeSerialize,
+                                *mColumnGroupTypeDeserialize,
+                                *mColumnGroupTypeSerializedLength,
 				mKeyPrefixFun,
 				mKeyLessThanFun,
 				mPresortedEqFun,

@@ -214,12 +214,14 @@ void RuntimeOperatorPlan::connectStraight(RuntimeOperatorType * source, int32_t 
 }
 
 void RuntimeOperatorPlan::connectCrossbar(RuntimeOperatorType * source, RuntimeOperatorType * target, const RecordType * ty,
+                                          const TreculRecordSerialize & serializeFunctor, const TreculRecordDeserialize & deserializeFunctor,
 					  const TreculFreeOperation & freeFunctor, bool buffered, bool locallyBuffered)
 {
-  connectCrossbar(source, target, ty, freeFunctor.getReference(), buffered, locallyBuffered);
+  connectCrossbar(source, target, ty, serializeFunctor.getReference(), deserializeFunctor.getReference(), freeFunctor.getReference(), buffered, locallyBuffered);
 }
 
 void RuntimeOperatorPlan::connectCrossbar(RuntimeOperatorType * source, RuntimeOperatorType * target, const RecordType * ty,
+                                          const TreculFunctionReference & serializeRef, const TreculFunctionReference & deserializeRef,
 					  const TreculFunctionReference & freeRef, bool buffered, bool locallyBuffered)
 {
   if (mPartitions <= 0) {
@@ -248,6 +250,8 @@ void RuntimeOperatorPlan::connectCrossbar(RuntimeOperatorType * source, RuntimeO
 						      locallyBuffered,
 						      mCurrentTag,
 						      ty,
+                                                      serializeRef,
+                                                      deserializeRef,
                                                       freeRef));
 
   // For a crossbar we are allocating a quadratic number of fifos.
@@ -260,7 +264,8 @@ void RuntimeOperatorPlan::connectCrossbar(RuntimeOperatorType * source, RuntimeO
 }
 
 void RuntimeOperatorPlan::connectBroadcast(RuntimeOperatorType * source, RuntimeOperatorType * target, int32_t targetPort,
-                                           const RecordType * ty, const TreculFunctionReference & freeRef,
+                                           const RecordType * ty, const TreculFunctionReference & serializeRef,
+                                           const TreculFunctionReference & deserializeRef, const TreculFunctionReference & freeRef,
 					   bool buffered, bool locallyBuffered)
 {
   if (mPartitions <= 0) {
@@ -289,6 +294,8 @@ void RuntimeOperatorPlan::connectBroadcast(RuntimeOperatorType * source, Runtime
                                                        locallyBuffered,
                                                        mCurrentTag,
                                                        ty,
+                                                       serializeRef,
+                                                       deserializeRef,
                                                        freeRef));
 
   std::size_t numFifos = mOperators[sIt->second]->getPartitionCount(mPartitions);
@@ -299,7 +306,8 @@ void RuntimeOperatorPlan::connectBroadcast(RuntimeOperatorType * source, Runtime
 }
 
 void RuntimeOperatorPlan::connectCollect(RuntimeOperatorType * source, int32_t sourcePort, RuntimeOperatorType * target,
-                                         const RecordType * ty, const TreculFunctionReference & freeRef,
+                                         const RecordType * ty, const TreculFunctionReference & serializeRef,
+                                         const TreculFunctionReference & deserializeRef, const TreculFunctionReference & freeRef,
 					 bool buffered, bool locallyBuffered)
 {
   if (mPartitions <= 0) {
@@ -328,6 +336,8 @@ void RuntimeOperatorPlan::connectCollect(RuntimeOperatorType * source, int32_t s
                                                      locallyBuffered,
                                                      mCurrentTag,
                                                      ty,
+                                                     serializeRef,
+                                                     deserializeRef,
                                                      freeRef));
 
   // For a crossbar we are allocating a quadratic number of fifos.

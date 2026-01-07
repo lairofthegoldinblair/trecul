@@ -2974,6 +2974,8 @@ LogicalExchange::LogicalExchange()
   :
   LogicalOperator(1,1,1,1),
   mHashFunction(nullptr),
+  mSerialize(nullptr),
+  mDeserialize(nullptr),
   mFree(nullptr),
   mKeyPrefix(nullptr),
   mKeyEq(nullptr)  
@@ -2983,6 +2985,8 @@ LogicalExchange::LogicalExchange()
 LogicalExchange::~LogicalExchange()
 {
   delete mHashFunction;
+  delete mSerialize;
+  delete mDeserialize;
   delete mFree;
   delete mKeyPrefix;
   delete mKeyEq;
@@ -3017,6 +3021,8 @@ void LogicalExchange::check(PlanCheckContext& log)
   mHashFunction = HashFunction::get(log, 
                                     input,
                                     hashKeys);
+  mSerialize = new TreculRecordSerialize(log.getCodeGenerator(), input);
+  mDeserialize = new TreculRecordDeserialize(log.getCodeGenerator(), input);
   mFree = new TreculFreeOperation(log.getCodeGenerator(), input);
 }
 
@@ -3028,7 +3034,8 @@ void LogicalExchange::create(class RuntimePlanBuilder& plan)
     static_cast<RuntimeOperatorType *>(new RuntimeSortMergeCollectorType(*mKeyPrefix, *mKeyEq));
   plan.addOperatorType(partitionType);
   plan.addOperatorType(collectorType);
-  plan.connect(partitionType, 0, collectorType, 0, getInput(0)->getRecordType(), *mFree);
+  plan.connect(partitionType, 0, collectorType, 0, getInput(0)->getRecordType(),
+               *mSerialize, *mDeserialize, *mFree);
   plan.mapInputPort(this, 0, partitionType, 0);
   plan.mapOutputPort(this, 0, collectorType, 0);
   
