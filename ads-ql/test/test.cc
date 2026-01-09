@@ -1353,6 +1353,51 @@ BOOST_AUTO_TEST_CASE(testIQLRowConstructor)
   recTy.GetFree()->free(inputBuf);
 }
 
+BOOST_AUTO_TEST_CASE(testRowConstructorWithNullableField)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  RecordType inputTy(ctxt, members);
+  RecordTypeTransfer t1(ctxt, "xfer1", &inputTy, 
+                        "12 AS a, ROW(CASE WHEN 1=1 THEN 23434 ELSE NULL END, CASE WHEN 1=1 THEN 23434.333 ELSE NULL END, CAST('small' AS CHAR(5))) AS b");
+  const FieldType * ty = t1.getTarget()->getMember("a").GetType();
+  BOOST_CHECK_EQUAL(FieldType::INT32, ty->GetEnum());
+  BOOST_CHECK(!ty->isNullable());
+  ty = t1.getTarget()->getMember("b").GetType();
+  BOOST_REQUIRE_EQUAL(FieldType::STRUCT, ty->GetEnum());
+  const RecordType * rowTy = static_cast<const RecordType *>(ty);
+  ty = rowTy->getElementType(0);
+  BOOST_CHECK_EQUAL(FieldType::INT32, ty->GetEnum());
+  BOOST_CHECK(ty->isNullable());
+  ty = rowTy->getElementType(1);
+  BOOST_CHECK_EQUAL(FieldType::BIGDECIMAL, ty->GetEnum());
+  BOOST_CHECK(ty->isNullable());
+  ty = rowTy->getElementType(2);
+  BOOST_CHECK_EQUAL(FieldType::CHAR, ty->GetEnum());
+  BOOST_CHECK(!ty->isNullable());
+  RecordBuffer inputBuf;
+  RecordBuffer outputBuf;
+  t1.execute(inputBuf, outputBuf, &runtimeCtxt, false);
+  BOOST_CHECK_EQUAL(12, t1.getTarget()->getInt32("a", outputBuf));
+  RecordBuffer innerBuf = t1.getTarget()->getStructPtr("b", outputBuf);
+  auto addressIt = rowTy->begin_offsets();
+  BOOST_CHECK(!addressIt->isNull(innerBuf));
+  BOOST_CHECK_EQUAL(23434, addressIt->getInt32(innerBuf));
+  ++addressIt;
+  decimal128 expected;
+  ::decimal128FromString(&expected, 
+			 "23434.333", 
+			 runtimeCtxt.getDecimalContext());
+  BOOST_CHECK(!addressIt->isNull(innerBuf));
+  BOOST_CHECK_EQUAL(0, memcmp(&expected,
+                              addressIt->getDecimalPtr(innerBuf), 
+                              DECIMAL128_Bytes));
+  ++addressIt;
+  BOOST_CHECK(!addressIt->isNull(innerBuf));
+  BOOST_CHECK_EQUAL(0, ::strcmp("small", addressIt->getCharPtr(innerBuf)));
+}
+
 BOOST_AUTO_TEST_CASE(testIQLArrayRowConstructor)
 {
   DynamicRecordContext ctxt;

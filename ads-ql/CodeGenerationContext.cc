@@ -1707,7 +1707,14 @@ std::unique_ptr<llvm::Module> CodeGenerationContext::takeModule()
 
 llvm::Type * CodeGenerationContext::getType(const RecordType * ty)
 {
+  llvm::IRBuilder<> * b = LLVMBuilder;
   std::vector<llvm::Type *> members;
+  // Null bitmask is allocated in 32 bit chunks.
+  BOOST_ASSERT(0 == ty->GetNullSize()%sizeof(uint32_t));
+  std::size_t numNullWords = ty->GetNullSize()/sizeof(uint32_t);
+  for(std::size_t i=0; i<numNullWords; ++i) {
+    members.push_back(b->getInt32Ty());
+  }
   for(RecordType::const_member_iterator it = ty->begin_members(), end = ty->end_members(); it != end; ++it) {
     members.push_back(it->getType()->LLVMGetType(this));
   }
@@ -8346,7 +8353,7 @@ void CodeGenerationContext::completeFunctionContext()
 {
   LLVMBuilder->CreateRetVoid();  
   llvm::verifyFunction(*LLVMFunction);  
-  // llvm::outs() << "We just constructed this LLVM module:\n\n" << *codeGen.LLVMModule;
+  // llvm::outs() << "We just constructed this LLVM module:\n\n" << *LLVMModule;
   // // Now run optimizer over the IR
   mFPM->run(*LLVMFunction);
   // llvm::outs() << "We just optimized this LLVM module:\n\n" << *codeGen.LLVMModule;
