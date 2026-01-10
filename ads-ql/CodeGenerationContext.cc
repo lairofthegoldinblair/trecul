@@ -6071,6 +6071,24 @@ const IQLToLLVMValue * CodeGenerationContext::buildLeastGreatest(const std::vect
   }
 }
 
+const IQLToLLVMValue * CodeGenerationContext::buildIfNull(const IQLToLLVMValue * val,
+                                                          const FieldType * valType,
+                                                          const IQLToLLVMValue * alt,
+                                                          const FieldType * altType,
+                                                          const FieldType * retTy)
+{
+  if (val->getNull(this) == NULL) {
+    // If val is not nullable just return it.
+    return val;
+  } else {
+    buildCaseBlockBegin(retTy);        
+    buildCaseBlockIf(buildIsNull(val));
+    buildCaseBlockThen(alt, altType, retTy, false);
+    buildCaseBlockThen(val, valType, retTy, true);
+    return buildCaseBlockFinish(retTy); 
+  }
+}
+
 const IQLToLLVMValue * CodeGenerationContext::buildIsNullFunction(const std::vector<IQLToLLVMTypedValue> & args,
 								  const FieldType * retTy)
 {
@@ -6105,9 +6123,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildAnd(const IQLToLLVMValue * rh
 						       const FieldType * retType)
 {
   buildCaseBlockThen(rhs, rhsType, retType, false);
-  // HACK! I need the FieldType for boolean and I don't have another way of getting it
-  DynamicRecordContext tmpCtxt;
-  Int32Type * tmpTy = Int32Type::Get(tmpCtxt, false);
+  Int32Type * tmpTy = Int32Type::Get(rhsType->getContext(), false);
   buildCaseBlockThen(buildFalse(), tmpTy, retType, false); 
   return buildCaseBlockFinish(retType);
 }
@@ -6272,18 +6288,31 @@ CodeGenerationContext::buildArrayElementwiseEquals(const IQLToLLVMValue * lhs,
 
   // TODO: Add IF and BREAK to language to simplify this
   const IQLToLLVMValue * idx = buildRef(counter, int32Type);
-
-  // SET ret = CASE WHEN notDone AND rhs[idx] <> lhs[idx] THEN 0 ELSE ret END
+  const IQLToLLVMValue * eltCmp = nullptr;
+  // SET ret = CASE WHEN notDone AND ((rhs[idx] IS NULL AND lhs[idx] IS NOT NULL) OR (rhs[idx] IS NULL AND lhs[idx] IS NOT NULL) OR IFNULL(rhs[idx] <> lhs[idx], FALSE)) THEN 0 ELSE ret END
   buildBeginAnd(int32Type);
   buildAddAnd(buildRef(notDone, int32Type), int32Type, int32Type);
-  pred = buildAnd(buildCompare(buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, int32Type, IQLToLLVMOpNE), int32Type, int32Type);
+  if (!eltType->isNullable()) {
+    eltCmp = buildCompare(buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, int32Type, IQLToLLVMOpNE);
+  } else {
+    buildBeginOr(retType);
+    buildBeginAnd(retType);
+    buildAddAnd(buildIsNull(buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, retType, true), retType, retType);
+    buildAddOr(buildAnd(buildIsNull(buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, retType, false), retType, retType), retType, retType);
+    buildBeginOr(retType);
+    buildBeginAnd(retType);
+    buildAddAnd(buildIsNull(buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, retType, false), retType, retType);
+    buildAddOr(buildAnd(buildIsNull(buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, retType, true), retType, retType), retType, retType);
+    eltCmp = buildOr(buildOr(buildIfNull(buildCompare(buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, int32Type, IQLToLLVMOpNE), retType, buildFalse(), retType, retType), retType, retType), retType, retType);  
+  }
+  pred = buildAnd(eltCmp, int32Type, int32Type);
   buildCaseBlockBegin(int32Type);
   buildCaseBlockIf(pred);
   buildCaseBlockThen(zero, int32Type, int32Type, false);
   buildCaseBlockThen(buildRef(ret, int32Type), int32Type, int32Type, false);
   buildSetNullableValue(retLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
   
-  // SET notDone = CASE WHEN notDone AND rhs[idx] <> lhs[idx] THEN 0 ELSE notDone END
+  // SET notDone = CASE WHEN notDone AND ((rhs[idx] IS NULL AND lhs[idx] IS NOT NULL) OR (rhs[idx] IS NULL AND lhs[idx] IS NOT NULL) OR IFNULL(rhs[idx] <> lhs[idx], FALSE)) THEN 0 ELSE notDone END
   buildCaseBlockBegin(int32Type);
   buildCaseBlockIf(pred);
   buildCaseBlockThen(zero, int32Type, int32Type, false);
@@ -6348,35 +6377,53 @@ CodeGenerationContext::buildArrayElementwiseCompare(const IQLToLLVMValue * lhs,
 
   // TODO: Add IF and BREAK to language to simplify this
   const IQLToLLVMValue * idx = buildRef(counter, int32Type);
-
-  // SET ret = CASE WHEN notDone AND rhs[idx] < lhs[idx] THEN 0 ELSE ret END
+  const IQLToLLVMValue * eltCmp = nullptr;
+  // SET ret = CASE WHEN notDone AND ((rhs[idx] IS NOT NULL AND lhs[idx] IS NULL) OR IFNULL(rhs[idx] < lhs[idx])) THEN 0 ELSE ret END
   buildBeginAnd(int32Type);
   buildAddAnd(buildRef(notDone, int32Type), int32Type, int32Type);
-  pred = buildAnd(buildCompare(buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, int32Type, op), int32Type, int32Type);
+  if (!eltType->isNullable()) {
+    eltCmp = buildCompare(buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, int32Type, op);
+  } else {
+    buildBeginOr(retType);
+    buildBeginAnd(retType);
+    buildAddAnd(buildIsNull(buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, retType, op == IQLToLLVMOpGT), retType, retType);
+    buildAddOr(buildAnd(buildIsNull(buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, retType, op == IQLToLLVMOpLT), retType, retType), retType, retType);
+    eltCmp = buildOr(buildIfNull(buildCompare(buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, int32Type, op), retType, buildFalse(), retType, retType), retType, retType);  
+  }
+  pred = buildAnd(eltCmp, int32Type, int32Type);
   buildCaseBlockBegin(int32Type);
   buildCaseBlockIf(pred);
   buildCaseBlockThen(zero, int32Type, int32Type, false);
   buildCaseBlockThen(buildRef(ret, int32Type), int32Type, int32Type, false);
   buildSetNullableValue(retLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
   
-  // SET notDone = CASE WHEN notDone AND rhs[idx] < lhs[idx] THEN 0 ELSE notDone END
+  // SET notDone = CASE WHEN notDone AND ((rhs[idx] IS NOT NULL AND lhs[idx] IS NULL) OR IFNULL(rhs[idx] < lhs[idx])) THEN 0 ELSE notDone END
   buildCaseBlockBegin(int32Type);
   buildCaseBlockIf(pred);
   buildCaseBlockThen(zero, int32Type, int32Type, false);
   buildCaseBlockThen(buildRef(notDone, int32Type), int32Type, int32Type, false);
   buildSetNullableValue(notDoneLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
 
-  // SET ret = CASE WHEN notDone AND lhs[idx] < rhs[idx] THEN 1 ELSE ret END
+  // SET ret = CASE WHEN notDone AND ((lhs[idx] IS NOT NULL AND rhs[idx] IS NULL) OR IFNULL(lhs[idx] < rhs[idx], FALSE)) THEN 1 ELSE ret END
   buildBeginAnd(int32Type);
   buildAddAnd(buildRef(notDone, int32Type), int32Type, int32Type);
-  pred = buildAnd(buildCompare(buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, int32Type, op), int32Type, int32Type);
+  if (!eltType->isNullable()) {
+    eltCmp = buildCompare(buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, int32Type, op);
+  } else {
+    buildBeginOr(retType);
+    buildBeginAnd(retType);
+    buildAddAnd(buildIsNull(buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, retType, op == IQLToLLVMOpLT), retType, retType);
+    buildAddOr(buildAnd(buildIsNull(buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, retType, op == IQLToLLVMOpGT), retType, retType), retType, retType);
+    eltCmp = buildOr(buildIfNull(buildCompare(buildArrayRef(lhs, promoted, idx, int32Type, eltType), eltType, buildArrayRef(rhs, promoted, idx, int32Type, eltType), eltType, int32Type, op), retType, buildFalse(), retType, retType), retType, retType);  
+  }
+  pred = buildAnd(eltCmp, int32Type, int32Type);
   buildCaseBlockBegin(int32Type);
   buildCaseBlockIf(pred);
   buildCaseBlockThen(one, int32Type, int32Type, false);
   buildCaseBlockThen(buildRef(ret, int32Type), int32Type, int32Type, false);
   buildSetNullableValue(retLValue, buildCaseBlockFinish(int32Type), int32Type, int32Type);
   
-  // SET notDone = CASE WHEN notDone AND lhs[idx] < rhs[idx] THEN 0 ELSE notDone END
+  // SET notDone = CASE WHEN notDone AND ((lhs[idx] IS NOT NULL AND rhs[idx] IS NULL) OR IFNULL(lhs[idx] < rhs[idx], FALSE)) THEN 0 ELSE notDone END
   buildCaseBlockBegin(int32Type);
   buildCaseBlockIf(pred);
   buildCaseBlockThen(zero, int32Type, int32Type, false);
@@ -6734,8 +6781,19 @@ CodeGenerationContext::buildCompare(const IQLToLLVMValue * lhs,
         for(std::size_t i=1; i<promoted->GetSize(); ++i) {
           buildBeginAnd(retType);
           buildAddAnd(cmp, retType, retType);
-          idx = IQLToLLVMRValue::get(this, b->getInt32(i), IQLToLLVMValue::eLocal); 
-          cmp = buildAnd(buildCompare(buildArrayRef(lhs, promoted, idx, idxTy, eltType), eltType, buildArrayRef(rhs, promoted, idx, idxTy, eltType), eltType, retType, IQLToLLVMOpEQ), retType, retType);
+          idx = IQLToLLVMRValue::get(this, b->getInt32(i), IQLToLLVMValue::eLocal);
+          const IQLToLLVMValue * eltCmp;
+          if (!eltType->isNullable()) {
+            eltCmp = buildCompare(buildArrayRef(lhs, promoted, idx, idxTy, eltType), eltType, buildArrayRef(rhs, promoted, idx, idxTy, eltType), eltType, retType, IQLToLLVMOpEQ);
+          } else {
+            // lhs[idx] IS NULL AND rhs[idx] IS NULL OR IFNULL(lhs=rhs, FALSE)
+            buildBeginOr(retType);
+            buildBeginAnd(retType);
+            buildAddAnd(buildIsNull(buildArrayRef(lhs, promoted, idx, idxTy, eltType), eltType, retType, false), retType, retType);
+            buildAddOr(buildAnd(buildIsNull(buildArrayRef(rhs, promoted, idx, idxTy, eltType), eltType, retType, false), retType, retType), retType, retType);
+            eltCmp = buildOr(buildIfNull(buildCompare(buildArrayRef(lhs, promoted, idx, idxTy, eltType), eltType, buildArrayRef(rhs, promoted, idx, idxTy, eltType), eltType, retType, IQLToLLVMOpEQ), retType, buildFalse(), retType, retType), retType, retType);
+          }
+          cmp = buildAnd(eltCmp, retType, retType);
         }
         if (IQLToLLVMOpNE == op) {
           cmp = buildNot(cmp, retType, retType);

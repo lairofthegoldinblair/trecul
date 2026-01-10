@@ -1315,6 +1315,11 @@ public:
   /**
    * IFNULL()
    */
+  const IQLToLLVMValue * buildIfNull(const IQLToLLVMValue * val,
+                                     const FieldType * valType,
+                                     const IQLToLLVMValue * alt,
+                                     const FieldType * altType,
+                                     const FieldType * retTy);
   const IQLToLLVMValue * buildIsNullFunction(const std::vector<IQLToLLVMTypedValue> & args,
 					     const FieldType * retTy);
 

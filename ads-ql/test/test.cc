@@ -1927,6 +1927,172 @@ BOOST_AUTO_TEST_CASE(testIQLRecordEquals)
 
 }
 
+BOOST_AUTO_TEST_CASE(testIQLFixedArrayOfNullableEquals)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(ctxt, members);
+  RecordBuffer inputBuf;
+  RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "ARRAY[ARRAY[1,2], NULL, ARRAY[3,4]] AS b");
+  std::vector<AliasedRecordType> types{ AliasedRecordType("lhs", t1.getTarget()), AliasedRecordType("rhs", t1.getTarget()) };
+  RecordBuffer lhs, rhs;
+  t1.execute(inputBuf, lhs, &runtimeCtxt, false);
+  t1.execute(inputBuf, rhs, &runtimeCtxt, false);
+
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b = rhs.b");
+    BOOST_CHECK(cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b <> rhs.b");
+    BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b < rhs.b");
+    BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b > rhs.b");
+    BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b >= rhs.b");
+    BOOST_CHECK(cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b <= rhs.b");
+    BOOST_CHECK(cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+
+  t1.getTarget()->GetFree()->free(lhs);
+  t1.getTarget()->GetFree()->free(rhs);
+
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, NULL, 3] = ARRAY[1, 2, NULL]");
+    BOOST_CHECK(!cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, NULL, 3] <> ARRAY[1, 2, NULL]");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, NULL, 3] < ARRAY[1, 2, NULL]");
+    BOOST_CHECK(!cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, NULL, 3] > ARRAY[1, 2, NULL]");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, NULL, 3] <= ARRAY[1, 2, NULL]");
+    BOOST_CHECK(!cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, NULL, 3] >= ARRAY[1, 2, NULL]");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, 2, NULL] < ARRAY[1, NULL, 3]");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, 2, NULL] > ARRAY[1, NULL, 3]");
+    BOOST_CHECK(!cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, 2, NULL] <= ARRAY[1, NULL, 3]");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, 2, NULL] >= ARRAY[1, NULL, 3]");
+    BOOST_CHECK(!cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testIQLVariableArrayOfNullableEquals)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  RecordType recTy(ctxt, members);
+  RecordBuffer inputBuf;
+  RecordTypeTransfer t1(ctxt, "xfer1", &recTy, "CAST(ARRAY[1, NULL, 3] AS INTEGER[]) AS b");
+  std::vector<AliasedRecordType> types{ AliasedRecordType("lhs", t1.getTarget()), AliasedRecordType("rhs", t1.getTarget()) };
+  RecordBuffer lhs, rhs;
+  t1.execute(inputBuf, lhs, &runtimeCtxt, false);
+  t1.execute(inputBuf, rhs, &runtimeCtxt, false);
+
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b = rhs.b");
+    BOOST_CHECK(cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b <> rhs.b");
+    BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b < rhs.b");
+    BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b > rhs.b");
+    BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b >= rhs.b");
+    BOOST_CHECK(cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b <= rhs.b");
+    BOOST_CHECK(cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+
+  t1.getTarget()->GetFree()->free(lhs);
+  t1.getTarget()->GetFree()->free(rhs);
+
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, NULL, 3] AS INTEGER[]) = CAST(ARRAY[1, 2, NULL] AS INTEGER[])");
+    BOOST_CHECK(!cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, NULL, 3] AS INTEGER[]) <> CAST(ARRAY[1, 2, NULL] AS INTEGER[])");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, NULL, 3] AS INTEGER[]) < CAST(ARRAY[1, 2, NULL] AS INTEGER[])");
+    BOOST_CHECK(!cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, NULL, 3] AS INTEGER[]) > CAST(ARRAY[1, 2, NULL] AS INTEGER[])");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, NULL, 3] AS INTEGER[]) <= CAST(ARRAY[1, 2, NULL] AS INTEGER[])");
+    BOOST_CHECK(!cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, NULL, 3] AS INTEGER[]) >= CAST(ARRAY[1, 2, NULL] AS INTEGER[])");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, 2, NULL] AS INTEGER[]) < CAST(ARRAY[1, NULL, 3] AS INTEGER[])");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, 2, NULL] AS INTEGER[]) > CAST(ARRAY[1, NULL, 3] AS INTEGER[])");
+    BOOST_CHECK(!cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, 2, NULL] AS INTEGER[]) <= CAST(ARRAY[1, NULL, 3] AS INTEGER[])");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, 2, NULL] AS INTEGER[]) >= CAST(ARRAY[1, NULL, 3] AS INTEGER[])");
+    BOOST_CHECK(!cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+}
+
 BOOST_AUTO_TEST_CASE(testIQLInt32Compare)
 {
   DynamicRecordContext ctxt;
