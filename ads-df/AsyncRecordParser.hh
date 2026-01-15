@@ -1424,7 +1424,7 @@ public:
     typename _OpType::chunk_strategy_type chunkFiles;
     // Expand file name globbing, then get files for this
     // partition.
-    chunkFiles.expand(getLogParserType().mFileInput, getNumPartitions());
+    chunkFiles.expand(getLogParserType().mFileInput, getLogParserType().getPartitionConstraint(), getNumPartitions());
     chunkFiles.getFilesForPartition(getPartition(), mFiles);
     mState = START;
     mFileService = FileService::get();

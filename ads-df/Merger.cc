@@ -578,7 +578,7 @@ void LogicalFileRead::internalCreate(class RuntimePlanBuilder& plan)
 {
   typedef AsyncFileTraits<stdio_file_traits> file_traits;
   typedef AsyncDoubleBufferStream<file_traits> buffer_type;
-  typedef InternalFileParserOperatorType<buffer_type> binary_op_type;
+  typedef InternalFileParserOperatorType<buffer_type, ExplicitChunkStrategy> binary_op_type;
 
   typedef GenericParserOperatorType<ExplicitChunkStrategy> text_op_type;
   typedef GenericParserOperatorType<SerialChunkStrategy> serial_op_type;
@@ -586,7 +586,8 @@ void LogicalFileRead::internalCreate(class RuntimePlanBuilder& plan)
   RuntimeOperatorType * opType = NULL;
   if(boost::algorithm::iequals("binary", mMode)) {
     opType = new binary_op_type(getOutput(0)->getRecordType(),
-				mFile);
+				mFile,
+                                binary_op_type::chunk_strategy_type());
   } else if (mBucketed) {
     PathPtr p = Path::get(mFile);
     // Default to a local file URI.
@@ -1368,8 +1369,7 @@ void RuntimeSortOperator::buildMergeGraph()
 {
   typedef AsyncFileTraits<stdio_file_traits> file_traits;
   typedef AsyncDoubleBufferStream<file_traits> buffer_type;
-  typedef InternalFileParserOperatorType<buffer_type> op_type;
-  typedef op_type::chunk_type chunk_type;
+  typedef InternalFileParserOperatorType<buffer_type, ExplicitChunkStrategy> op_type;
   BOOST_ASSERT(mMergeTypes.size() == 0);
   BOOST_ASSERT(mMergeOps.size() == 0);
   BOOST_ASSERT(mChannels.size() == 0);
@@ -1397,22 +1397,22 @@ void RuntimeSortOperator::buildMergeGraph()
   // Configure the graph
   for(std::vector<std::string>::iterator it = mSortFiles.begin();
       it != mSortFiles.end();
-      ++it) {
-    chunk_type files(getPartition()+1);
-    files[getPartition()].push_back(std::make_shared<FileChunk>(*it,
-                                                                0,
-                                                                std::numeric_limits<uint64_t>::max()));
+      ++it) {   
     op_type * readOpType = new op_type(getMyOperatorType().mDeserialize,
 				       getMyOperatorType().mMalloc,
-				       files,
+				       *it,
+                                       op_type::chunk_strategy_type(),
 				       windowSz,
 				       true);
+    // Put a partition constraint to make sure we only read from this partition
+    readOpType->setPartitionConstraint(std::vector<int32_t>({getPartition()}));
     mMergeTypes.push_back(readOpType);
     mMergeOps.push_back(readOpType->create(getServices()));
   }
   RuntimeSortMergeOperatorType * mergeOpType
     = new RuntimeSortMergeOperatorType (getMyOperatorType().mKeyPrefix,
 					getMyOperatorType().mLessThanFun);
+  mergeOpType->setPartitionConstraint(std::vector<int32_t>({getPartition()}));
   mMergeTypes.push_back(mergeOpType);
   mMergeOps.push_back(mergeOpType->create(getServices()));
   ((RuntimeSortMergeOperator *) mMergeOps.back())->setReturnAddress(this, 0);

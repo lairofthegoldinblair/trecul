@@ -485,18 +485,22 @@ public:
 /**
  * Operator for reading a binary serialized file in internal format.
  */
-template <class _InputBuffer>
+template <class _InputBuffer, class _ChunkStrategy>
 class InternalFileParserOperatorType : public RuntimeOperatorType
 {
   // Don't really know how to do friends between templates.
 public:
-  typedef std::vector<std::vector<std::shared_ptr<FileChunk> > > chunk_type;
+  typedef _InputBuffer input_buffer_type;
+  typedef _ChunkStrategy chunk_strategy_type;
+  typedef typename chunk_strategy_type::file_input file_input_type;
   // What file(s) am I parsing?
-  chunk_type mFile;
+  file_input_type mFileInput;
   // Importer instructions
   RecordTypeDeserialize mDeserialize;
   // Create new records
   RecordTypeMalloc mMalloc;
+  // My chunk strategy
+  chunk_strategy_type mChunkStrategy;
   // Input buffer size for reads
   std::size_t mInputBufferSize;
   // Should I delete file on completion (e.g. sort run).
@@ -510,9 +514,10 @@ public:
   void serialize(Archive & ar, const unsigned int version)
   {
     ar & BOOST_SERIALIZATION_BASE_OBJECT_NVP(RuntimeOperatorType);
-    ar & BOOST_SERIALIZATION_NVP(mFile);
+    ar & BOOST_SERIALIZATION_NVP(mFileInput);
     ar & BOOST_SERIALIZATION_NVP(mDeserialize);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
+    ar & BOOST_SERIALIZATION_NVP(mChunkStrategy);
     ar & BOOST_SERIALIZATION_NVP(mInputBufferSize);
     ar & BOOST_SERIALIZATION_NVP(mDeleteOnCompletion);
   }
@@ -524,37 +529,32 @@ public:
   }  
 
 public:
-  InternalFileParserOperatorType(const RecordType * recordType, 
-				 const std::string& file)
+  InternalFileParserOperatorType(const RecordType * recordType,
+				 const file_input_type & file,
+                                 const chunk_strategy_type & chunkStrategy)
     :
     RuntimeOperatorType("InternalFileParserOperatorType"),
+    mFileInput(file),
+    mChunkStrategy(chunkStrategy),
     mInputBufferSize(128*1024),
     mDeleteOnCompletion(false)
   {
-    // Expand file name globbing
-    // TODO: This really doesn't handle parallel execution.
-    // Not worth fixing since this operator should be patched into
-    // the GenericParserOperatorType
-    _InputBuffer::file_system_type::expand(file, 1, mFile);
-
-    // At least one match for the file/file pattern
-    if (mFile.size() == 0)
-      throw std::runtime_error((boost::format("Could not find any file %1%") % file).str());
-
     mDeserialize = recordType->getDeserialize();
     mMalloc = recordType->getMalloc();
   }
 
   InternalFileParserOperatorType(const RecordTypeDeserialize& deserialize,
 				 const RecordTypeMalloc& mallocFn,
-				 const chunk_type& chunks,
+                                 const file_input_type & file,
+				 const chunk_strategy_type & chunkStrategy,
 				 std::size_t inputBufferSize,
 				 bool deleteOnCompletion)
     :
     RuntimeOperatorType("InternalFileParserOperatorType"),
-    mFile(chunks),
+    mFileInput(file),
     mDeserialize(deserialize),
     mMalloc(mallocFn),
+    mChunkStrategy(chunkStrategy),
     mInputBufferSize(inputBufferSize),
     mDeleteOnCompletion(deleteOnCompletion)
   {
@@ -569,26 +569,30 @@ public:
   RuntimeOperator * create(RuntimeOperator::Services & services) const;
 };
 
-template<class _ReaderContext, class _InputBuffer>
+template<class _ReaderContext, class _OpType>
 class InternalFileParserOperator : public _ReaderContext
 {
 private:
   typedef typename _ReaderContext::Services services_type;
   typedef typename _ReaderContext::port_type port_type;
-  typedef typename _InputBuffer::file_system_type file_traits;
-  typedef typename _InputBuffer::file_system_type::filesystem_type filesystem_type;
-  typedef InternalFileParserOperatorType<_InputBuffer> operator_type;
+  typedef _OpType operator_type;
+  typedef typename operator_type::chunk_strategy_type chunk_strategy_type;
+  typedef typename operator_type::input_buffer_type input_buffer_type;
+  typedef typename input_buffer_type::file_system_type file_traits;
+  typedef typename input_buffer_type::file_system_type::filesystem_type filesystem_type;
 
   enum State { START, WRITE, WRITE_EOF };
   State mState;
 
   // Filesystem I am reading from
   filesystem_type mFileSystem;
-  
+
+  // Files I am reading
+  std::vector<std::shared_ptr<FileChunk> > mFiles;  
   // Which file am I working on?
   std::vector<std::shared_ptr<FileChunk> >::const_iterator mFileIt;
   // Input buffer for the file.
-  _InputBuffer * mInputBuffer;
+  input_buffer_type * mInputBuffer;
   // The current window of the file
   uint8_t * mBuffer;
   uint8_t * mBufferIt;
@@ -607,11 +611,8 @@ private:
   {
     if (mFileSystem) {
       std::set<std::string> files;
-      for(std::vector<std::shared_ptr<FileChunk> >::const_iterator
-	    fileIt = getMyOperatorType().mFile[_ReaderContext::getPartition()].begin();
-	  fileIt != getMyOperatorType().mFile[_ReaderContext::getPartition()].end();
-	  ++fileIt) {	
-	const std::string& f((*fileIt)->getFilename());
+      for(const auto & fileChunk : mFiles) {
+	const std::string& f(fileChunk->getFilename());
 	if (files.end() == files.find(f)) {
 	  files.insert(f);
 	  file_traits::remove(mFileSystem, f);
@@ -621,7 +622,7 @@ private:
   }
 public:
   InternalFileParserOperator(services_type& services, 
-			     const InternalFileParserOperatorType<_InputBuffer>& opType)
+			     const operator_type& opType)
     :
     _ReaderContext(services, *static_cast<const RuntimeOperatorType *>(&opType)),
     mRecordsImported(0)
@@ -637,11 +638,19 @@ public:
    */
   void start()
   {
+    mFiles.clear();
+    // What file(s) am I parsing?
+    chunk_strategy_type chunkFiles(getMyOperatorType().mChunkStrategy);
+    // Expand file name globbing, then get files for this
+    // partition.
+    chunkFiles.expand(getMyOperatorType().mFileInput, getMyOperatorType().getPartitionConstraint(), _ReaderContext::getNumPartitions());
+    chunkFiles.getFilesForPartition(_ReaderContext::getPartition(), mFiles);
+    
     // Attach to the file system in which this file lives.
     // TODO: Make this asynchronous.
-    const char * f = getMyOperatorType().mFile[_ReaderContext::getPartition()].front()->getFilename().c_str();
+    const char * f = mFiles.front()->getFilename().c_str();
     mFileSystem = file_traits::openFor(f);
-    
+
     mState = START;
     mRecordsImported = 0;
     onEvent(NULL);
@@ -651,15 +660,13 @@ public:
   {
     switch(mState) {
     case START:
-      for(mFileIt = getMyOperatorType().mFile[_ReaderContext::getPartition()].begin();
-	  mFileIt != getMyOperatorType().mFile[_ReaderContext::getPartition()].end();
-	  ++mFileIt) {
+      for(mFileIt = mFiles.begin(); mFileIt != mFiles.end(); ++mFileIt) {
 	// Allocate a new input buffer for the file in question.
-	mInputBuffer = new _InputBuffer(mFileSystem,
-					(*mFileIt)->getFilename().c_str(), 
-					getMyOperatorType().mInputBufferSize,
-					(*mFileIt)->getBegin(),
-					(*mFileIt)->getEnd());
+	mInputBuffer = new input_buffer_type(mFileSystem,
+                                             (*mFileIt)->getFilename().c_str(), 
+                                             getMyOperatorType().mInputBufferSize,
+                                             (*mFileIt)->getBegin(),
+                                             (*mFileIt)->getEnd());
 
 	// Read all of the record in the file.
 	while(!mInputBuffer->isEOF()) {
@@ -719,10 +726,10 @@ public:
   }
 };
 
-template <class _InputBuffer>
-RuntimeOperator * InternalFileParserOperatorType<_InputBuffer>::create(RuntimeOperator::Services & services) const
+template <class _InputBuffer, class _ChunkStrategy>
+RuntimeOperator * InternalFileParserOperatorType<_InputBuffer, _ChunkStrategy>::create(RuntimeOperator::Services & services) const
 {
-  return new InternalFileParserOperator<RuntimeOperator, _InputBuffer>(services, *this);
+  return new InternalFileParserOperator<RuntimeOperator, InternalFileParserOperatorType<_InputBuffer, _ChunkStrategy> >(services, *this);
 }
 
 class LogicalFileWrite : public LogicalOperator

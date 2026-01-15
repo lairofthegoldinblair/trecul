@@ -43,6 +43,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/bind/bind.hpp>
+#include <boost/core/ignore_unused.hpp>
 #include <boost/interprocess/file_mapping.hpp>
 #include <boost/interprocess/mapped_region.hpp>
 
@@ -50,11 +51,12 @@
 #include "ZLib.hh"
 #include "Zstd.hh"
 
-void stdio_file_traits::expand(std::string pattern, 
-		     int32_t numPartitions,
-		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
+void stdio_file_traits::expand(std::string pattern,
+                               const RuntimePartitionConstraint & partitions,
+                               int32_t numPartitions,
+                               std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
 {
-   gzip_file_traits::expand(pattern, numPartitions, files);
+  gzip_file_traits::expand(pattern, partitions, numPartitions, files);
 }
 
 stdio_file_traits::file_type stdio_file_traits::open_for_read(const char * filename, uint64_t beginOffset, uint64_t endOffset)
@@ -132,12 +134,13 @@ bool stdio_file_traits::isEOF(stdio_file_traits::file_type f)
   return ::lseek(f->mFile, 0, SEEK_CUR) >= f->mEndOffset;  
 }
 
-void gzip_file_traits::expand(std::string pattern, 
+void gzip_file_traits::expand(std::string pattern,
+                              const RuntimePartitionConstraint & partitions,
 			      int32_t numPartitions,
 			      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
 {
   AutoFileSystem fs(URI::get("file:///"));
-  fs->expand(pattern, numPartitions, files);  
+  fs->expand(pattern, partitions, numPartitions, files);  
 }
 
 int32_t gzip_file_traits::read(file_type f, uint8_t * buf, int32_t bufSize)
@@ -540,11 +543,12 @@ ExplicitChunkStrategy::~ExplicitChunkStrategy()
 }
 
 void ExplicitChunkStrategy::expand(const std::string& file,
+                                   const RuntimePartitionConstraint & partitions,
 				   int32_t numPartitions)
 {
   FileSystem * fs = FileSystem::get(std::make_shared<URI>(file.c_str()));
   // Expand file name globbing
-  fs->expand(file, numPartitions, mFile);
+  fs->expand(file, partitions, numPartitions, mFile);
   FileSystem::release(fs);
   fs = NULL;
 
@@ -576,8 +580,11 @@ SerialChunkStrategy::~SerialChunkStrategy()
 }
 
 void SerialChunkStrategy::expand(const PathPtr & uri,
+                                 const RuntimePartitionConstraint & partitions,
 				 int32_t numPartitions)
 {
+  boost::ignore_unused(partitions);
+  boost::ignore_unused(numPartitions);
   // No expansion, but make sure that the URI is a proper
   // directory (i.e. has a trailing slash)
   std::string uriStr = uri->toString();

@@ -56,6 +56,7 @@
 #include "IQLInterpreter.hh"
 
 #include "FileSystem.hh"
+#include "RuntimePlan.hh" // only for RuntimePartitionConstraint :-(
 
 UriPtr URI::get(const char * filename)
 {
@@ -379,6 +380,7 @@ public:
   ~LocalFileSystemImpl();
   
   void expand(std::string pattern,
+              const RuntimePartitionConstraint & partitions,
 	      int32_t numPartitions,
 	      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files);
 
@@ -580,14 +582,17 @@ public:
 };
 
 void LocalFileSystemImpl::expand(std::string pattern,
-			      int32_t numPartitions,
-			      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
+                                 const RuntimePartitionConstraint & partitions,
+                                 int32_t numPartitions,
+                                 std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
 {
   // Expand the pattern and then collect the size of each file.
   std::vector<std::string> fileNames;
   Glob::expand(pattern, fileNames);
   // No match.  File doesn't exist.
   if (fileNames.size() == 0) return;
+
+  int32_t numPartitionsToAssign = partitions.isDefault() ? numPartitions : partitions.size();
 
   // TODO: Putting the required info into an acceptable container for a generic
   // algorithm that should be factored out.
@@ -610,14 +615,25 @@ void LocalFileSystemImpl::expand(std::string pattern,
   // Allocate a list of chunks for each partition.
   files.resize(numPartitions);
   // Our goal is to assign even amounts to partitions.
-  uint64_t partitionSize = (totalFileSize+numPartitions-1)/numPartitions;
+  uint64_t partitionSize = (totalFileSize+numPartitionsToAssign-1)/numPartitionsToAssign;
+  auto currentPartitionIt = partitions.partition_begin();
   // Partition we are assigning files to.
-  int32_t currentPartition=0;
+  int32_t currentPartition;
   // Amount to try to allocate to the current partition.
   // Make sure that the last partition can hold whatever remains.
-  uint64_t  currentPartitionRemaining = currentPartition+1 == numPartitions ? 
+  uint64_t  currentPartitionRemaining;
+  if (partitions.isDefault()) {
+    currentPartition = 0;
+    currentPartitionRemaining = currentPartition+1 == numPartitionsToAssign ? 
     std::numeric_limits<uint64_t>::max() :
     partitionSize;
+  } else {
+    BOOST_ASSERT(currentPartitionIt != partitions.partition_end());
+    currentPartition = *currentPartitionIt++;
+    currentPartitionRemaining = currentPartitionIt == partitions.partition_end() ? 
+    std::numeric_limits<uint64_t>::max() :
+    partitionSize;
+  }
   for(int currentFile=0; currentFile<numEntries; ++currentFile)  {
     // We don't want to assign a small part of a file to a partition however
     // This is an arbitrary number at this point; don't know if it is sensible.
@@ -660,11 +676,19 @@ void LocalFileSystemImpl::expand(std::string pattern,
 	 fileAllocation <= currentPartitionRemaining-minimumFileAllocationSize) {
 	currentPartitionRemaining -= fileAllocation;
       } else {
-	currentPartition += 1;
-	// Make sure that the last partition can hold whatever remains.
-	currentPartitionRemaining = currentPartition+1 == numPartitions ? 
-	  std::numeric_limits<uint64_t>::max() :
-	  partitionSize;
+        if(partitions.isDefault()) {
+          currentPartition += 1;
+          // Make sure that the last partition can hold whatever remains.
+          currentPartitionRemaining = currentPartition+1 == numPartitions ? 
+            std::numeric_limits<uint64_t>::max() :
+            partitionSize;
+        } else {
+          BOOST_ASSERT(currentPartitionIt != partitions.partition_end());
+          currentPartition = *currentPartitionIt++;
+          currentPartitionRemaining = currentPartitionIt == partitions.partition_end() ? 
+            std::numeric_limits<uint64_t>::max() :
+            partitionSize;
+        }
       }
       // Anymore file to be allocated?
       currentFileRemaining -= fileAllocation;	

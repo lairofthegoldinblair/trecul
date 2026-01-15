@@ -78,6 +78,7 @@ public:
    * evently among numPartitions partitions.
    */
   void expand(std::string pattern,
+              const RuntimePartitionConstraint & partitions,
 	      int32_t numPartitions,
 	      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files);
 
@@ -131,7 +132,8 @@ public:
 
   // Split into desired number of partitions.
   static void expand(std::string pattern, 
-		     int32_t numPartitions,
+                     const RuntimePartitionConstraint & partitions,
+ 		     int32_t numPartitions,
 		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files);
   static file_type open_for_read(const char * filename, uint64_t beginOffset, uint64_t endOffset);
   static void close(file_type f);

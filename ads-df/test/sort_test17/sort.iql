@@ -1,0 +1,10 @@
+a = read[file="input.txt", format="a BIGINT NULL, b BIGINT NULL", mode="text", sequential="true"];
+p = partition[hashKey="a", sequential="true"];
+b = sort[key="a ASC", key="b", memory=40];
+coll = collect[sortKey="a ASC", sortKey="b", sequential="true"];
+c = write[file="output.txt", mode="text", sequential="true"];
+a -> p;
+p -> b;
+b -> coll;
+coll -> c;
+

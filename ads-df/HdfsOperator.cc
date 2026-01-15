@@ -386,10 +386,11 @@ HdfsFileSystem::~HdfsFileSystem()
 }
   
 void HdfsFileSystem::expand(std::string pattern,
-			      int32_t numPartitions,
-			      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
+                            const RuntimePartitionConstraint & partitions,
+                            int32_t numPartitions,
+                            std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
 {
-  hdfs_file_traits::expand(pattern, numPartitions, files);
+  hdfs_file_traits::expand(pattern, partitions, numPartitions, files);
 }
 
 PathPtr HdfsFileSystem::getRoot()
@@ -603,6 +604,7 @@ public:
 };
 
 void hdfs_file_traits::expand(std::string pattern, 
+                              const RuntimePartitionConstraint & partitions,
 			      int32_t numPartitions,
 			      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
 {

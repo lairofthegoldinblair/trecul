@@ -57,6 +57,8 @@ namespace boost {
   class mutex;
 }
 
+class RuntimePartitionConstraint;
+
 /**
  * A contiguous piece of a file for processing.  This is a collection of bytes
  * and is not guaranteed to be aligned with any particular record format.
@@ -254,6 +256,7 @@ public:
   static std::string getTempFileName();
 
   virtual void expand(std::string pattern,
+                      const RuntimePartitionConstraint & partitions,
 		      int32_t numPartitions,
 		      std::vector<std::vector<std::shared_ptr<FileChunk> > >& files) = 0;
   /**

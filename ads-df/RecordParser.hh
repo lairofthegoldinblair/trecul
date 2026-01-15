@@ -66,11 +66,12 @@ public:
   typedef _Decompressor<_InputBuffer> decompressor_type;
   typedef decompressor_type * file_type;
   // Split into desired number of partitions.
-  static void expand(std::string pattern, 
+  static void expand(std::string pattern,
+                     const RuntimePartitionConstraint & partitions,
 		     int32_t numPartitions,
 		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files)
   {
-    file_system_type::expand(pattern, numPartitions, files);
+    file_system_type::expand(pattern, partitions, numPartitions, files);
   }
   static file_type open_for_read(const char * filename, uint64_t beginOffset, uint64_t endOffset)
   {
@@ -107,7 +108,8 @@ public:
   typedef stdio_file_segment * file_type;
 
   // Split into desired number of partitions.
-  static void expand(std::string pattern, 
+  static void expand(std::string pattern,
+                     const RuntimePartitionConstraint & partitions,
 		     int32_t numPartitions,
 		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files);
   static file_type open_for_read(const char * filename, uint64_t beginOffset, uint64_t endOffset);
@@ -137,6 +139,7 @@ public:
 
   // Split into desired number of partitions.
   static void expand(std::string pattern, 
+                     const RuntimePartitionConstraint & partitions,
 		     int32_t numPartitions,
 		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files);
 
@@ -1495,6 +1498,7 @@ public:
   ~ExplicitChunkStrategy();
 
   void expand(const std::string& file,
+              const RuntimePartitionConstraint & partitions,
 	      int32_t numPartitions);
 
   void getFilesForPartition(int32_t partition,
@@ -1527,6 +1531,7 @@ public:
   ~SerialChunkStrategy();
 
   void expand(const PathPtr & uri,
+              const RuntimePartitionConstraint & partitions,
 	      int32_t numPartitions);
 
   void getFilesForPartition(int32_t partition,
@@ -1631,7 +1636,7 @@ public:
     typename _OpType::chunk_strategy_type chunkFiles(getLogParserType().mChunkStrategy);
     // Expand file name globbing, then get files for this
     // partition.
-    chunkFiles.expand(getLogParserType().mFileInput, getNumPartitions());
+    chunkFiles.expand(getLogParserType().mFileInput, getLogParserType().getPartitionConstraint(), getNumPartitions());
     chunkFiles.getFilesForPartition(getPartition(), mFiles);
     mState = START;
     mRecordsImported = 0;

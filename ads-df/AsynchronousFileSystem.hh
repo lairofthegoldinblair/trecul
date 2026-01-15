@@ -335,9 +335,10 @@ public:
   }
   // Split into desired number of partitions.
   static void expand(std::string pattern, 
+                     const RuntimePartitionConstraint & partitions,
 		     int32_t numPartitions,
 		     std::vector<std::vector<std::shared_ptr<FileChunk> > >& files) {
-    _FileTraits::expand(pattern, numPartitions, files);
+    _FileTraits::expand(pattern, partitions, numPartitions, files);
   }
   static void requestOpen(filesystem_type fs,
 			  const char * filename, 
