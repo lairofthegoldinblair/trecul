@@ -1362,6 +1362,10 @@ private:
   const RecordType * mStreamBlock;
   TreculFreeOperation * mStreamBlockFree;
   std::string mFile;
+  // What type of files (compression) are being read: only for bucketed
+  CompressionType mCompressionType;
+  // What format of files (e.g. delimited text, native binary) are being read: only for bucketed
+  TableFileFormat mFileFormat;
   int32_t mBufferCapacity;
   bool mBucketed;
 public:
@@ -1421,7 +1425,7 @@ public:
   {
     mFiles.clear();
     // What file(s) am I parsing?
-    typename _OpType::chunk_strategy_type chunkFiles;
+    typename _OpType::chunk_strategy_type chunkFiles = getLogParserType().mChunkStrategy;
     // Expand file name globbing, then get files for this
     // partition.
     chunkFiles.expand(getLogParserType().mFileInput, getLogParserType().getPartitionConstraint(), getNumPartitions());
@@ -1542,6 +1546,8 @@ public:
   RecordTypeMalloc mMalloc;
   TreculFunctionReference mFreeRef;
   TreculRecordFreeRuntime mFree;
+  // My chunk strategy
+  chunk_strategy_type mChunkStrategy;
   // Accessors into buffer (size INTEGER, buffer CHAR(N))
   FieldAddress mBufferSize;
   FieldAddress mBufferAddress;
@@ -1556,6 +1562,7 @@ public:
     ar & BOOST_SERIALIZATION_NVP(mFileInput);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
     ar & BOOST_SERIALIZATION_NVP(mFreeRef);
+    ar & BOOST_SERIALIZATION_NVP(mChunkStrategy);
     ar & BOOST_SERIALIZATION_NVP(mBufferSize);
     ar & BOOST_SERIALIZATION_NVP(mBufferAddress);
     ar & BOOST_SERIALIZATION_NVP(mBufferCapacity);
@@ -1566,6 +1573,7 @@ public:
 
 public:
   GenericAsyncReadOperatorType(const typename _ChunkStrategy::file_input& file,
+                               const chunk_strategy_type & chunkStrategy,
                                const RecordType * streamBlockType,
                                const TreculFreeOperation & streamBlockFreeFunctor)
     :
@@ -1573,6 +1581,7 @@ public:
     mFileInput(file),
     mMalloc(streamBlockType->getMalloc()),
     mFreeRef(streamBlockFreeFunctor.getReference()),
+    mChunkStrategy(chunkStrategy),
     mBufferSize(streamBlockType->getFieldAddress("size")),
     mBufferAddress(streamBlockType->getFieldAddress("buffer")),
     mBufferCapacity(streamBlockType->getMember("buffer").GetType()->GetSize())

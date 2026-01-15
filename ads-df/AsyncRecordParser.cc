@@ -651,6 +651,8 @@ RuntimeOperator * GenericAsyncParserOperatorType::create(RuntimeOperator::Servic
 LogicalBlockRead::LogicalBlockRead()
   :
   LogicalOperator(0,0,1,1),
+  mCompressionType(CompressionType::Gzip()),
+  mFileFormat(TableFileFormat::Delimited()),
   mStreamBlock(nullptr),
   mStreamBlockFree(nullptr),
   mBufferCapacity(64*1024),
@@ -678,6 +680,22 @@ void LogicalBlockRead::check(PlanCheckContext& ctxt)
 	mBucketed = getBooleanValue(ctxt, *it);
       } else if (it->equals("blocksize")) {
 	mBufferCapacity = getInt32Value(ctxt, *it);
+      } else if (it->equals("compression")) {
+        std::error_code ec;
+        auto val = getStringValue(ctxt, *it);
+        mCompressionType = CompressionType::fromString(val, ec);
+        if (ec) {
+          ctxt.logError(*this, "compression parameter must be \"none\", \"gzip\" or \"zstd\"");
+        }
+      } else if (it->equals("mode")) {
+        std::string val = getStringValue(ctxt, *it);
+        if (boost::algorithm::iequals("binary", val))  {
+          mFileFormat = TableFileFormat::Binary();
+        } else if (boost::algorithm::iequals("text", val))  {
+          mFileFormat = TableFileFormat::Delimited();
+        } else {
+          ctxt.logError(*this, "mode parameter must be \"text\" or \"binary\"");
+        }
       } else {
 	checkDefaultParam(ctxt, *it);
       }
@@ -705,19 +723,14 @@ void LogicalBlockRead::create(class RuntimePlanBuilder& plan)
     // Default to a local file URI.
     if (p->getUri()->getScheme().size() == 0)
       p = Path::get("file://" + mFile);
-    // serial_op_type * sot = new serial_op_type(p,
-    // 					      mFieldSeparator,
-    // 					      mRecordSeparator,
-    // 					      getOutput(0)->getRecordType(),
-    // 					      mFormat,
-    // 					      mCommentLine.c_str());
-    // sot->setSkipHeader(mSkipHeader);
     serial_op_type * sot = new serial_op_type(p,
+                                              serial_op_type::chunk_strategy_type(mCompressionType, mFileFormat),
     					      getOutput(0)->getRecordType(),
                                               *mStreamBlockFree);
     opType = sot;
   } else {
     text_op_type * tot = new text_op_type(mFile,
+                                          text_op_type::chunk_strategy_type(),
 					  getOutput(0)->getRecordType(),
                                           *mStreamBlockFree);
     opType = tot;

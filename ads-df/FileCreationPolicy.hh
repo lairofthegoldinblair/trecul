@@ -9,6 +9,7 @@
 #include "RuntimePort.hh"
 #include "RuntimeOperator.hh"
 #include "ServiceCompletionPort.hh"
+#include "TableFileFormat.hh"
 
 class MultiFileCreationPolicy;
 class StreamingFileCreationPolicy;
@@ -62,6 +63,37 @@ public:
 };
 
 
+class CreationPolicy
+{
+public:
+  static std::string extension(const TableFileFormat & fileFormat,
+                               const CompressionType & compressionType,
+                               bool oldStyle)
+  {
+    std::stringstream sstr;
+    if (!oldStyle || TableFileFormat::Delimited() != fileFormat || CompressionType::Uncompressed() == compressionType) {
+      if (!fileFormat.extension().empty()) {
+        sstr << "." << fileFormat.extension();
+      }
+    }
+    if (!compressionType.extension().empty()) {
+      sstr << "." << compressionType.extension();
+    }
+    return sstr.str();
+  }
+};
+
+template<typename Derived>
+class CreationPolicyExtension
+{
+public:
+  std::string extension() const
+  {
+    auto derived = static_cast<const Derived *>(this);
+    return CreationPolicy::extension(derived->mFileFormat, derived->mCompressionType, derived->mOldStyle);
+  }
+};
+
 /**
  * This policy supports keeping multiple files open
  * for writes and a close policy that defers to the file
@@ -110,9 +142,10 @@ public:
   }
 };
 
-class MultiFileCreationPolicy
+class MultiFileCreationPolicy : public CreationPolicyExtension<MultiFileCreationPolicy>
 {
 public:
+  friend CreationPolicyExtension<MultiFileCreationPolicy>;
   template<typename _Factory> friend class MultiFileCreation;
   template<typename _Factory>
   struct creation_type
@@ -129,6 +162,8 @@ private:
   TreculRecordFreeRuntime mTransferFree;
   FieldAddress * mTransferOutput;
   CompressionType mCompressionType;
+  TableFileFormat mFileFormat;
+  bool mOldStyle;
 
   // Serialization
   friend class boost::serialization::access;
@@ -140,23 +175,30 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mTransferFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mTransferOutput);
     ar & BOOST_SERIALIZATION_NVP(mCompressionType);
+    ar & BOOST_SERIALIZATION_NVP(mFileFormat);
+    ar & BOOST_SERIALIZATION_NVP(mOldStyle);
   }
 public:
   MultiFileCreationPolicy()
     :
-    mTransferOutput(NULL)
+    mTransferOutput(NULL),
+    mOldStyle(false)
   {
   }
   MultiFileCreationPolicy(const std::string& hdfsFile,
 			  const TreculTransfer * argTransfer,
                           const TreculFreeOperation * argTransferFree,
-                          const CompressionType & compressionType)
+                          const CompressionType & compressionType,
+                          const TableFileFormat & fileFormat,
+                          bool oldStyle)
     :
     mHdfsFile(hdfsFile),
     mTransferRef(nullptr != argTransfer ? argTransfer->getReference() : TreculTransferReference()),
     mTransferFreeRef(nullptr != argTransferFree ? argTransferFree->getReference() : TreculFunctionReference()),
     mTransferOutput(nullptr != argTransfer ? new FieldAddress(*argTransfer->getTarget()->begin_offsets()) : NULL),
-    mCompressionType(compressionType)
+    mCompressionType(compressionType),
+    mFileFormat(fileFormat),
+    mOldStyle(oldStyle)
   {
   }
   ~MultiFileCreationPolicy()
@@ -182,6 +224,10 @@ public:
   {
     return mCompressionType;
   }
+  const TableFileFormat & getFileFormat() const
+  {
+    return mFileFormat;
+  }
 };
 
 template<typename _Factory>
@@ -200,12 +246,12 @@ MultiFileCreation<_Factory>::createFile(const std::string& filePath,
   std::stringstream str;
   str << filePath << "/" << tmpStr << "_serial_" << 
     std::setw(5) << std::setfill('0') << mPartition <<
-    factory_type::extension();
+    mPolicy.extension();
   PathPtr tempPath = Path::get(mRootUri, str.str());
   std::stringstream permFile;
   permFile << filePath + "/serial_" << 
     std::setw(5) << std::setfill('0') << mPartition <<
-    factory_type::extension();  
+    mPolicy.extension();  
   if (mCommitter == NULL) {
     mCommitter = HdfsFileCommitter::get();
   }
@@ -359,9 +405,10 @@ public:
  * run of the operator or do we periodically cut files based on
  * time or record counts.
  */
-class StreamingFileCreationPolicy
+class StreamingFileCreationPolicy : public CreationPolicyExtension<StreamingFileCreationPolicy>
 {
 public:
+  friend CreationPolicyExtension<StreamingFileCreationPolicy>;
   template <typename _Factory> friend class StreamingFileCreation;
   template<typename _Factory>
   struct creation_type
@@ -391,6 +438,16 @@ private:
    */
   CompressionType mCompressionType;
 
+  /**
+   * Format of the files to create
+   */
+  TableFileFormat mFileFormat;
+
+  /**
+   * Use old style naming for compresssed/delimited files
+   */
+  bool mOldStyle;
+
   // Serialization
   friend class boost::serialization::access;
   template <class Archive>
@@ -400,24 +457,31 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mFileSeconds);
     ar & BOOST_SERIALIZATION_NVP(mFileRecords);
     ar & BOOST_SERIALIZATION_NVP(mCompressionType);
+    ar & BOOST_SERIALIZATION_NVP(mFileFormat);
+    ar & BOOST_SERIALIZATION_NVP(mOldStyle);
   }
 
   StreamingFileCreationPolicy()
     :
     mFileSeconds(0),
-    mFileRecords(0)
+    mFileRecords(0),
+    mOldStyle(false)
   {
   }
 public:
   StreamingFileCreationPolicy(const std::string& baseDir,
                               const CompressionType & compressionType,
+                              const TableFileFormat & fileFormat,
+                              bool oldStyle,
 			      std::size_t fileSeconds=0,
 			      std::size_t fileRecords=0)
     :
     mBaseDir(baseDir),
     mFileSeconds(fileSeconds),
     mFileRecords(fileRecords),
-    mCompressionType(compressionType)
+    mCompressionType(compressionType),
+    mFileFormat(fileFormat),
+    mOldStyle(oldStyle)
   {
   }
   ~StreamingFileCreationPolicy()
@@ -430,6 +494,10 @@ public:
   const CompressionType & getCompressionType() const
   {
     return mCompressionType;
+  }
+  const TableFileFormat & getFileFormat() const
+  {
+    return mFileFormat;
   }
 };
 
@@ -479,7 +547,7 @@ StreamingFileCreation<_Factory>::createFile(const std::string& filePath,
   str << filePath << "/" << tmpStr << ".tmp";
   mTempPath = Path::get(mRootUri, str.str());
   std::stringstream finalStr;
-  finalStr << filePath << "/" << tmpStr << factory_type::extension();
+  finalStr << filePath << "/" << tmpStr << mPolicy.extension();
   mFinalPath = Path::get(mRootUri, finalStr.str());
   // Call back to the factory to actually create the file
   mCurrentFile = factory->createFile(mTempPath);

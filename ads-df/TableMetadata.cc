@@ -209,33 +209,6 @@ void SerialOrganizedTable::bind(const std::vector<FileSystem *> & filesystems)
   }
 }
 
-void SerialOrganizedTable::getSerialFiles(FileSystem * fs,
-					  int32_t serialNumber,
-					  std::vector<std::shared_ptr<FileChunk> >& files) const
-{
-  std::ostringstream ss;
-  ss << "serial_" << std::setw(5) << std::setfill('0') << serialNumber << ".gz";
-  std::string sn(ss.str());
-  for(std::vector<SerialOrganizedTableFilePtr>::const_iterator it = getSerialPaths().begin();
-      it != getSerialPaths().end();
-      ++it) {
-    typedef std::vector<std::shared_ptr<FileStatus> > fstats;
-    fstats ls;
-    fs->list((*it)->getPath(), ls);
-    for(fstats::iterator fit = ls.begin();
-	fit != ls.end();
-	++fit) {
-      const std::string& fname((*fit)->getPath()->toString());
-      if (fname.size() >= sn.size() &&
-	  boost::algorithm::equals(sn, fname.substr(fname.size()-sn.size()))) {
-	files.push_back(std::make_shared<FileChunk>(fname, 
-						      0,
-						      std::numeric_limits<uint64_t>::max()));
-      }
-    }
-  }  
-}
-
 TableFileMetadata::TableFileMetadata(const std::string& recordType,
 				     const std::map<std::string, std::string>& computedColumns)
   :
@@ -258,12 +231,14 @@ const std::map<std::string, std::string>& TableFileMetadata::getComputedColumns(
 TableMetadata::TableMetadata(const std::string& tableName,
 			     const std::string& recordType,
 			     const std::vector<SortKey>& sortKeys,
-                             const CompressionType & compressionType)
+                             const CompressionType & compressionType,
+                             const TableFileFormat & fileFormat)
   :
   mTableName(tableName),
   mRecordType(recordType),
   mSortKeys(sortKeys),
-  mCompressionType(compressionType)
+  mCompressionType(compressionType),
+  mFileFormat(fileFormat)
 {
 }
 
@@ -382,6 +357,11 @@ std::vector<SortKey> TableMetadata::getPrimarySortKey() const
 const CompressionType& TableMetadata::getCompressionType() const
 {
   return mCompressionType;
+}
+
+const TableFileFormat & TableMetadata::getTableFormat() const
+{
+  return mFileFormat;
 }
 
 const std::string& TableMetadata::getVersion() const

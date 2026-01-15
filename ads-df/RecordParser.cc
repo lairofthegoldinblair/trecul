@@ -62,7 +62,12 @@ void stdio_file_traits::expand(std::string pattern,
 stdio_file_traits::file_type stdio_file_traits::open_for_read(const char * filename, uint64_t beginOffset, uint64_t endOffset)
 {
   stdio_file_segment * seg = new stdio_file_segment();
-  seg->mFile = ::open(filename, O_RDONLY);
+  auto path = Path::get(filename);
+  if (0 < path->getUri()->getScheme().size() &&
+      !boost::algorithm::iequals("file", path->getUri()->getScheme())) {
+    throw std::runtime_error((boost::format("Invalid local file filename %1%") % filename).str());
+  }
+  seg->mFile = ::open(path->getUri()->getPath().c_str(), O_RDONLY);
   if (seg->mFile < 0) {
     int err = errno;    
     throw std::runtime_error((boost::format("Failed opening file %1%: errno=%2% message=%3%") % filename % err % strerror(err)).str());
@@ -83,7 +88,12 @@ stdio_file_traits::file_type stdio_file_traits::open_for_read(const char * filen
 stdio_file_traits::file_type stdio_file_traits::open_for_write(const char * filename)
 {
   stdio_file_segment * seg = new stdio_file_segment();
-  seg->mFile = ::open(filename,
+  auto path = Path::get(filename);
+  if (0 < path->getUri()->getScheme().size() &&
+      !boost::algorithm::iequals("file", path->getUri()->getScheme())) {
+    throw std::runtime_error((boost::format("Invalid local file filename %1%") % filename).str());
+  }
+  seg->mFile = ::open(path->getUri()->getPath().c_str(),
 		      O_WRONLY|O_CREAT|O_TRUNC,
 		      S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP);
   if (seg->mFile == -1) {
@@ -101,7 +111,12 @@ void stdio_file_traits::close(stdio_file_traits::file_type f)
 
 void stdio_file_traits::remove(const char * filename)
 {
-  ::unlink(filename);
+  auto path = Path::get(filename);
+  if (0 < path->getUri()->getScheme().size() &&
+      !boost::algorithm::iequals("file", path->getUri()->getScheme())) {
+    throw std::runtime_error((boost::format("Invalid local file filename %1%") % filename).str());
+  }
+  ::unlink(path->getUri()->getPath().c_str());
 }
 
 int32_t stdio_file_traits::read(stdio_file_traits::file_type f, uint8_t * buf, int32_t bufSize)
@@ -569,9 +584,11 @@ SerialChunkStrategy::SerialChunkStrategy()
 {
 }
 
-SerialChunkStrategy::SerialChunkStrategy(const CompressionType & compressionType)
+SerialChunkStrategy::SerialChunkStrategy(const CompressionType & compressionType,
+                                         const TableFileFormat & fileFormat)
   :
-  mCompressionType(compressionType)
+  mCompressionType(compressionType),
+  mFileFormat(fileFormat)
 {
 }
 
@@ -600,12 +617,31 @@ void SerialChunkStrategy::getFilesForPartition(int32_t partition,
 {
   // get file that matches the serial.
   std::ostringstream ss;
-  ss << "serial_" << std::setw(5) << std::setfill('0') << partition << "." << mCompressionType.extension();
-  std::string sn(ss.str());
+  ss << "serial_" << std::setw(5) << std::setfill('0') << partition;
+  if (!mFileFormat.extension().empty()) {
+    ss << "." << mFileFormat.extension();
+  }
+  if (!mCompressionType.extension().empty()) {
+    ss << "." << mCompressionType.extension();
+  }
   // Get the file system for the uri
   AutoFileSystem fs(mUri->getUri());
   PathPtr serialPath = Path::get(mUri, ss.str());
-  if (!fs->exists(serialPath)) return;
+  if (!fs->exists(serialPath)) {
+    // For backward compatibility also allow elided format extension for compressed delimited
+    if (TableFileFormat::Delimited() == mFileFormat && CompressionType::Uncompressed() != mCompressionType) {
+      ss.str("");
+      ss.clear();
+      ss << "serial_" << std::setw(5) << std::setfill('0') << partition  << "." << mCompressionType.extension();
+      std::string sn(ss.str());
+      serialPath = Path::get(mUri, sn);
+      if (!fs->exists(serialPath)) {  
+        return;
+      }
+    } else {
+      return;
+    }
+  }
   const std::string& fname(serialPath->toString());
   files.push_back(std::make_shared<FileChunk>(fname, 0,
                                               std::numeric_limits<uint64_t>::max()));

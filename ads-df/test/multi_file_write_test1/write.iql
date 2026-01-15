@@ -1,0 +1,4 @@
+g = generate[output="RECORDCOUNT as a, PARTITION as b", limit=10];
+
+w = write[connect="file:///", file="getcwd() + '/output'", mode="text", oldStyleExtensions="false"];
+g -> w;

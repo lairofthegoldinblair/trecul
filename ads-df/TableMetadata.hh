@@ -44,6 +44,7 @@
 #include "CompressionType.hh"
 #include "FileSystem.hh"
 #include "LogicalOperator.hh"
+#include "TableFileFormat.hh"
 
 class DynamicRecordContext;
 class RecordType;
@@ -179,13 +180,6 @@ public:
   {
     return mSerialPaths;
   }
-  /**
-   * Get the files from filesystem associated with this serial number
-   * and table.
-   */
-  void getSerialFiles(FileSystem * fs,
-		      int32_t serialNumber,
-		      std::vector<std::shared_ptr<FileChunk> >& files) const;
 };
 
 /**
@@ -320,12 +314,15 @@ private:
   std::map<std::string, TableColumnGroup*> mColumnGroupNames;
   // (Default) compression for table data
   CompressionType mCompressionType;
+  // (Default) text/binary format
+  TableFileFormat mFileFormat;
   
 public:
   TableMetadata(const std::string& tableName,
 		const std::string& recordType,
 		const std::vector<SortKey>& sortKeys,
-                const CompressionType & compressionType);
+                const CompressionType & compressionType,
+                const TableFileFormat & tableFormat=TableFileFormat());
 
   TableMetadata(const std::string& tableName,
 		const std::string& recordType,
@@ -391,6 +388,11 @@ public:
    * Compression type of the table
    */
   const CompressionType& getCompressionType() const;
+
+  /**
+   * The underlying file format
+   */
+  const TableFileFormat& getTableFormat() const;
 
   /**
    * Add columns required for column group processing.

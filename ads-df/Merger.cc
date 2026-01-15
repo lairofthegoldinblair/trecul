@@ -621,6 +621,7 @@ void LogicalFileRead::internalCreate(class RuntimePlanBuilder& plan)
 					      mEscapeChar,
 					      getOutput(0)->getRecordType(),
                                               *mFree,
+                                              // TODO: Support uncompressed and zstd delimited bucketed files
                                               serial_op_type::chunk_strategy_type(),
 					      mFormat,
 					      mCommentLine.c_str());
@@ -659,7 +660,8 @@ LogicalFileWrite::LogicalFileWrite()
   mFileNameExprFree(nullptr),
   mMaxRecords(0),
   mMaxSeconds(0),
-  mCompression(CompressionType::Gzip())
+  mCompression(CompressionType::Gzip()),
+  mOldStyleExtensions(true)
 {
 }
 
@@ -743,6 +745,8 @@ void LogicalFileWrite::check(PlanCheckContext& ctxt)
       compressionType = getStringValue(ctxt, *it);
     } else if (it->equals("connect")) {
       mConnect = getStringValue(ctxt, *it);
+    } else if (it->equals("oldstyleextensions")) {
+      mOldStyleExtensions = getBooleanValue(ctxt, *it);
     } else if (it->equals("file")) {
       mFile = getStringValue(ctxt, *it);
     } else if (it->equals("format")) {
@@ -806,6 +810,7 @@ void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
   if (isStreamingWrite() ||
       boost::algorithm::iequals(uri->getScheme(), "hdfs") ||
       mConnect.size()) {
+    auto fileFormat = boost::algorithm::iequals("binary", mMode) ? TableFileFormat::Binary() : TableFileFormat::Delimited();
     if (isStreamingWrite()) {
       opType = new RuntimeHdfsWriteOperatorType<StreamingFileCreationPolicy>("write",
                                                                              getInput(0)->getRecordType(),
@@ -816,6 +821,8 @@ void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
                                                                              mHeaderFile,
                                                                              new StreamingFileCreationPolicy(uri->getPath(),
                                                                                                              mCompression,
+                                                                                                             fileFormat,
+                                                                                                             mOldStyleExtensions,
                                                                                                              (std::size_t) mMaxSeconds,
                                                                                                              (std::size_t) mMaxRecords));
     } else {
@@ -828,7 +835,9 @@ void LogicalFileWrite::create(class RuntimePlanBuilder& plan)
                                                                          mHeaderFile,
                                                                          new MultiFileCreationPolicy(mConnect.size() ? "" : uri->getPath(),
                                                                                                      mFileNameExpr, mFileNameExprFree,
-                                                                                                     mCompression));
+                                                                                                     mCompression,
+                                                                                                     fileFormat,
+                                                                                                     mOldStyleExtensions));
     }
   } else if (boost::algorithm::iequals("binary", mMode)) {
     opType = new InternalFileWriteOperatorType("write",

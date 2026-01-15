@@ -67,13 +67,17 @@ public:
   {
     return extension() == rhs.extension();
   }
+  bool operator!=(const CompressionType & rhs) const
+  {
+    return extension() != rhs.extension();
+  }
   const std::string& extension() const
   {
     return mExtension;
   }
   static CompressionType Uncompressed()
   {
-    return CompressionType("txt");
+    return CompressionType("");
   }
   static CompressionType Gzip()
   {

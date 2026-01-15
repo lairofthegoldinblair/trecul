@@ -37,9 +37,13 @@
 #include <boost/format.hpp>
 #include <boost/tokenizer.hpp>
 
+#include "AsyncRecordParser.hh"
+#include "GzipOperator.hh"
 #include "Merger.hh"
 #include "RecordParser.hh"
 #include "RuntimeOperator.hh"
+#include "SerializeOperator.hh"
+#include "StreamBufferBlock.hh"
 #include "TableMetadata.hh"
 #include "TableOperator.hh"
 
@@ -75,16 +79,24 @@ class TableColumnGroupVersionOutput
 {
 public:
   TableColumnGroupVersionOutput(PlanCheckContext & ctxt,
-	     const class TableFileMetadata * pathMetadata,
-	     const RecordType * opOutput);
+                                const class TableFileMetadata * pathMetadata,
+                                const RecordType * opOutput);
   ~TableColumnGroupVersionOutput();
   // The format of the underlying file
   const RecordType * FileType;
+  // Deseralize method for the underlying file (only used if binary format)
+  TreculRecordDeserialize * FileDeserialize;
+  // Free operation for the underlying file
+  TreculFreeOperation * FileTypeFree;
   // The format of the file output operator
   // (e.g. take into consideration omitted columns).
   const RecordType * FileOutput;
   // Free method for the file output
   TreculFreeOperation * FileOutputFree;
+  // For binary files this is the stream buffer type
+  const RecordType * StreamBufferType;
+  // For binary files this is the stream buffer free operation
+  TreculFreeOperation * StreamBufferFree;
   // Transfer from file output to column group output
   // (e.g. reordering of columns or computed columns).
   TreculTransfer * Transfer;
@@ -243,11 +255,17 @@ TableColumnGroupVersionOutput::TableColumnGroupVersionOutput(PlanCheckContext & 
                                                              const RecordType * ty)
   :
   FileType(nullptr),
+  FileDeserialize(nullptr),
+  FileTypeFree(nullptr),
   FileOutput(nullptr),
   FileOutputFree(nullptr),
+  StreamBufferType(nullptr),
+  StreamBufferFree(nullptr),
   Transfer(nullptr)
 {
   FileType = fileMetadata->getRecordType(ctxt);
+  FileDeserialize = new TreculRecordDeserialize(ctxt.getCodeGenerator(), FileType);
+  FileTypeFree = new TreculFreeOperation(ctxt.getCodeGenerator(), FileType);  
   std::vector<std::string> referenced;
   for(RecordType::const_member_iterator outputMember = ty->begin_members();
       outputMember != ty->end_members();
@@ -256,6 +274,10 @@ TableColumnGroupVersionOutput::TableColumnGroupVersionOutput(PlanCheckContext & 
   }  
   FileOutput = RecordType::get(ctxt, FileType, referenced.begin(), referenced.end());
   FileOutputFree = new TreculFreeOperation(ctxt.getCodeGenerator(), FileOutput);
+
+  // TODO: Make buffer size configurable
+  StreamBufferType = StreamBufferBlock::getStreamBufferType(ctxt, 64*1024);
+  StreamBufferFree = new TreculFreeOperation(ctxt.getCodeGenerator(), StreamBufferType);  
       
   // Create a transfer spec from minor version file output to operator output.
   std::string xfer;
@@ -293,7 +315,10 @@ TableColumnGroupVersionOutput::TableColumnGroupVersionOutput(PlanCheckContext & 
 
 TableColumnGroupVersionOutput::~TableColumnGroupVersionOutput()
 {
+  delete FileDeserialize;
+  delete FileTypeFree;
   delete FileOutputFree;
+  delete StreamBufferFree;
   delete Transfer;
 }
 
@@ -906,15 +931,48 @@ void LogicalTableParser::create(class RuntimePlanBuilder& plan)
 	TableColumnGroupVersionOutput * po = v->second;
 	for(TableColumnGroupVersionOutput::path_iterator p = po->beginPaths(),
 	      pEnd = po->endPaths(); p != pEnd; ++p) {
-	  RuntimeOperatorType * opType = new table_op((*p)->getPath(),
-						      '\t',
-						      '\n',
-						      '\\',
-						      po->FileOutput,
-                                                      *po->FileOutputFree,
-                                                      table_op::chunk_strategy_type(mTableMetadata->getCompressionType()),
-						      po->FileType);
-	  plan.addOperatorType(opType);
+          RuntimeOperatorType * opType = nullptr;
+          if (TableFileFormat::Delimited() == mTableMetadata->getTableFormat()) {
+            opType = new table_op((*p)->getPath(),
+                                  '\t',
+                                  '\n',
+                                  '\\',
+                                  po->FileOutput,
+                                  *po->FileOutputFree,
+                                  table_op::chunk_strategy_type(mTableMetadata->getCompressionType(),
+                                                                mTableMetadata->getTableFormat()),
+                                  po->FileType);
+            plan.addOperatorType(opType);
+          } else {
+            // Implement as read_block -> decompress (optional) -> deserialize
+            typedef GenericAsyncReadOperatorType<SerialChunkStrategy> serial_op_type;
+            auto sot = new serial_op_type((*p)->getPath(),
+                                          serial_op_type::chunk_strategy_type(mTableMetadata->getCompressionType(),
+                                                                              mTableMetadata->getTableFormat()),
+                                          po->StreamBufferType,
+                                          *po->StreamBufferFree);
+            plan.addOperatorType(sot);
+            opType = sot;
+            if (CompressionType::Uncompressed() != mTableMetadata->getCompressionType()) {
+              auto decompress = new RuntimeGunzipOperatorType(po->StreamBufferType,
+                                                              *po->StreamBufferFree,
+                                                              mTableMetadata->getCompressionType());
+              plan.addOperatorType(decompress);
+              // Disable buffering here since not needed and chews up memory.
+              plan.connect(opType, 0, decompress, 0, false);
+              opType = decompress;
+              
+            }
+            auto deserialize = new RuntimeDeserializeOperatorType(po->StreamBufferType,
+                                                                  *po->StreamBufferFree,
+                                                                  po->FileType,
+                                                                  *po->FileDeserialize,
+                                                                  *po->FileTypeFree);            
+            plan.addOperatorType(deserialize);
+	    // Disable buffering here since not needed and chews up memory.
+	    plan.connect(opType, 0, deserialize, 0, false);
+            opType = deserialize;
+          }
 	  if (!po->Transfer->isIdentity()) {
 	    // Resolve version discrepancies 
 	    std::vector<const TreculTransfer *> xfers;

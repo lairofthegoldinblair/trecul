@@ -50,6 +50,7 @@
 #include "RecordType.hh"
 #include "RuntimeOperator.hh"
 #include "FileSystem.hh"
+#include "TableFileFormat.hh"
 
 namespace boost {
   namespace interprocess {
@@ -1514,6 +1515,8 @@ private:
   PathPtr mUri;
   // What type of files (compression) are being read
   CompressionType mCompressionType;
+  // What format of files (e.g. delimited text, native binary) are being read
+  TableFileFormat mFileFormat;
 
   // Serialization
   friend class boost::serialization::access;
@@ -1522,11 +1525,13 @@ private:
   {
     ar & BOOST_SERIALIZATION_NVP(mUri);
     ar & BOOST_SERIALIZATION_NVP(mCompressionType);
+    ar & BOOST_SERIALIZATION_NVP(mFileFormat);
   }
 public:
   SerialChunkStrategy();
 
-  SerialChunkStrategy(const CompressionType & compressionType);
+  SerialChunkStrategy(const CompressionType & compressionType,
+                      const TableFileFormat & fileFormat);
 
   ~SerialChunkStrategy();
 

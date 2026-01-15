@@ -777,6 +777,7 @@ private:
   int32_t mMaxRecords;
   int32_t mMaxSeconds;
   CompressionType mCompression;
+  bool mOldStyleExtensions;
 
   void buildHeader(bool isFormatHeader);
   void checkPath(PlanCheckContext& ctxt, const std::string& path);

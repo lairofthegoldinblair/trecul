@@ -42,12 +42,56 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
+#include <boost/core/ignore_unused.hpp>
 
 #include "FileSystem.hh"
 #include "FileWriteOperator.hh"
 #include "RuntimeProcess.hh"
 #include "ZLib.hh"
 #include "Zstd.hh"
+
+class NullCompress
+{
+private:
+  uint8_t * mBuffer;
+  std::size_t mLength;
+public:
+  NullCompress()
+    :
+    mBuffer(nullptr),
+    mLength(0)
+  {
+  }
+
+  ~NullCompress()
+  {
+  }
+
+  void put(const uint8_t * buf_start, std::size_t len, bool isEOS)
+  {
+    boost::ignore_unused(isEOS);
+    mBuffer = const_cast<uint8_t *>(buf_start);
+    mLength = len;
+  }
+  bool run()
+  {
+    return mBuffer == nullptr;
+  }
+  void consumeOutput(uint8_t * & output, std::size_t & len)
+  {
+    output = mBuffer;
+    len = mLength;
+    mBuffer = nullptr;
+    mLength = 0;
+  }
+  static const std::string & extension()
+  {
+    static const std::string ret(".txt");
+    return ret;
+  }
+};
+
+
 
 template<typename _Compressor>
 class RuntimeWriteOperator : public RuntimeOperator
@@ -786,6 +830,8 @@ RuntimeOperator * HdfsWriteOperatorFactory::create(RuntimeOperator::Services& se
     return new RuntimeHdfsWriteOperator<MultiFileCreationPolicy, ZLibCompress>(services, opType);
   } else if (CompressionType::Zstandard() == opType.getCompressionType()) {
     return new RuntimeHdfsWriteOperator<MultiFileCreationPolicy, ZstdCompress>(services, opType);
+  } else if (CompressionType::Uncompressed() == opType.getCompressionType()) {
+    return new RuntimeHdfsWriteOperator<MultiFileCreationPolicy, NullCompress>(services, opType);
   } else {
     return nullptr;
   }
@@ -798,6 +844,8 @@ RuntimeOperator * HdfsWriteOperatorFactory::create(RuntimeOperator::Services& se
     return new RuntimeHdfsWriteOperator<StreamingFileCreationPolicy, ZLibCompress>(services, opType);
   } else if (CompressionType::Zstandard() == opType.getCompressionType()) {
     return new RuntimeHdfsWriteOperator<StreamingFileCreationPolicy, ZstdCompress>(services, opType);
+  } else if (CompressionType::Uncompressed() == opType.getCompressionType()) {
+    return new RuntimeHdfsWriteOperator<StreamingFileCreationPolicy, NullCompress>(services, opType);
   } else {
     return nullptr;
   }
