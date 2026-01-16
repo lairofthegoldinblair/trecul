@@ -42,16 +42,152 @@
 #include <vector>
 
 #include "CompressionType.hh"
+#include "FileSystem.hh"
 #include "LogicalOperator.hh"
 
 class DynamicRecordContext;
 class RecordType;
 
-typedef std::shared_ptr<class SerialOrganizedTableFile> SerialOrganizedTableFilePtr;
-
 /**
  * Tables in Trecul 
  */
+
+/**
+ * A path to a file storing data for a serial organized table.
+ * A path has attributes such as MinorVersion.  
+ * TODO: We want path components of serial files to be metadata
+ * driven (e.g. partitioning keys).  Integrate that functionality here.
+ */
+typedef std::shared_ptr<class SerialOrganizedTableFile> SerialOrganizedTableFilePtr;
+
+class SerialOrganizedTableFile
+{
+private:
+  int32_t mMinorVersion;
+  std::string mDate;
+  PathPtr mPath;
+public:
+  SerialOrganizedTableFile(int32_t minorVersion,
+			   const std::string& dateField,
+			   PathPtr path)
+    :
+    mMinorVersion(minorVersion),
+    mDate(dateField),
+    mPath(path)
+  {
+  }
+
+  int32_t getMinorVersion() const 
+  {
+    return mMinorVersion;
+  }
+  const std::string& getDate() const 
+  {
+    return mDate;
+  }
+  PathPtr getPath() const
+  {
+    return mPath;
+  }
+
+  static SerialOrganizedTableFilePtr get(int32_t minorVersion, 
+					 const std::string& dateField,
+					 PathPtr path)
+  {
+    return SerialOrganizedTableFilePtr(new SerialOrganizedTableFile(minorVersion, dateField, path));
+  }
+};
+
+/**
+ * A table that is hash partitioned on akid 
+ * and range partitioned on date.
+ * This class encapsulates the directory structure that is used
+ * for storing such data.
+ *
+ * The format for serial organized tables URIs:
+ * /CommonVersion_SerialCount/TableName/DBVersionNumber/MinorNumber/Date/BatchId/FileName
+ * where FileName is of the form serial_ddddd
+ * 
+ * To name a table requires the triple:
+ * CommonVersion
+ * TableName
+ * DBVersionNumber
+ *
+ * The scanning operators can accept limiting predicates on the date.
+ * The serial number is determined by the serial/Hadoop input split associated 
+ * with the map job in which the operator is executing.
+ *
+ * We want to be able to support reading serial organized tables out of
+ * a local file system as well as HDFS (or other cluster files systems in
+ * the future).  Thus we use a file system abstraction beneath the path 
+ * manipulations.
+ *
+ */
+class SerialOrganizedTable
+{
+private:
+  int32_t mCommonVersion;
+  int32_t mTableMajorVersion;
+  std::string mTableName;
+  // Beneath the table root we have
+  // a number of path components.
+  // Optionally we can handle evaluating
+  // predicates against these path components
+  // (e.g. date ranges).
+  std::vector<std::string> mPathComponents;
+
+  // These are the paths to directories containing
+  // serials that obey our predicates.
+  // TODO: For our application to event_d we want the
+  // date to be part of the table schema.  We should
+  // probably store it here.
+  std::vector<SerialOrganizedTableFilePtr> mSerialPaths;
+
+  // Support for evaluating predicates against the
+  // directory structure.
+  class DynamicRecordContext * mContext;
+  const class RecordType * mRecordType;
+  class RecordTypeFunction * mPredicate;
+  std::vector<class FieldAddress> mFields;
+  std::size_t mMinorVersionField;
+  std::size_t mDateField;
+  class InterpreterContext * mRuntimeContext;
+  
+  // Recurse down directory path to get to serials.
+  void bindComponent(FileSystem * fs, 
+		     std::size_t level, PathPtr p);
+
+  // Find the table root on this file system
+  PathPtr getTableRoot(FileSystem * fs);
+  
+  // Serialization
+  friend class boost::serialization::access;
+  template <class Archive>
+  void serialize(Archive & ar, const unsigned int version)
+  {
+    ar & BOOST_SERIALIZATION_NVP(mSerialPaths);
+  }
+  SerialOrganizedTable();
+public:
+  SerialOrganizedTable(int32_t commonVersion,
+		       int32_t tableMajorVersion,
+		       const std::string& tableName,
+		       const char * pred = NULL);
+  ~SerialOrganizedTable();
+  void bind(const std::vector<FileSystem *> & fs);
+  const std::vector<SerialOrganizedTableFilePtr>& getSerialPaths() const
+  {
+    return mSerialPaths;
+  }
+  /**
+   * Get the files from filesystem associated with this serial number
+   * and table.
+   */
+  void getSerialFiles(FileSystem * fs,
+		      int32_t serialNumber,
+		      std::vector<std::shared_ptr<FileChunk> >& files) const;
+};
+
 /**
  * A description of the on disk format of a table file together with
  * computed column expressions.  As we update minor version, it may become
