@@ -1,0 +1,9 @@
+/* Test that we can decompress with zstd
+ */
+r = read_block[file="simple_text.txt.zst"];
+u = zstdcat[];
+r -> u;
+p = parse[format="a INTEGER, b BIGINT, c DECIMAL, e VARCHAR, f CHAR(8), g DATETIME, h DATE, i TINYINT, j SMALLINT, k IPV4, l IPV6, m CIDRv4, n CIDRv6", mode="text"];
+u->p;
+d = write[file="output.txt", mode="text"];
+p -> d;

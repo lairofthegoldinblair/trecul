@@ -1,13 +1,16 @@
 #include "zlib.h"
 #include "GzipOperator.hh"
+#include "ZstdOperator.hh"
 
-LogicalGunzip::LogicalGunzip()
+LogicalGunzip::LogicalGunzip(const CompressionType & compressionType)
   :
   LogicalOperator(1,1,1,1),
   mStreamBlock(nullptr),
   mFree(nullptr),
+  mCompressionType(compressionType),
   mBufferCapacity(64*1024)
 {
+  BOOST_ASSERT (CompressionType::Gzip() == mCompressionType || CompressionType::Zstandard() == mCompressionType);
 }
 
 LogicalGunzip::~LogicalGunzip()
@@ -28,7 +31,7 @@ void LogicalGunzip::check(PlanCheckContext& ctxt)
 void LogicalGunzip::create(class RuntimePlanBuilder& plan)
 {
   RuntimeOperatorType * opType = 
-    new RuntimeGunzipOperatorType(mStreamBlock, *mFree);
+    new RuntimeGunzipOperatorType(mStreamBlock, *mFree, mCompressionType);
   plan.addOperatorType(opType);
   plan.mapInputPort(this, 0, opType, 0);  
   plan.mapOutputPort(this, 0, opType, 0);  
@@ -194,10 +197,12 @@ public:
 };
 
 RuntimeGunzipOperatorType::RuntimeGunzipOperatorType(const RecordType * bufferTy,
-                                                     const TreculFreeOperation & freeFunctor)
+                                                     const TreculFreeOperation & freeFunctor,
+                                                     const CompressionType & compressionType)
   :
   mMalloc(bufferTy->getMalloc()),
   mFreeRef(freeFunctor.getReference()),
+  mCompressionType(compressionType),
   mStreamBlock(bufferTy)
 {
 }
@@ -208,5 +213,9 @@ RuntimeGunzipOperatorType::~RuntimeGunzipOperatorType()
 
 RuntimeOperator * RuntimeGunzipOperatorType::create(RuntimeOperator::Services & s) const
 {
-  return new RuntimeGunzipOperator(s, *this);
+  if (CompressionType::Gzip() == mCompressionType) {
+    return new RuntimeGunzipOperator(s, *this);
+  } else {
+    return new RuntimeZstdcatOperator(s, *this);
+  }
 }

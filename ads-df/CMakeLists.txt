@@ -76,6 +76,7 @@ TableOperator.cc
 TcpOperator.cc
 ZLib.cc
 Zstd.cc
+ZstdOperator.cc
 ${EXTRA_SOURCE}
 )
 

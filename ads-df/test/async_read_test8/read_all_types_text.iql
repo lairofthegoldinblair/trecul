@@ -1,0 +1,9 @@
+/* Test that we can decompress with gzip
+ */
+r = read_block[file="simple_text.txt.zst"];
+u = zstdcat[];
+r -> u;
+p = parse[format="b BIGINT"];
+u->p;
+d = write[file="output.txt", mode="text"];
+p -> d;

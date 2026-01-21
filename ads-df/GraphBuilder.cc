@@ -131,6 +131,7 @@ BOOST_CLASS_EXPORT(InternalFileWriteOperatorType);
 BOOST_CLASS_EXPORT(GenericParserOperatorType<ExplicitChunkStrategy>);
 BOOST_CLASS_EXPORT(GenericParserOperatorType<SerialChunkStrategy>);
 BOOST_CLASS_EXPORT(RuntimeConstantScanOperatorType);
+BOOST_CLASS_EXPORT(RuntimeGunzipOperatorType);
 
 #if defined(TRECUL_HAS_HADOOP)
 BOOST_CLASS_EXPORT(HdfsWritableFileFactory);
@@ -393,7 +394,7 @@ void DataflowGraphBuilder::nodeStart(const char * type,
   } else if (boost::algorithm::iequals("group_by", type)) {
     mCurrentOp = new LogicalGroupBy(LogicalGroupBy::HYBRID);
   } else if (boost::algorithm::iequals("gunzip", type)) {
-    mCurrentOp = new LogicalGunzip();
+    mCurrentOp = new LogicalGunzip(CompressionType::Gzip());
   } else if (boost::algorithm::iequals("hash_group_by", type)) {
     mCurrentOp = new LogicalGroupBy(LogicalGroupBy::HASH);
   } else if (boost::algorithm::iequals("hash_join", type)) {
@@ -456,6 +457,8 @@ void DataflowGraphBuilder::nodeStart(const char * type,
     mCurrentOp = new LogicalUnpivot();
   } else if (boost::algorithm::iequals("write", type)) {
     mCurrentOp = new LogicalFileWrite();
+  } else if (boost::algorithm::iequals("zstdcat", type)) {
+    mCurrentOp = new LogicalGunzip(CompressionType::Zstandard());
   } else if (boost::algorithm::iequals("devNull", type)) {
     mCurrentOp = new LogicalDevNull();
   } else {
