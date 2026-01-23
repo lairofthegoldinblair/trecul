@@ -3038,7 +3038,7 @@ void CodeGenerationContext::whileBegin()
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
   // Create blocks for the condition, loop body and continue.
-  std::stack<class IQLToLLVMStackRecord* > & stk(IQLStack);
+  std::stack<class IQLToLLVMStackRecord* > & stk(IQLLoopStack);
   stk.push(new IQLToLLVMStackRecord());
   stk.top()->StartBB = b->GetInsertBlock();
   stk.top()->ThenBB = llvm::BasicBlock::Create(*c, "whileCond", TheFunction);
@@ -3057,7 +3057,7 @@ void CodeGenerationContext::whileStatementBlock(const IQLToLLVMValue * condVal,
   // Test the condition and branch 
   llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function * f = b->GetInsertBlock()->getParent();
-  std::stack<class IQLToLLVMStackRecord* > & stk(IQLStack);
+  std::stack<class IQLToLLVMStackRecord* > & stk(IQLLoopStack);
   f->insert(f->end(), stk.top()->ElseBB);
   conditionalBranch(condVal, condTy, stk.top()->ElseBB, stk.top()->MergeBB);
   b->SetInsertPoint(stk.top()->ElseBB);
@@ -3068,7 +3068,7 @@ void CodeGenerationContext::whileFinish()
   // Unwrap to C++
   llvm::IRBuilder<> * b = LLVMBuilder;
   llvm::Function * f = b->GetInsertBlock()->getParent();
-  std::stack<class IQLToLLVMStackRecord* > & stk(IQLStack);
+  std::stack<class IQLToLLVMStackRecord* > & stk(IQLLoopStack);
 
   // Branch to reevaluate loop predicate
   b->CreateBr(stk.top()->ThenBB);
@@ -3078,6 +3078,26 @@ void CodeGenerationContext::whileFinish()
   // Done with this entry
   delete stk.top();
   stk.pop();
+}
+
+void CodeGenerationContext::buildBreak()
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+
+  if (!IQLLoopStack.empty()) {
+    // Branch to continue block of the loop
+    b->CreateBr(IQLLoopStack.top()->MergeBB);
+  }
+}
+
+void CodeGenerationContext::buildContinue()
+{
+  llvm::IRBuilder<> * b = LLVMBuilder;
+
+  if (!IQLLoopStack.empty()) {
+    // Branch to reevaluate loop condition
+    b->CreateBr(IQLLoopStack.top()->ThenBB);
+  }
 }
 
 void CodeGenerationContext::conditionalBranch(const IQLToLLVMValue * condVal,
@@ -8318,8 +8338,10 @@ void CodeGenerationContext::buildBeginElse()
   llvm::LLVMContext * c = LLVMContext;
   llvm::IRBuilder<> * b = LLVMBuilder;
   BOOST_ASSERT(IQLStack.top()->ElseBB == nullptr);
-  // Unconditional branch from end of then block to the continue block.  
-  b->CreateBr(IQLStack.top()->MergeBB);
+  // Unconditional branch from end of then block to the continue block.
+  if (nullptr == b->GetInsertBlock()->getTerminator()) {
+    b->CreateBr(IQLStack.top()->MergeBB);
+  }
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
   // Create blocks for the else case.  Insert the 'else' block at the
@@ -8334,7 +8356,9 @@ void CodeGenerationContext::buildEndIf(const IQLToLLVMValue * condVal)
   llvm::IRBuilder<> * b = LLVMBuilder;
 
   // Unconditional branch from then/else to continue
-  b->CreateBr(IQLStack.top()->MergeBB);
+  if (nullptr == b->GetInsertBlock()->getTerminator()) {
+    b->CreateBr(IQLStack.top()->MergeBB);
+  }
 
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
@@ -8394,7 +8418,9 @@ void CodeGenerationContext::buildElseIfThenElse()
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
 
   // We saved block.
-  b->CreateBr(IQLStack.top()->MergeBB);
+  if (nullptr == b->GetInsertBlock()->getTerminator()) {
+    b->CreateBr(IQLStack.top()->MergeBB);
+  }
   // Codegen of 'Then' can change the current block, update ThenBB for the PHI.
   IQLStack.top()->ThenBB = b->GetInsertBlock();
   
@@ -8412,7 +8438,9 @@ const IQLToLLVMValue * CodeGenerationContext::buildEndIfThenElse(const IQLToLLVM
   // The function we are working on.
   llvm::Function *TheFunction = b->GetInsertBlock()->getParent();
 
-  b->CreateBr(IQLStack.top()->MergeBB);
+  if (nullptr == b->GetInsertBlock()->getTerminator()) {
+    b->CreateBr(IQLStack.top()->MergeBB);
+  }
   // Codegen of 'Else' can change the current block, update ElseBB for the PHI.
   IQLStack.top()->ElseBB = b->GetInsertBlock();
   

@@ -4369,6 +4369,262 @@ BOOST_AUTO_TEST_CASE(testIQLWhile)
   recTy.GetFree()->free(lhs);
 }
 
+BOOST_AUTO_TEST_CASE(testIQLBreak)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("d", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("y", Int32Type::Get(ctxt)));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setInt32("a", 3, lhs);
+  recTy.setInt32("b", 92344, lhs);
+  recTy.setInt32("c", 9923432, lhs);
+  recTy.setInt32("d", 12431, lhs);
+  recTy.setInt32("y", 88823, lhs);
+
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+        		       "xfer5up", 
+        		       types, 
+        		       "WHILE a > 0 DO SET b = b + 1; SET a = a - 1; BREAK; END WHILE");
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(2, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(92345, recTy.getInt32("b", lhs));
+    BOOST_CHECK_EQUAL(9923432, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(12431, recTy.getInt32("d", lhs));
+    BOOST_CHECK_EQUAL(88823, recTy.getInt32("y", lhs));
+  }
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+        		       "xfer5up", 
+        		       types, 
+        		       "WHILE TRUE DO SET b = b + 1; SET c = c+1; SET a = a-1; IF a <= 0 BREAK; END WHILE");
+    recTy.setInt32("a", 3, lhs);
+    recTy.setInt32("b", 92344, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(92347, recTy.getInt32("b", lhs));
+    BOOST_CHECK_EQUAL(9923435, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(12431, recTy.getInt32("d", lhs));
+    BOOST_CHECK_EQUAL(88823, recTy.getInt32("y", lhs));
+  }
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+        		       "xfer5up", 
+        		       types, 
+        		       "WHILE TRUE DO IF a > 0 BEGIN SET b = b + 1; SET c = c+1;  SET a = a-1; END ELSE BREAK; END WHILE");
+    recTy.setInt32("a", 3, lhs);
+    recTy.setInt32("b", 92344, lhs);
+    recTy.setInt32("c", 9923432, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(92347, recTy.getInt32("b", lhs));
+    BOOST_CHECK_EQUAL(9923435, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(12431, recTy.getInt32("d", lhs));
+    BOOST_CHECK_EQUAL(88823, recTy.getInt32("y", lhs));
+  }
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+        		       "xfer5up", 
+        		       types, 
+        		       "WHILE TRUE DO IF a > 0 BEGIN SET b = b + 1; SET c = c+1;  SET a = a-1; END ELSE BEGIN SET d = -9;  SET y = -8; BREAK; END END WHILE");
+    recTy.setInt32("a", 3, lhs);
+    recTy.setInt32("b", 92344, lhs);
+    recTy.setInt32("c", 9923432, lhs);
+    recTy.setInt32("d", 12431, lhs);
+    recTy.setInt32("y", 88823, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(92347, recTy.getInt32("b", lhs));
+    BOOST_CHECK_EQUAL(9923435, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(-9, recTy.getInt32("d", lhs));
+    BOOST_CHECK_EQUAL(-8, recTy.getInt32("y", lhs));
+  }
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+        		       "xfer5up", 
+        		       types, 
+        		       "WHILE TRUE DO "
+                               " IF a > 0 "
+                               " BEGIN "
+                               "  SET b = b + 1; "
+                               "  SET c = c+1;  "
+                               "  SET a = a-1; "
+                               " END "
+                               " ELSE "
+                               " BEGIN "
+                               "  SET d = -9; "
+                               "  BREAK; "
+                               "  SET y = -8; "
+                               " END "
+                               "END WHILE");
+    recTy.setInt32("a", 3, lhs);
+    recTy.setInt32("b", 92344, lhs);
+    recTy.setInt32("c", 9923432, lhs);
+    recTy.setInt32("d", 12431, lhs);
+    recTy.setInt32("y", 88823, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(92347, recTy.getInt32("b", lhs));
+    BOOST_CHECK_EQUAL(9923435, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(-9, recTy.getInt32("d", lhs));
+    BOOST_CHECK_EQUAL(88823, recTy.getInt32("y", lhs));
+  }
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+        		       "xfer5up", 
+        		       types, 
+        		       "WHILE TRUE DO IF a > 0 BEGIN SET b = b + 1; SET c = c+1;  SET a = a-1; END ELSE BEGIN BEGIN SET d = -9; BREAK; END SET y = -8; END END WHILE");
+    recTy.setInt32("a", 3, lhs);
+    recTy.setInt32("b", 92344, lhs);
+    recTy.setInt32("c", 9923432, lhs);
+    recTy.setInt32("d", 12431, lhs);
+    recTy.setInt32("y", 88823, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(92347, recTy.getInt32("b", lhs));
+    BOOST_CHECK_EQUAL(9923435, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(-9, recTy.getInt32("d", lhs));
+    BOOST_CHECK_EQUAL(88823, recTy.getInt32("y", lhs));
+  }
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+        		       "xfer5up", 
+        		       types, 
+        		       "WHILE TRUE DO "
+                               " IF a > 0 "
+                               " BEGIN "
+                               "  SET b = a; "
+                               "  WHILE TRUE DO "
+                               "   IF b > 0 "
+                               "    BEGIN "
+                               "    SET c = c - 1; "
+                               "    SET b = b - 1; "
+                               "    END "
+                               "   ELSE "
+                               "    BREAK; "
+                               "  END WHILE "
+                               "  SET a = a-1; "
+                               " END "
+                               " ELSE "
+                               "  BREAK; "
+                               "END WHILE");
+    recTy.setInt32("a", 3, lhs);
+    recTy.setInt32("b", 92344, lhs);
+    recTy.setInt32("c", 9923432, lhs);
+    recTy.setInt32("d", 12431, lhs);
+    recTy.setInt32("y", 88823, lhs);
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("b", lhs));
+    BOOST_CHECK_EQUAL(9923426, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(12431, recTy.getInt32("d", lhs));
+    BOOST_CHECK_EQUAL(88823, recTy.getInt32("y", lhs));
+  }
+  recTy.GetFree()->free(lhs);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLContinue)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("c", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("d", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("y", Int32Type::Get(ctxt)));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+
+  {
+    recTy.setInt32("a", 3, lhs);
+    recTy.setInt32("b", 92344, lhs);
+    recTy.setInt32("c", 9923432, lhs);
+    recTy.setInt32("d", 12431, lhs);
+    recTy.setInt32("y", 88823, lhs);
+    RecordTypeInPlaceUpdate up(ctxt, 
+        		       "xfer5up", 
+        		       types, 
+        		       "WHILE a > 0 DO SET b = b + 1; SET a = a - 1; CONTINUE; END WHILE");
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(92347, recTy.getInt32("b", lhs));
+    BOOST_CHECK_EQUAL(9923432, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(12431, recTy.getInt32("d", lhs));
+    BOOST_CHECK_EQUAL(88823, recTy.getInt32("y", lhs));
+  }
+  {
+    recTy.setInt32("a", 3, lhs);
+    recTy.setInt32("b", 92344, lhs);
+    recTy.setInt32("c", 9923432, lhs);
+    recTy.setInt32("d", 12431, lhs);
+    recTy.setInt32("y", 88823, lhs);
+    RecordTypeInPlaceUpdate up(ctxt, 
+        		       "xfer5up", 
+        		       types, 
+        		       "WHILE a > 0 DO SET b = b + 1; SET a = a - 1; CONTINUE; SET c = 0; SET d = 0; END WHILE");
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(92347, recTy.getInt32("b", lhs));
+    BOOST_CHECK_EQUAL(9923432, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(12431, recTy.getInt32("d", lhs));
+    BOOST_CHECK_EQUAL(88823, recTy.getInt32("y", lhs));
+  }
+  {
+    recTy.setInt32("a", 3, lhs);
+    recTy.setInt32("b", 92344, lhs);
+    recTy.setInt32("c", 9923432, lhs);
+    recTy.setInt32("d", 12431, lhs);
+    recTy.setInt32("y", 88823, lhs);
+    RecordTypeInPlaceUpdate up(ctxt, 
+        		       "xfer5up", 
+        		       types, 
+        		       "WHILE a > 0 DO SET b = b + 1; SET a = a - 1; IF 0 = a % 2 CONTINUE; SET d = d-1; SET y = y + 1; END WHILE");
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(92347, recTy.getInt32("b", lhs));
+    BOOST_CHECK_EQUAL(9923432, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(12430, recTy.getInt32("d", lhs));
+    BOOST_CHECK_EQUAL(88824, recTy.getInt32("y", lhs));
+  }
+  {
+    recTy.setInt32("a", 3, lhs);
+    recTy.setInt32("b", 92344, lhs);
+    recTy.setInt32("c", 9923432, lhs);
+    recTy.setInt32("d", 12431, lhs);
+    recTy.setInt32("y", 88823, lhs);
+    RecordTypeInPlaceUpdate up(ctxt, 
+        		       "xfer5up", 
+        		       types, 
+        		       "WHILE a > 0 DO SET b = b + 1; SET a = a - 1; IF 0 = a % 2 BEGIN SET c = c - 1; CONTINUE; END SET d = d-1; SET y = y + 1; END WHILE");
+    up.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(92347, recTy.getInt32("b", lhs));
+    BOOST_CHECK_EQUAL(9923430, recTy.getInt32("c", lhs));
+    BOOST_CHECK_EQUAL(12430, recTy.getInt32("d", lhs));
+    BOOST_CHECK_EQUAL(88824, recTy.getInt32("y", lhs));
+  }
+  recTy.GetFree()->free(lhs);
+}
+
 BOOST_AUTO_TEST_CASE(testIQLAscendingSortPrefix)
 {
   DynamicRecordContext ctxt;

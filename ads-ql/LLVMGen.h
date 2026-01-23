@@ -340,6 +340,16 @@ extern "C" {
   void IQLToLLVMWhileFinish(IQLCodeGenerationContextRef ctxt);
 
   /**
+   * BREAK from WHILE loop
+   */
+  void IQLToLLVMBuildBreak(IQLCodeGenerationContextRef ctxt);
+
+  /** 
+   * CONTINUE within WHILE loop
+   */
+  void IQLToLLVMBuildContinue(IQLCodeGenerationContextRef ctxt);
+  
+  /**
    * Construct an if/then/else expression
    */
   void IQLToLLVMBeginIfThenElse(IQLCodeGenerationContextRef ctxt, IQLToLLVMValueRef condVal);

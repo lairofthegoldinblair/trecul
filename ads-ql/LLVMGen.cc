@@ -604,6 +604,18 @@ void IQLToLLVMWhileFinish(IQLCodeGenerationContextRef ctxtRef)
   ctxt->whileFinish();
 }
 
+void IQLToLLVMBuildBreak(IQLCodeGenerationContextRef ctxtRef)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  ctxt->buildBreak();
+}
+
+void IQLToLLVMBuildContinue(IQLCodeGenerationContextRef ctxtRef)
+{
+  CodeGenerationContext * ctxt = unwrap(ctxtRef);
+  ctxt->buildContinue();
+}
+
 void IQLToLLVMBeginIfThenElse(IQLCodeGenerationContextRef ctxtRef, IQLToLLVMValueRef condVal)
 {
   CodeGenerationContext * ctxt = unwrap(ctxtRef);

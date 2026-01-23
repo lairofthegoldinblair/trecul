@@ -430,6 +430,8 @@ private:
   std::map<std::string, std::string> mTreculNameToSymbol;
   // A stack for constructs like if/then/else
   std::stack<class IQLToLLVMStackRecord* > IQLStack;
+  // A stack for loop constructs like while
+  std::stack<class IQLToLLVMStackRecord* > IQLLoopStack;
   // A stack of switch builders
   std::stack<class IQLToLLVMSwitchRecord* > IQLSwitch;
   // A stack of CASE builders
@@ -841,6 +843,16 @@ public:
   void whileStatementBlock(const IQLToLLVMValue * condVal,
 			   const FieldType * condTy);
   void whileFinish();
+
+  /**
+   * BREAK from WHILE loop
+   */
+  void buildBreak();
+
+  /**
+   * CONTINUE within WHILE loop
+   */
+  void buildContinue();
 
   /**
    * Conditionally branch using a possibly nullable boolean

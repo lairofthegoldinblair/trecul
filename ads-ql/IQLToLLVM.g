@@ -48,7 +48,82 @@ localVarOrId returns [pANTLR3_STRING argName]
     ID { $argName = $ID.text; }
     ;
 
-statement[IQLCodeGenerationContextRef ctxt]
+statementNoGenerate
+	:
+	(
+	setStatementNoGenerate
+	| variableDeclarationNoGenerate
+	| declareStatementNoGenerate
+	| printStatementNoGenerate
+	| ifStatementNoGenerate
+	| statementBlockNoGenerate
+	| ^(TK_RETURN (expressionNoGenerate)?)
+	| TK_BREAK
+	| TK_CONTINUE
+	| ^(TK_RAISERROR expressionNoGenerate expressionNoGenerate?)
+	| switchStatementNoGenerate 
+	| whileStatementNoGenerate 
+	)
+	;
+
+variableDeclarationNoGenerate 
+	:
+	^(TK_DECLARE localVarOrId builtInType)
+	;
+
+setStatementNoGenerate
+	:
+	^(c=TK_SET variableReferenceNoGenerate expressionNoGenerate)
+	;
+
+variableReferenceNoGenerate
+    :
+    ID 
+    |
+    ^(c='[' expressionNoGenerate expressionNoGenerate)
+	|
+    ^(c='.' expressionNoGenerate ID)
+    ;
+
+switchStatementNoGenerate
+    :
+    ^(TK_SWITCH expressionNoGenerate switchBlockNoGenerate+)
+    ;
+
+switchBlockNoGenerate
+    :
+    ^(TK_CASE DECIMAL_INTEGER_LITERAL statementNoGenerate+)
+    ;
+
+printStatementNoGenerate
+	:
+	^(TK_PRINT expressionNoGenerate)
+    ;
+
+ifStatementNoGenerate
+	:
+	^(TK_IF statementNoGenerate (statementNoGenerate)?)
+	;
+
+statementBlockNoGenerate
+	:
+	^(TK_BEGIN (statementNoGenerate)*)
+	;
+
+whileStatementNoGenerate
+	:
+	^(TK_WHILE expressionNoGenerate statementBlockNoGenerate)
+	;
+
+declareStatementNoGenerate
+    :
+    ^(TK_DECLARE e = expressionNoGenerate ID)
+    ;
+
+statement[IQLCodeGenerationContextRef ctxt] returns [int isTerminated]
+@init {
+    isTerminated = 0;
+}
 	:
 	(
 	setStatement[$ctxt]
@@ -56,10 +131,10 @@ statement[IQLCodeGenerationContextRef ctxt]
 	| declareStatement[$ctxt]
 	| printStatement[$ctxt]
 	| ifStatement[$ctxt]
-	| statementBlock[$ctxt]
+	| sb = statementBlock[$ctxt] { $isTerminated = sb; }
 	| ^(TK_RETURN (e = expression[$ctxt] { IQLToLLVMBuildReturnValue($ctxt, e.llvmVal, $e.start->u); })?)
-	| TK_BREAK
-	| TK_CONTINUE
+	| TK_BREAK { IQLToLLVMBuildBreak($ctxt); $isTerminated = 1; }
+	| TK_CONTINUE { IQLToLLVMBuildContinue($ctxt); $isTerminated = 1; }
 	| ^(TK_RAISERROR expression[$ctxt] expression[$ctxt]?)
 	| switchStatement[$ctxt] 
 	| whileStatement[$ctxt] 
@@ -109,9 +184,19 @@ ifStatement[IQLCodeGenerationContextRef ctxt]
 	^(TK_IF e = expression[$ctxt] { IQLToLLVMBeginIf($ctxt); } statement[$ctxt] ( { IQLToLLVMBeginElse($ctxt); } statement[$ctxt])?  { IQLToLLVMEndIf($ctxt, e.llvmVal); } )
 	;
 
-statementBlock[IQLCodeGenerationContextRef ctxt]
+optionalStatement[IQLCodeGenerationContextRef ctxt, int * isTerminated]
+    :
+    { *$isTerminated == 0 }? s = statement[ctxt] { *$isTerminated = s; }
+    |
+    statementNoGenerate
+    ;
+
+statementBlock[IQLCodeGenerationContextRef ctxt] returns [int isTerminated]
+@init {
+    isTerminated = 0;
+}
 	:
-	^(TK_BEGIN statement[$ctxt]*)
+	^(TK_BEGIN (s = optionalStatement[$ctxt, &isTerminated])*)
 	;
 
 whileStatement[IQLCodeGenerationContextRef ctxt]
