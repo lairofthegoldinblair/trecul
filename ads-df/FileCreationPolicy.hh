@@ -6,6 +6,7 @@
 #include <boost/asio.hpp>
 
 #include "CompressionType.hh"
+#include "FileSystem.hh"
 #include "RuntimePort.hh"
 #include "RuntimeOperator.hh"
 #include "ServiceCompletionPort.hh"
