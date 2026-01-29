@@ -230,7 +230,7 @@ expression[IQLTreeFactoryRef ctxt] returns [IQLExpressionRef e]
     | ^(t='>=' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildGreaterThanEquals($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t='<=' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildLessThanEquals($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t='<>' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildNotEquals($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
-    | ^(t='!>' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildNotEquals($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
+    | ^(t='!=' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildNotEquals($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t='>>' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildSubnetContains($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t='>>=' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildSubnetContainsEquals($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })
     | ^(t='<<' e1=expression[$ctxt] e2=expression[$ctxt] { $e = IQLBuildSubnetContainedBy($ctxt, e1, e2, $t->getLine($t), $t->getCharPositionInLine($t)); })

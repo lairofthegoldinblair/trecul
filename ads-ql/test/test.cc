@@ -541,11 +541,12 @@ BOOST_AUTO_TEST_CASE(testNativeAST)
   }
   // Check a bunch of binary operators for basic 
   // parsing sanity.
-  const char * toks [6] = {"= ", "> ", "< ", "<>", ">=", "<="};
-  IQLExpression::NodeType nodeTypes[6] = {IQLExpression::EQ, IQLExpression::GTN, 
+  const char * toks [7] = {"= ", "> ", "< ", "<>", ">=", "<=", "!=" };
+  IQLExpression::NodeType nodeTypes[7] = {IQLExpression::EQ, IQLExpression::GTN, 
 					  IQLExpression::LTN, IQLExpression::NEQ,
-					  IQLExpression::GTEQ, IQLExpression::LTEQ};
-  for(int i=0; i<6; ++i) {
+					  IQLExpression::GTEQ, IQLExpression::LTEQ,
+                                          IQLExpression::NEQ};
+  for(int i=0; i<7; ++i) {
     IQLExpression * ast = 
       RecordTypeFunction::getAST(ctxt, 
 				 (boost::format("99.77 %1% 99.7734") %
@@ -1950,6 +1951,10 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayOfNullableEquals)
     BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
   }
   {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b != rhs.b");
+    BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
     RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b < rhs.b");
     BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
   }
@@ -1975,6 +1980,10 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayOfNullableEquals)
   }
   {
     RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, NULL, 3] <> ARRAY[1, 2, NULL]");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "ARRAY[1, NULL, 3] != ARRAY[1, 2, NULL]");
     BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
   }
   {
@@ -2033,6 +2042,10 @@ BOOST_AUTO_TEST_CASE(testIQLVariableArrayOfNullableEquals)
     BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
   }
   {
+    RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b != rhs.b");
+    BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
+  }
+  {
     RecordTypeFunction cmp(ctxt, "cmp", types, "lhs.b < rhs.b");
     BOOST_CHECK(!cmp.execute(lhs, rhs, &runtimeCtxt));
   }
@@ -2058,6 +2071,10 @@ BOOST_AUTO_TEST_CASE(testIQLVariableArrayOfNullableEquals)
   }
   {
     RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, NULL, 3] AS INTEGER[]) <> CAST(ARRAY[1, 2, NULL] AS INTEGER[])");
+    BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
+  }
+  {
+    RecordTypeFunction cmp(ctxt, "cmp", std::vector<const RecordType *>({ &recTy, &recTy }), "CAST(ARRAY[1, NULL, 3] AS INTEGER[]) != CAST(ARRAY[1, 2, NULL] AS INTEGER[])");
     BOOST_CHECK(cmp.execute(inputBuf, inputBuf, &runtimeCtxt));
   }
   {
@@ -2468,6 +2485,12 @@ void checkShortStringLiteralCompares(DynamicRecordContext & ctxt,
   }
   {
     RecordTypeFunction equals(ctxt, "chareq", types, 
+			      (boost::format("%1% != '123456'") % field).str());
+    int32_t val = equals.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+  }
+  {
+    RecordTypeFunction equals(ctxt, "chareq", types, 
 			      (boost::format("%1% >= '123457'") % field).str());
     int32_t val = equals.execute(lhs, NULL, &runtimeCtxt);
     BOOST_CHECK_EQUAL(val, 0);
@@ -2504,7 +2527,20 @@ void checkShortStringLiteralCompares(DynamicRecordContext & ctxt,
   }
   {
     RecordTypeFunction equals(ctxt, "chareq", types, 
+			      (boost::format("%1% != '123457'") % field).str());
+    int32_t val = equals.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);
+  }
+  {
+    RecordTypeFunction equals(ctxt, "chareq", types, 
 			      (boost::format("%1% <> '1234566666666666666666'") % 
+			       field).str());
+    int32_t val = equals.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);
+  }
+  {
+    RecordTypeFunction equals(ctxt, "chareq", types, 
+			      (boost::format("%1% != '1234566666666666666666'") % 
 			       field).str());
     int32_t val = equals.execute(lhs, NULL, &runtimeCtxt);
     BOOST_CHECK_EQUAL(val, 1);
@@ -2569,6 +2605,21 @@ BOOST_AUTO_TEST_CASE(testIQLLiteralCompares)
     int32_t val = equals.execute(lhs, NULL, &runtimeCtxt);
     BOOST_CHECK_EQUAL(val, 1);
   }
+  {
+    RecordTypeFunction equals(ctxt, "varchareq", types, "b != 'abcdefghijklmnop'");
+    int32_t val = equals.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 0);
+  }
+  {
+    RecordTypeFunction equals(ctxt, "varchareq", types, "b != 'abcdefghijklmnoq'");
+    int32_t val = equals.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);
+  }
+  {
+    RecordTypeFunction equals(ctxt, "varchareq", types, "b != 'abcdefghijklmno'");
+    int32_t val = equals.execute(lhs, NULL, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(val, 1);
+  }
   recTy.getFree().free(lhs);
 }
 
@@ -2601,6 +2652,7 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32SingleElementCompare)
   RecordTypeFunction le(ctxt, "arrle", types, "a <= e");
   RecordTypeFunction ge(ctxt, "arrge", types, "a >= e");
   RecordTypeFunction ne(ctxt, "arrne", types, "a <> e");
+  RecordTypeFunction ne2(ctxt, "arrne", types, "a != e");
   int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 1);
   val = gt.execute(lhs, rhs, &runtimeCtxt);
@@ -2610,6 +2662,8 @@ BOOST_AUTO_TEST_CASE(testIQLFixedArrayInt32SingleElementCompare)
   val = ge.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 0);
   val = ne.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ne2.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 1);
   recTy.GetFree()->free(lhs);
   rhsTy.GetFree()->free(rhs);
@@ -2717,6 +2771,7 @@ void testIQLArrayInt32Compare(bool isVariable)
   RecordTypeFunction le(ctxt, "arrle", types, (boost::format("%1% <= %2%") % a % e).str());
   RecordTypeFunction ge(ctxt, "arrge", types, (boost::format("%1% >= %2%") % a % e).str());
   RecordTypeFunction ne(ctxt, "arrne", types, (boost::format("%1% <> %2%") % a % e).str());
+  RecordTypeFunction ne2(ctxt, "arrne", types, (boost::format("%1% != %2%") % a % e).str());
   int32_t val = lt.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 1);
   val = gt.execute(lhs, rhs, &runtimeCtxt);
@@ -2726,6 +2781,8 @@ void testIQLArrayInt32Compare(bool isVariable)
   val = ge.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 0);
   val = ne.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ne2.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 1);
 
   
@@ -2740,6 +2797,8 @@ void testIQLArrayInt32Compare(bool isVariable)
   BOOST_CHECK_EQUAL(val, 1);
   val = ne.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 0);
+  val = ne2.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 0);
 
   recTy.setArrayInt32("a", 0, 23543, lhs);
   val = lt.execute(lhs, rhs, &runtimeCtxt);
@@ -2751,6 +2810,8 @@ void testIQLArrayInt32Compare(bool isVariable)
   val = ge.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 1);
   val = ne.execute(lhs, rhs, &runtimeCtxt);
+  BOOST_CHECK_EQUAL(val, 1);
+  val = ne2.execute(lhs, rhs, &runtimeCtxt);
   BOOST_CHECK_EQUAL(val, 1);
 
   recTy.GetFree()->free(lhs);
