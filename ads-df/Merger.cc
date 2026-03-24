@@ -1772,7 +1772,7 @@ void RuntimeSortOperator::shutdown()
 class RuntimeSortVerifyOperator : public RuntimeOperatorBase<RuntimeSortOperatorType>
 {
 private:
-  enum State { START, READ, WRITE };
+  enum State { START, READ, WRITE, WRITE_EOS };
   State mState;
   RecordBuffer mInput;
   RecordBuffer mPrevious;
@@ -1823,15 +1823,22 @@ void RuntimeSortVerifyOperator::onEvent(RuntimePort * port)
           throw std::runtime_error("[RuntimeSortVerifyOperator::onEvent] Input not sorted");
         }
       }
-      requestWrite(0);
-      mState = WRITE;
-      return;
-    case WRITE:
-      write(port, mInput, RecordBuffer::isEOS(mInput));
+      if (mPrevious) {
+        requestWrite(0);
+        mState = WRITE;
+        return;
+      case WRITE:
+        write(port, mPrevious, false);
+      }
       mPrevious = mInput;
-      if (RecordBuffer::isEOS(mPrevious)) 
-	break;
+      if (RecordBuffer::isEOS(mPrevious))
+        break;
     }
+    requestWrite(0);
+    mState = WRITE_EOS;
+    return;
+  case WRITE_EOS:
+    write(port, RecordBuffer(), true);
   }
 }
 
