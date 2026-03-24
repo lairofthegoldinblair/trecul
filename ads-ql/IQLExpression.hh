@@ -38,214 +38,33 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
-#include <boost/variant.hpp>
+#include <boost/iterator/transform_iterator.hpp>
 #include "IQLBuildTree.h"
+#include "IQLStatement.hh"
 #include "RecordType.hh"
 
-class IQLExpression;
-
-// TODO: Currently cannot make this an expression
-// since our type system does not allow records as
-// field types.  Probably should fix this.
-class IQLFieldConstructor
-{
-public:
-  virtual ~IQLFieldConstructor() {};
-};
-
-/**
- * A single expression with an optional name.  The name is required
- * unless the expression is a VARIABLE reference.
- */
-class IQLNamedExpression : public IQLFieldConstructor
-{
-private:
-  IQLExpression * mExpression;
-  std::string mName;
-
-  IQLNamedExpression(DynamicRecordContext & ctxt,
-		     IQLExpression * expr,
-		     const char * name)
-    :
-    mExpression(expr),
-    mName(name ? name : "")
-  {
-  }
-public:
-  static IQLNamedExpression * create(DynamicRecordContext & ctxt,
-				     IQLExpression * expr,
-				     const char * name)
-  {
-    auto tmp = new IQLNamedExpression(ctxt, expr, name);
-    ctxt.add(tmp);
-    return tmp;
-  }
-
-  IQLExpression * getExpression()
-  {
-    return mExpression; 
-  }
-  const std::string& getName() const
-  {
-    return mName;
-  }
-};
-
-/**
- * Match and output all fields from a named input record.
- */
-class IQLFieldGlob : public IQLFieldConstructor
-{
-private:
-  std::string mRecordName;
-
-  IQLFieldGlob(DynamicRecordContext & ctxt,
-	       const char * recordName)
-    :
-    mRecordName(recordName)
-  {
-  }
-
-public:
-  static IQLFieldGlob * create(DynamicRecordContext & ctxt,
-			       const char * recordName)
-  {
-    auto tmp = new IQLFieldGlob(ctxt, recordName);
-    ctxt.add(tmp);
-    return tmp;
-  }
-};
-
-/**
- * A regular expression that matches variables by name
- * and optionally use captures to rename the variables.
- */
-class IQLFieldPattern : public IQLFieldConstructor
-{
-private:
-  std::string mPattern;
-  std::string mNames;
-
-  IQLFieldPattern(DynamicRecordContext & ctxt,
-	       const char * pattern,
-	       const char * names)
-    :
-    mPattern(pattern),
-    mNames(names ? names : "")
-  {
-  }
-public:
-  static IQLFieldPattern * create(DynamicRecordContext & ctxt,
-				  const char * pattern,
-				  const char * names)
-  {
-    auto tmp = new IQLFieldPattern(ctxt, pattern, names);
-    ctxt.add(tmp);
-    return tmp;
-  }
-};
-
-class IQLRecordConstructor
-{
-private:
-  std::vector<IQLFieldConstructor *> mFields;
-  
-  template<typename _InputIterator>
-  IQLRecordConstructor(_InputIterator b, _InputIterator e)
-    :
-    mFields(b, e)
-  {
-  }
-public:
-  static IQLRecordConstructor * create(DynamicRecordContext & ctxt,
-				       const std::vector<IQLFieldConstructor *>& fields)
-  {
-    auto tmp = new IQLRecordConstructor(fields.begin(), fields.end());
-    ctxt.add(tmp);
-    return tmp;
-  }
-
-  typedef std::vector<IQLFieldConstructor*>::iterator field_iterator;
-  field_iterator begin_fields() 
-  {
-    return mFields.begin();
-  }
-  field_iterator end_fields()
-  {
-    return mFields.end();
-  }
-  std::size_t size_fields() const
-  {
-    return mFields.size();
-  }
-};
-
-class SourceLocation
-{
-private:
-  int32_t mLine;
-  int32_t mColumn;
-public:
-  SourceLocation()
-    :
-    mLine(0),
-    mColumn(0)
-  {
-  }
-  SourceLocation(int32_t line, int32_t column)
-    :
-    mLine(line),
-    mColumn(column)
-  {
-  }
-
-  int32_t getLine() const 
-  {
-    return mLine; 
-  }
-
-  int32_t getColumn() const
-  {
-    return mColumn;
-  }
-};
-
-// TODO: Right now we are treating DynamicRecordContext
-// as an owner of IQLExpression.  We probably want something
-// finer grain than that.
 // TODO: Support constant folding of IQLExpressions
 // Implement type checking and LLVM code gen off of IQLExpressions
-class IQLExpression
+class IQLExpression : public IQLStatement
 {
 public:
-  enum NodeType { ARRAYREF, ARR, LOR, LAND, LNOT, LISNULL, CASE, BAND, BOR, BXOR, BNOT, EQ, GTN, LTN, GTEQ, LTEQ, NEQ, MINUS, PLUS, TIMES, DIVIDE, MOD, CONCAT, CAST, VARIABLE, CALL, INT32, INT64, DOUBLE, DECIMAL, STRING, STRUCT, BOOLEAN, INTERVAL, NIL, IPV4, IPV6, SUBNET_CONTAINS, SUBNET_CONTAINSEQ, SUBNET_CONTAINED, SUBNET_CONTAINEDEQ, SUBNET_SYMCONTAINSEQ };
-
+  typedef IQLStatement::NodeType NodeType;
+  
 private:
-  DynamicRecordContext & mContext;
-
-  NodeType mNodeType;
   // Type of the expression computed by type checking
   const FieldType * mFieldType;
   // Type to coerce to.  Having this as a member
   // saves a tree rewrite.
   const FieldType * mCoerceTo;
-  // Line and column number
-  SourceLocation mSourceLocation;
-
-  std::vector<IQLExpression*> mArgs;
-  typedef boost::variant<int64_t, std::string, double, const FieldType *> data_type;
-  data_type mData;
   
 protected:
   IQLExpression(DynamicRecordContext & ctxt,
 		NodeType nodeType, 
 		const SourceLocation& loc)
     :
-    mContext(ctxt),
-    mNodeType(nodeType),
+    IQLStatement(ctxt, nodeType, loc),
     mFieldType(NULL),
-    mCoerceTo(NULL),
-    mSourceLocation(loc)
+    mCoerceTo(NULL)
   {
   }
   IQLExpression(DynamicRecordContext & ctxt,
@@ -253,99 +72,58 @@ protected:
 		IQLExpression * arg, 
 		const SourceLocation& loc)
     :
-    mContext(ctxt),
-    mNodeType(nodeType),
+    IQLStatement(ctxt, nodeType, arg, loc),
     mFieldType(NULL),
-    mCoerceTo(NULL),
-    mSourceLocation(loc)
+    mCoerceTo(NULL)
   {
-    BOOST_ASSERT(arg != NULL);
-    mArgs.push_back(arg);
   }
   IQLExpression(DynamicRecordContext & ctxt,
 		NodeType nodeType, IQLExpression * arg1,
 		IQLExpression * arg2, 
 		const SourceLocation& loc)
     :
-    mContext(ctxt),
-    mNodeType(nodeType),
+    IQLStatement(ctxt, nodeType, arg1, arg2, loc),
     mFieldType(NULL),
-    mCoerceTo(NULL),
-    mSourceLocation(loc)
+    mCoerceTo(NULL)
   {
-    BOOST_ASSERT(arg1 != NULL && arg2 != NULL);
-    mArgs.push_back(arg1);
-    mArgs.push_back(arg2);
   }
   template<typename _Iterator>
   IQLExpression(DynamicRecordContext & ctxt,
-		NodeType nodeType, _Iterator begin,
-		_Iterator end, 
-		const SourceLocation& loc)
+        	NodeType nodeType, _Iterator begin,
+        	_Iterator end, 
+        	const SourceLocation& loc)
     :
-    mContext(ctxt),
-    mNodeType(nodeType),
+    IQLStatement(ctxt, nodeType, loc),
     mFieldType(NULL),
-    mCoerceTo(NULL),
-    mSourceLocation(loc),
-    mArgs(begin, end)
+    mCoerceTo(NULL)
   {
+    mArgs.resize(std::distance(begin, end), nullptr);
+    std::copy(begin, end, &mArgs[0]);
   }
   IQLExpression(const IQLExpression & rhs)
     :
-    mContext(rhs.mContext),
-    mNodeType(rhs.mNodeType),
+    IQLStatement(rhs),
     mFieldType(rhs.mFieldType),
-    mCoerceTo(rhs.mCoerceTo),
-    mSourceLocation(rhs.mSourceLocation),
-    mArgs(rhs.mArgs),
-    mData(rhs.mData)
+    mCoerceTo(rhs.mCoerceTo)
   {
   }
 
-  void setData(const char * s) 
+  struct Downcast
   {
-    mData = data_type(s);
-  }
-  void setData(int64_t v) 
-  {
-    mData = data_type(v);
-  }
-  void setData(int32_t v) 
-  {
-    mData = data_type((int64_t) v);
-  }
-  void setData(double v) 
-  {
-    mData = data_type(v);
-  }
-  void setData(const FieldType * ty) 
-  {
-    mData = data_type(ty);
-  }
-  const FieldType * getTypeData() const
-  {
-    return boost::get<const FieldType *>(mData) ;
-  }
+    typedef IQLExpression* result_type;
+    typedef IQLStatement* argument_type;
+    IQLExpression * operator()(IQLStatement * s) const
+    {
+      return static_cast<IQLExpression *>(s);
+    }
+  };
+  
 public:
 
   virtual ~IQLExpression();
 
-  bool shallow_equals(const IQLExpression * rhs) const
-  {
-    return getNodeType() == rhs->getNodeType() &&
-      mData == rhs->mData;
-  }
-
   bool equals(const IQLExpression * rhs) const;
 
-  virtual IQLExpression * clone() const =0;
-
-  NodeType getNodeType() const
-  {
-    return mNodeType;
-  }
-  
   void setFieldType(const FieldType * ty)
   {
     mFieldType = ty;
@@ -375,68 +153,26 @@ public:
   {
     return mArgs.size();
   }
-  typedef std::vector<IQLExpression*>::const_iterator arg_const_iterator;
+  typedef boost::transform_iterator<Downcast, std::vector<IQLStatement*>::const_iterator> arg_const_iterator;
   arg_const_iterator begin_args() const
   {
-    return mArgs.begin();
+    return boost::make_transform_iterator(mArgs.begin(), Downcast());
   }
   arg_const_iterator end_args() const 
   {
-    return mArgs.end();
+    return boost::make_transform_iterator(mArgs.end(), Downcast());
   }
 
-  typedef std::vector<IQLExpression*>::const_iterator arg_iterator;
+  typedef boost::transform_iterator<Downcast, std::vector<IQLStatement*>::iterator> arg_iterator;
   arg_iterator begin_args() 
   {
-    return mArgs.begin();
+    return boost::make_transform_iterator(mArgs.begin(), Downcast());
   }
   arg_iterator end_args() 
   {
-    return mArgs.end();
+    return boost::make_transform_iterator(mArgs.end(), Downcast());
   }
 
-  const SourceLocation& getSourceLocation() const
-  {
-    return mSourceLocation;
-  }
-  int32_t getLine() const
-  {
-    return mSourceLocation.getLine();
-  }
-  int32_t getColumn() const
-  {
-    return mSourceLocation.getColumn();
-  }
-
-  const std::string& getStringData() const
-  {
-    return boost::get<std::string>(mData);
-  }
-  bool getBooleanData() const
-  {
-    return boost::get<int64_t>(mData) != 0;
-  }
-
-  void replaceArg(IQLExpression * oldArg,
-		  IQLExpression * newArg);
-
-  // TODO: Move into a binary op sub class
-  void rotateLeftChild()
-  {
-    IQLExpression * left = mArgs[0];
-    mArgs[0] = left->mArgs[0];
-    left->mArgs[0] = left->mArgs[1];
-    left->mArgs[1] = mArgs[1];
-    mArgs[1] = left;
-  }
-  void rotateRightChild()
-  {
-    IQLExpression * right = mArgs[1];
-    mArgs[1] = right->mArgs[1];
-    right->mArgs[1] = right->mArgs[0];
-    right->mArgs[0] = mArgs[0];
-    mArgs[0] = right;
-  }
 };
 
 class LogicalOrExpr : public IQLExpression
@@ -531,6 +267,406 @@ public:
   }
 
   LogicalNotExpr * clone() const;
+};
+
+class IsNullExpr : public IQLExpression
+{
+private:
+  IsNullExpr(const IsNullExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  IsNullExpr(DynamicRecordContext & ctxt,
+             IQLExpression * expr,
+             bool isNot,
+             const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::LISNULL, expr, loc)
+  {
+    setData(static_cast<int64_t>(isNot ? 1 : 0));
+  }
+
+  static IsNullExpr * create(DynamicRecordContext & ctxt,
+                             IQLExpression * expr,
+                             bool isNot,
+                             const SourceLocation& loc)
+  {
+    IsNullExpr * tmp = new IsNullExpr(ctxt, expr, isNot, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  bool isNot() const
+  {
+    return getBooleanData();
+  }
+
+  IsNullExpr * clone() const;
+};
+
+class BitwiseAndExpr : public IQLExpression
+{
+private:
+  BitwiseAndExpr(const BitwiseAndExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  BitwiseAndExpr(DynamicRecordContext & ctxt,
+                 IQLExpression * left,
+                 IQLExpression * right,
+                 const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::BAND, left, right, loc)
+  {
+  }
+
+  static BitwiseAndExpr * create(DynamicRecordContext & ctxt,
+                                 IQLExpression * left,
+                                 IQLExpression * right,
+                                 const SourceLocation& loc)
+  {
+    BitwiseAndExpr * tmp = new BitwiseAndExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  BitwiseAndExpr * clone() const;
+};
+
+class BitwiseOrExpr : public IQLExpression
+{
+private:
+  BitwiseOrExpr(const BitwiseOrExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  BitwiseOrExpr(DynamicRecordContext & ctxt,
+                IQLExpression * left,
+                IQLExpression * right,
+                const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::BOR, left, right, loc)
+  {
+  }
+
+  static BitwiseOrExpr * create(DynamicRecordContext & ctxt,
+                                IQLExpression * left,
+                                IQLExpression * right,
+                                const SourceLocation& loc)
+  {
+    BitwiseOrExpr * tmp = new BitwiseOrExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  BitwiseOrExpr * clone() const;
+};
+
+class BitwiseXorExpr : public IQLExpression
+{
+private:
+  BitwiseXorExpr(const BitwiseXorExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  BitwiseXorExpr(DynamicRecordContext & ctxt,
+                 IQLExpression * left,
+                 IQLExpression * right,
+                 const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::BXOR, left, right, loc)
+  {
+  }
+
+  static BitwiseXorExpr * create(DynamicRecordContext & ctxt,
+                                 IQLExpression * left,
+                                 IQLExpression * right,
+                                 const SourceLocation& loc)
+  {
+    BitwiseXorExpr * tmp = new BitwiseXorExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  BitwiseXorExpr * clone() const;
+};
+
+class BitwiseNotExpr : public IQLExpression
+{
+private:
+  BitwiseNotExpr(const BitwiseNotExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  BitwiseNotExpr(DynamicRecordContext & ctxt,
+                 IQLExpression * expr,
+                 const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::BNOT, expr, loc)
+  {
+  }
+
+  static BitwiseNotExpr * create(DynamicRecordContext & ctxt,
+                                 IQLExpression * expr,
+                                 const SourceLocation& loc)
+  {
+    BitwiseNotExpr * tmp = new BitwiseNotExpr(ctxt, expr, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  BitwiseNotExpr * clone() const;
+};
+
+class PlusExpr : public IQLExpression
+{
+private:
+  PlusExpr(const PlusExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  PlusExpr(DynamicRecordContext & ctxt,
+           IQLExpression * expr,
+           const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::PLUS, expr, loc)
+  {
+  }
+
+  PlusExpr(DynamicRecordContext & ctxt,
+           IQLExpression * left,
+           IQLExpression * right,
+           const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::PLUS, left, right, loc)
+  {
+  }
+
+  static PlusExpr * createUnary(DynamicRecordContext & ctxt,
+                                IQLExpression * expr,
+                                const SourceLocation& loc)
+  {
+    PlusExpr * tmp = new PlusExpr(ctxt, expr, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  static PlusExpr * createBinary(DynamicRecordContext & ctxt,
+                                 IQLExpression * left,
+                                 IQLExpression * right,
+                                 const SourceLocation& loc)
+  {
+    PlusExpr * tmp = new PlusExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  bool isUnary() const
+  {
+    return args_size() == 1;
+  }
+
+  PlusExpr * clone() const;
+};
+
+class MinusExpr : public IQLExpression
+{
+private:
+  MinusExpr(const MinusExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  MinusExpr(DynamicRecordContext & ctxt,
+            IQLExpression * expr,
+            const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::MINUS, expr, loc)
+  {
+  }
+
+  MinusExpr(DynamicRecordContext & ctxt,
+            IQLExpression * left,
+            IQLExpression * right,
+            const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::MINUS, left, right, loc)
+  {
+  }
+
+  static MinusExpr * createUnary(DynamicRecordContext & ctxt,
+                                 IQLExpression * expr,
+                                 const SourceLocation& loc)
+  {
+    MinusExpr * tmp = new MinusExpr(ctxt, expr, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  static MinusExpr * createBinary(DynamicRecordContext & ctxt,
+                                  IQLExpression * left,
+                                  IQLExpression * right,
+                                  const SourceLocation& loc)
+  {
+    MinusExpr * tmp = new MinusExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  bool isUnary() const
+  {
+    return args_size() == 1;
+  }
+
+  MinusExpr * clone() const;
+};
+
+class TimesExpr : public IQLExpression
+{
+private:
+  TimesExpr(const TimesExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  TimesExpr(DynamicRecordContext & ctxt,
+            IQLExpression * left,
+            IQLExpression * right,
+            const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::TIMES, left, right, loc)
+  {
+  }
+
+  static TimesExpr * create(DynamicRecordContext & ctxt,
+                            IQLExpression * left,
+                            IQLExpression * right,
+                            const SourceLocation& loc)
+  {
+    TimesExpr * tmp = new TimesExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  TimesExpr * clone() const;
+};
+
+class DivideExpr : public IQLExpression
+{
+private:
+  DivideExpr(const DivideExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  DivideExpr(DynamicRecordContext & ctxt,
+             IQLExpression * left,
+             IQLExpression * right,
+             const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::DIVIDE, left, right, loc)
+  {
+  }
+
+  static DivideExpr * create(DynamicRecordContext & ctxt,
+                             IQLExpression * left,
+                             IQLExpression * right,
+                             const SourceLocation& loc)
+  {
+    DivideExpr * tmp = new DivideExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  DivideExpr * clone() const;
+};
+
+class ModulusExpr : public IQLExpression
+{
+private:
+  ModulusExpr(const ModulusExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  ModulusExpr(DynamicRecordContext & ctxt,
+              IQLExpression * left,
+              IQLExpression * right,
+              const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::MOD, left, right, loc)
+  {
+  }
+
+  static ModulusExpr * create(DynamicRecordContext & ctxt,
+                              IQLExpression * left,
+                              IQLExpression * right,
+                              const SourceLocation& loc)
+  {
+    ModulusExpr * tmp = new ModulusExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  ModulusExpr * clone() const;
+};
+
+class ConcatenationExpr : public IQLExpression
+{
+private:
+  ConcatenationExpr(const ConcatenationExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  ConcatenationExpr(DynamicRecordContext & ctxt,
+                    IQLExpression * left,
+                    IQLExpression * right,
+                    const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::CONCAT, left, right, loc)
+  {
+  }
+
+  static ConcatenationExpr * create(DynamicRecordContext & ctxt,
+                                    IQLExpression * left,
+                                    IQLExpression * right,
+                                    const SourceLocation& loc)
+  {
+    ConcatenationExpr * tmp = new ConcatenationExpr(ctxt, left, right, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  ConcatenationExpr * clone() const;
 };
 
 class EqualsExpr : public IQLExpression
@@ -947,17 +1083,12 @@ private:
   }
 public:
   CastExpr(DynamicRecordContext & ctxt,
-	   const FieldType * ty,
+           IQLExpression * ty,
 	   IQLExpression * arg,
 	   const SourceLocation& loc);
 
-  const FieldType * getCastType() const
-  {
-    return getTypeData();
-  }
-
   static CastExpr * create(DynamicRecordContext & ctxt,
-			   const FieldType * ty,
+			   IQLExpression * ty,
 			   IQLExpression * arg,
 			   const SourceLocation& loc)
   {
@@ -993,6 +1124,37 @@ public:
   }
 
   Int32Expr * clone() const;
+};
+
+class HexInt32Expr : public IQLExpression
+{
+private:
+  HexInt32Expr(const HexInt32Expr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+public:
+
+  HexInt32Expr(DynamicRecordContext & ctxt,
+               const char * text,
+               const SourceLocation& loc)
+    :
+    IQLExpression(ctxt, IQLExpression::INT32, loc)
+  {
+    setData(text);
+  }
+
+  static HexInt32Expr * create(DynamicRecordContext & ctxt,
+                               const char * text,
+                               const SourceLocation& loc)
+  {
+    HexInt32Expr * tmp = new HexInt32Expr(ctxt, text, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  HexInt32Expr * clone() const;
 };
 
 class Int64Expr : public IQLExpression
@@ -1258,6 +1420,91 @@ public:
   VariableExpr * clone() const;
 };
 
+class VariableLValueExpr : public IQLExpression
+{
+private:
+  VariableLValueExpr(const VariableLValueExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+
+public:
+
+  VariableLValueExpr(DynamicRecordContext & ctxt, 
+	       const char * text,
+	       const SourceLocation& loc);
+
+  static VariableLValueExpr * create(DynamicRecordContext & ctxt,
+			       const char * text,
+			       const SourceLocation& loc)
+  {
+    VariableLValueExpr * tmp = new VariableLValueExpr(ctxt, text, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  VariableLValueExpr * clone() const;
+};
+
+class StructMemberReferenceExpr : public IQLExpression
+{
+private:
+  StructMemberReferenceExpr(const StructMemberReferenceExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+
+public:
+
+  StructMemberReferenceExpr(DynamicRecordContext & ctxt, 
+                            IQLExpression * s,
+                            const char * member,
+                            const SourceLocation& loc);
+
+  static StructMemberReferenceExpr * create(DynamicRecordContext & ctxt,
+                                            IQLExpression * s,
+                                            const char * member,
+                                            const SourceLocation& loc)
+  {
+    StructMemberReferenceExpr * tmp = new StructMemberReferenceExpr(ctxt, s, member, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  StructMemberReferenceExpr * clone() const;
+};
+
+class StructMemberLValueExpr : public IQLExpression
+{
+private:
+  StructMemberLValueExpr(const StructMemberLValueExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+
+public:
+
+  StructMemberLValueExpr(DynamicRecordContext & ctxt, 
+                            IQLExpression * s,
+                            const char * member,
+                            const SourceLocation& loc);
+
+  static StructMemberLValueExpr * create(DynamicRecordContext & ctxt,
+                                            IQLExpression * s,
+                                            const char * member,
+                                            const SourceLocation& loc)
+  {
+    StructMemberLValueExpr * tmp = new StructMemberLValueExpr(ctxt, s, member, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  StructMemberLValueExpr * clone() const;
+};
+
 class ArrayReferenceExpr : public IQLExpression
 {
 private:
@@ -1270,21 +1517,50 @@ private:
 public:
 
   ArrayReferenceExpr(DynamicRecordContext & ctxt, 
-		     const char * text,
+		     IQLExpression * arr,
 		     IQLExpression * idx,
 		     const SourceLocation& loc);
 
   static ArrayReferenceExpr * create(DynamicRecordContext & ctxt,
-				     const char * text,
+				     IQLExpression * arr,
 				     IQLExpression * idx,
 				     const SourceLocation& loc)
   {
-    ArrayReferenceExpr * tmp = new ArrayReferenceExpr(ctxt, text, idx, loc);
+    ArrayReferenceExpr * tmp = new ArrayReferenceExpr(ctxt, arr, idx, loc);
     ctxt.add(tmp);
     return tmp;
   }
 
   ArrayReferenceExpr * clone() const;
+};
+
+class ArrayLValueExpr : public IQLExpression
+{
+private:
+  ArrayLValueExpr(const ArrayLValueExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+
+public:
+
+  ArrayLValueExpr(DynamicRecordContext & ctxt, 
+		     IQLExpression * arr,
+		     IQLExpression * idx,
+		     const SourceLocation& loc);
+
+  static ArrayLValueExpr * create(DynamicRecordContext & ctxt,
+				     IQLExpression * arr,
+				     IQLExpression * idx,
+				     const SourceLocation& loc)
+  {
+    ArrayLValueExpr * tmp = new ArrayLValueExpr(ctxt, arr, idx, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  ArrayLValueExpr * clone() const;
 };
 
 class ArrayExpr : public IQLExpression
@@ -1339,6 +1615,62 @@ public:
   }
 
   StructExpr * clone() const;
+};
+
+class TypeExpr : public IQLExpression
+{
+private:
+  TypeExpr(const TypeExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+
+public:
+
+  TypeExpr(DynamicRecordContext & ctxt, 
+           const FieldType * ty,
+           const SourceLocation& loc);
+  
+  static TypeExpr * create(DynamicRecordContext & ctxt,
+                           const FieldType * ty,
+                             const SourceLocation& loc)
+  {
+    TypeExpr * tmp = new TypeExpr(ctxt, ty, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  TypeExpr * clone() const;
+};
+
+class DecltypeExpr : public IQLExpression
+{
+private:
+  DecltypeExpr(const DecltypeExpr & rhs)
+    :
+    IQLExpression(rhs)
+  {
+  }
+
+public:
+
+  DecltypeExpr(DynamicRecordContext & ctxt, 
+               IQLExpression * expr,
+               const char * sz,
+               const SourceLocation& loc);
+  
+  static DecltypeExpr * create(DynamicRecordContext & ctxt,
+                               IQLExpression * expr,
+                               const char * sz,
+                               const SourceLocation& loc)
+  {
+    DecltypeExpr * tmp = new DecltypeExpr(ctxt, expr, sz, loc);
+    ctxt.add(tmp);
+    return tmp;
+  }
+
+  DecltypeExpr * clone() const;
 };
 
 /**
@@ -1462,25 +1794,16 @@ public:
   }
 };
 
-class IQLExpressionPrinter
-{
-private:
-  std::set<std::string> mBinaryInfix;
-  std::set<std::string> mUnaryInfix;
-
-  bool isBinaryInfix(IQLExpression * e);
-  bool isUnaryPrefix(IQLExpression * e);
-public:
-  static const char * getExpressionSymbol(uint32_t nodeType);
-  IQLExpressionPrinter(std::ostream& ostr, IQLExpression * e);
-};
-
-
-class IQLRecordConstructor * unwrap(IQLRecordConstructorRef r);
-IQLRecordConstructorRef wrap(class IQLRecordConstructor * r);
 class IQLExpression * unwrap(IQLExpressionRef r);
 IQLExpressionRef wrap(class IQLExpression * r);
+std::vector<class IQLStatement *> * unwrap(IQLStatementListRef r);
+IQLStatementListRef wrap(std::vector<class IQLStatement *> *  r);
 class DynamicRecordContext * unwrap(IQLTreeFactoryRef r);
+class IQLStatement * unwrap(IQLStatementRef r);
 IQLTreeFactoryRef wrap(class DynamicRecordContext * r);
+class IQLGraphBuilder * unwrap(IQLGraphContextRef ctxt);
+IQLGraphContextRef wrap(class IQLGraphBuilder *);
+class IQLRecordTypeBuilder * unwrap(IQLRecordTypeContextRef ctxt);
+IQLRecordTypeContextRef wrap(class IQLRecordTypeBuilder *);
 
 #endif

@@ -43,6 +43,7 @@
 #include "CodeGenerationContext.hh"
 #include "IQLInterpreter.hh"
 #include "IQLExpression.hh"
+#include "IQLTypeCheckNative.hh"
 #include "SuperFastHash.h"
 
 #define BOOST_TEST_MODULE MyTest
@@ -608,55 +609,106 @@ BOOST_AUTO_TEST_CASE(testNativeAST)
       RecordTypeFunction::getAST(ctxt, 
 				 "CAST(d AS   INTEGER)");
     BOOST_CHECK_EQUAL(IQLExpression::CAST, ast->getNodeType());
-    BOOST_CHECK_EQUAL(1U, ast->args_size());
+    BOOST_CHECK_EQUAL(2U, ast->args_size());
     BOOST_CHECK_EQUAL(1, ast->getLine());
     BOOST_CHECK_EQUAL(11, ast->getColumn());
-    CastExpr * castExpr = static_cast<CastExpr *>(ast);
-    BOOST_CHECK_EQUAL(Int32Type::Get(ctxt), castExpr->getCastType());
+    BOOST_CHECK_EQUAL(IQLExpression::TYPE, (*ast->begin_args())->getNodeType());
+    TypeExpr * typeExpr = static_cast<TypeExpr *>(*ast->begin_args());
+    BOOST_CHECK_EQUAL(Int32Type::Get(ctxt), typeExpr->getFieldType());
   }
   {
     IQLExpression * ast =
       RecordTypeFunction::getAST(ctxt, 
 				 "CAST(e AS   BIGINT)");
     BOOST_CHECK_EQUAL(IQLExpression::CAST, ast->getNodeType());
-    BOOST_CHECK_EQUAL(1U, ast->args_size());
+    BOOST_CHECK_EQUAL(2U, ast->args_size());
     BOOST_CHECK_EQUAL(1, ast->getLine());
     BOOST_CHECK_EQUAL(11, ast->getColumn());
-    CastExpr * castExpr = static_cast<CastExpr *>(ast);
-    BOOST_CHECK_EQUAL(Int64Type::Get(ctxt), castExpr->getCastType());
+    BOOST_CHECK_EQUAL(IQLExpression::TYPE, (*ast->begin_args())->getNodeType());
+    TypeExpr * typeExpr = static_cast<TypeExpr *>(*ast->begin_args());
+    BOOST_CHECK_EQUAL(Int64Type::Get(ctxt), typeExpr->getFieldType());
   }
   {
     IQLExpression * ast =
       RecordTypeFunction::getAST(ctxt, 
 				 "CAST(e AS   SMALLINT)");
     BOOST_CHECK_EQUAL(IQLExpression::CAST, ast->getNodeType());
-    BOOST_CHECK_EQUAL(1U, ast->args_size());
+    BOOST_CHECK_EQUAL(2U, ast->args_size());
     BOOST_CHECK_EQUAL(1, ast->getLine());
     BOOST_CHECK_EQUAL(11, ast->getColumn());
-    CastExpr * castExpr = static_cast<CastExpr *>(ast);
-    BOOST_CHECK_EQUAL(Int16Type::Get(ctxt), castExpr->getCastType());
+    BOOST_CHECK_EQUAL(IQLExpression::TYPE, (*ast->begin_args())->getNodeType());
+    TypeExpr * typeExpr = static_cast<TypeExpr *>(*ast->begin_args());
+    BOOST_CHECK_EQUAL(Int16Type::Get(ctxt), typeExpr->getFieldType());
   }
   {
     IQLExpression * ast =
       RecordTypeFunction::getAST(ctxt, 
 				 "CAST(e AS   TINYINT)");
     BOOST_CHECK_EQUAL(IQLExpression::CAST, ast->getNodeType());
-    BOOST_CHECK_EQUAL(1U, ast->args_size());
+    BOOST_CHECK_EQUAL(2U, ast->args_size());
     BOOST_CHECK_EQUAL(1, ast->getLine());
     BOOST_CHECK_EQUAL(11, ast->getColumn());
-    CastExpr * castExpr = static_cast<CastExpr *>(ast);
-    BOOST_CHECK_EQUAL(Int8Type::Get(ctxt), castExpr->getCastType());
+    BOOST_CHECK_EQUAL(IQLExpression::TYPE, (*ast->begin_args())->getNodeType());
+    TypeExpr * typeExpr = static_cast<TypeExpr *>(*ast->begin_args());
+    BOOST_CHECK_EQUAL(Int8Type::Get(ctxt), typeExpr->getFieldType());
   }
   {
     IQLExpression * ast =
       RecordTypeFunction::getAST(ctxt, 
 				 "CAST(e AS   REAL)");
     BOOST_CHECK_EQUAL(IQLExpression::CAST, ast->getNodeType());
-    BOOST_CHECK_EQUAL(1U, ast->args_size());
+    BOOST_CHECK_EQUAL(2U, ast->args_size());
     BOOST_CHECK_EQUAL(1, ast->getLine());
     BOOST_CHECK_EQUAL(11, ast->getColumn());
-    CastExpr * castExpr = static_cast<CastExpr *>(ast);
-    BOOST_CHECK_EQUAL(FloatType::Get(ctxt), castExpr->getCastType());
+    BOOST_CHECK_EQUAL(IQLExpression::TYPE, (*ast->begin_args())->getNodeType());
+    TypeExpr * typeExpr = static_cast<TypeExpr *>(*ast->begin_args());
+    BOOST_CHECK_EQUAL(FloatType::Get(ctxt), typeExpr->getFieldType());
+  }
+  {
+    IQLExpression * ast =
+      RecordTypeFunction::getAST(ctxt, "0x1A");
+    BOOST_REQUIRE(ast != NULL);
+    BOOST_CHECK_EQUAL(IQLExpression::INT32, ast->getNodeType());
+    BOOST_CHECK_EQUAL(0U, ast->args_size());
+    BOOST_CHECK(boost::algorithm::equals("0x1A", ast->getStringData()));
+  }
+  {
+    IQLExpression * ast =
+      RecordTypeFunction::getAST(ctxt, "ROW(a+b, 'string')");
+    BOOST_REQUIRE(ast != NULL);
+    BOOST_CHECK_EQUAL(IQLExpression::STRUCT, ast->getNodeType());
+    BOOST_CHECK_EQUAL(2U, ast->args_size());
+    BOOST_CHECK_EQUAL(IQLExpression::PLUS, (*ast->begin_args())->getNodeType());
+    BOOST_CHECK_EQUAL(IQLExpression::STRING, (*(ast->begin_args()+1))->getNodeType());
+  }
+  {
+    BOOST_CHECK_THROW(RecordTypeFunction::getAST(ctxt, "N'string'"), std::runtime_error);
+  }
+}
+
+BOOST_AUTO_TEST_CASE(testNativeExpressionTypeCheckPass)
+{
+  DynamicRecordContext ctxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("c", Int32Type::Get(ctxt, true)));
+  RecordType recTy(ctxt, members);
+
+  std::vector<AliasedRecordType> sources;
+  sources.push_back(AliasedRecordType("input", &recTy));
+  TypeCheckContext typeCheckContext(TypeCheckConfiguration::get(), ctxt, sources);
+
+  {
+    IQLExpression * ast = RecordTypeFunction::getAST(ctxt, "a + c");
+    const FieldType * ty = IQLTypeCheckExpressionNative(ast, typeCheckContext);
+    BOOST_CHECK_EQUAL(Int32Type::Get(ctxt, true), ty);
+    BOOST_CHECK_EQUAL(ty, ast->getFieldType());
+  }
+  {
+    IQLExpression * ast = RecordTypeFunction::getAST(ctxt, "#(a, c)");
+    const FieldType * ty = IQLTypeCheckExpressionNative(ast, typeCheckContext);
+    BOOST_CHECK_EQUAL(Int32Type::Get(ctxt), ty);
+    BOOST_CHECK_EQUAL(ty, ast->getFieldType());
   }
 }
 
@@ -664,16 +716,16 @@ BOOST_AUTO_TEST_CASE(testRecordConstructorNativeAST)
 {
   DynamicRecordContext ctxt;
   {
-    IQLRecordConstructor * ast = RecordTypeTransfer::getAST(ctxt, "a AS b, c AS d");
-    BOOST_CHECK_EQUAL(2U, ast->size_fields());
-    IQLNamedExpression * e = dynamic_cast<IQLNamedExpression *>(*(ast->begin_fields()));
+    std::vector<IQLStatement *> ast = RecordTypeTransfer::getAST(ctxt, "a AS b, c AS d");
+    BOOST_CHECK_EQUAL(2U, ast.size());
+    auto * e = dynamic_cast<AddFieldStatement *>(ast[0]);
     BOOST_CHECK(NULL != e);
     BOOST_CHECK(boost::algorithm::equals("b", e->getName()));
     IQLExpression * expr = e->getExpression();
     BOOST_CHECK(NULL != expr);
     BOOST_CHECK_EQUAL(IQLExpression::VARIABLE, expr->getNodeType());
     BOOST_CHECK(boost::algorithm::equals("a", expr->getStringData()));
-    e = dynamic_cast<IQLNamedExpression *>(*(ast->begin_fields()+1));
+    e = dynamic_cast<AddFieldStatement *>(ast[1]);
     BOOST_CHECK(NULL != e);
     BOOST_CHECK(boost::algorithm::equals("d", e->getName()));
     expr = e->getExpression();
@@ -681,6 +733,47 @@ BOOST_AUTO_TEST_CASE(testRecordConstructorNativeAST)
     BOOST_CHECK_EQUAL(IQLExpression::VARIABLE, expr->getNodeType());
     BOOST_CHECK(boost::algorithm::equals("c", expr->getStringData()));
   }
+}
+
+BOOST_AUTO_TEST_CASE(testRowConstructorNativeAST)
+{
+  DynamicRecordContext ctxt;
+  std::vector<IQLStatement *> ast =
+    RecordTypeTransfer::getAST(ctxt, "ROW(a+b, 'string') AS r");
+
+  BOOST_CHECK_EQUAL(1U, ast.size());
+
+  auto * namedExpr =
+    dynamic_cast<AddFieldStatement *>(ast[0]);
+  BOOST_REQUIRE(NULL != namedExpr);
+  BOOST_CHECK(boost::algorithm::equals("r", namedExpr->getName()));
+
+  IQLExpression * rowExpr = namedExpr->getExpression();
+  BOOST_REQUIRE(NULL != rowExpr);
+  BOOST_CHECK_EQUAL(IQLExpression::STRUCT, rowExpr->getNodeType());
+  BOOST_CHECK_EQUAL(2U, rowExpr->args_size());
+
+  IQLExpression * plusExpr = *(rowExpr->begin_args());
+  BOOST_REQUIRE(NULL != plusExpr);
+  BOOST_CHECK_EQUAL(IQLExpression::PLUS, plusExpr->getNodeType());
+  BOOST_CHECK_EQUAL(2U, plusExpr->args_size());
+
+  IQLExpression * leftArg = *(plusExpr->begin_args());
+  IQLExpression * rightArg = *(plusExpr->begin_args()+1);
+  BOOST_REQUIRE(NULL != leftArg);
+  BOOST_REQUIRE(NULL != rightArg);
+  BOOST_CHECK_EQUAL(IQLExpression::VARIABLE, leftArg->getNodeType());
+  BOOST_CHECK_EQUAL(IQLExpression::VARIABLE, rightArg->getNodeType());
+  BOOST_CHECK(boost::algorithm::equals("a", leftArg->getStringData()));
+  BOOST_CHECK(boost::algorithm::equals("b", rightArg->getStringData()));
+
+  IQLExpression * stringExpr = *(rowExpr->begin_args()+1);
+  BOOST_REQUIRE(NULL != stringExpr);
+  BOOST_CHECK_EQUAL(IQLExpression::STRING, stringExpr->getNodeType());
+  BOOST_CHECK(boost::algorithm::equals("'string'", stringExpr->getStringData()));
+  BOOST_CHECK_EQUAL(0U, stringExpr->args_size());
+  BOOST_CHECK_EQUAL(1, stringExpr->getLine());
+  BOOST_CHECK_EQUAL(8, stringExpr->getColumn());
 }
 
 BOOST_AUTO_TEST_CASE(testEquiJoinDetector)
@@ -956,35 +1049,35 @@ BOOST_AUTO_TEST_CASE(testPrintExpression)
   {
     IQLExpression * ast = RecordTypeFunction::getAST(ctxt, "2*10 + 0 + 3*(6+0)");
     std::stringstream ss;
-    IQLExpressionPrinter p (ss, ast);
+    IQLStatementPrinter p (ss, ast);
     std::string expected("(((2)*(10))+(0))+((3)*((6)+(0)))");
     BOOST_CHECK(boost::algorithm::equals(ss.str(), expected));
   }
   {
     IQLExpression * ast = RecordTypeFunction::getAST(ctxt, "CASE WHEN a THEN b WHEN c THEN d ELSE e END");
     std::stringstream ss;
-    IQLExpressionPrinter p (ss, ast);
+    IQLStatementPrinter p (ss, ast);
     std::string expected("CASE WHEN a THEN b WHEN c THEN d ELSE e END");
     BOOST_CHECK(boost::algorithm::equals(ss.str(), expected));
   }
   {
     IQLExpression * ast = RecordTypeFunction::getAST(ctxt, "CASE WHEN a<f THEN b WHEN c THEN d ELSE e END");
     std::stringstream ss;
-    IQLExpressionPrinter p (ss, ast);
+    IQLStatementPrinter p (ss, ast);
     std::string expected("CASE WHEN (a)<(f) THEN b WHEN c THEN d ELSE e END");
     BOOST_CHECK(boost::algorithm::equals(ss.str(), expected));
   }
   {
     IQLExpression * ast = RecordTypeFunction::getAST(ctxt, "CASE WHEN a[x]<f[g[y]] THEN b WHEN c THEN d ELSE e END");
     std::stringstream ss;
-    IQLExpressionPrinter p (ss, ast);
-    std::string expected("CASE WHEN (a[x])<(f[g[y]]) THEN b WHEN c THEN d ELSE e END");
+    IQLStatementPrinter p (ss, ast);
+    std::string expected("CASE WHEN ((a[x]))<((f[(g[y])])) THEN b WHEN c THEN d ELSE e END");
     BOOST_CHECK(boost::algorithm::equals(ss.str(), expected));
   }
   {
     IQLExpression * ast = RecordTypeFunction::getAST(ctxt, "CASE WHEN a.x<f THEN b WHEN c.y THEN d ELSE e END");
     std::stringstream ss;
-    IQLExpressionPrinter p (ss, ast);
+    IQLStatementPrinter p (ss, ast);
     std::string expected("CASE WHEN (a.x)<(f) THEN b WHEN c.y THEN d ELSE e END");
     BOOST_CHECK(boost::algorithm::equals(ss.str(), expected));
   }
@@ -1485,6 +1578,41 @@ BOOST_AUTO_TEST_CASE(testIQLArrayRowConstructor)
     t1.getTarget()->getFree().free(outputBuf);
   }
   recTy.getFree().free(inputBuf);
+}
+
+BOOST_AUTO_TEST_CASE(testIQLSingleWhile)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+  std::vector<RecordMember> members;
+  members.push_back(RecordMember("a", Int32Type::Get(ctxt)));
+  members.push_back(RecordMember("b", Int32Type::Get(ctxt)));
+  RecordType recTy(ctxt, members);
+  std::vector<RecordMember> rhsMembers;
+  RecordType rhsTy(ctxt, rhsMembers);
+  std::vector<const RecordType *> types;
+  types.push_back(&recTy);
+  types.push_back(&rhsTy);
+
+  RecordBuffer lhs = recTy.GetMalloc()->malloc();
+  recTy.setInt32("a", 3, lhs);
+  recTy.setInt32("b", 92344, lhs);
+
+  {
+    RecordTypeInPlaceUpdate up(ctxt, 
+			       "xfer5up", 
+			       types, 
+			       "WHILE a > 0 DO\n"
+			       "SET b = b + 1;\n" 
+			       "SET a = a - 1;\n"
+			       "END WHILE\n"
+			       );
+    RecordBuffer outputBuf;
+    up.execute(lhs, outputBuf, &runtimeCtxt);
+    BOOST_CHECK_EQUAL(0, recTy.getInt32("a", lhs));
+    BOOST_CHECK_EQUAL(92347, recTy.getInt32("b", lhs));
+  }
+  recTy.GetFree()->free(lhs);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLMultipleWhile)
@@ -10033,13 +10161,6 @@ BOOST_AUTO_TEST_CASE(testIQLIsNullFunction)
   testIsNullFunction(false, true, "IFNULL");
   testIsNullFunction(true, false, "IFNULL");
   testIsNullFunction(true, true, "IFNULL");
-
-  // Backward compatibility.  Someday this should
-  // go away...
-  testIsNullFunction(false, false, "ISNULL");
-  testIsNullFunction(false, true, "ISNULL");
-  testIsNullFunction(true, false, "ISNULL");
-  testIsNullFunction(true, true, "ISNULL");
 }
 
 BOOST_AUTO_TEST_CASE(testIQLIsNullFunctionTypePromotion)
@@ -10783,6 +10904,33 @@ bool iql_rlike_literal(const std::string& val, const std::string& expr)
 BOOST_AUTO_TEST_CASE(testIQLRLikeLiteral)
 {
   BOOST_CHECK(iql_rlike_literal("12834.da1", "a RLIKE '.*da1'"));
+}
+
+BOOST_AUTO_TEST_CASE(testFunctionWithDeclare)
+{
+  DynamicRecordContext ctxt;
+  InterpreterContext runtimeCtxt;
+
+  std::vector<RecordMember> lhsMembers;
+  lhsMembers.push_back(RecordMember("a", Int32Type::Get(ctxt)));
+  RecordType lhsTy(ctxt, lhsMembers);
+  std::vector<RecordMember> emptyMembers;
+  RecordType emptyTy(ctxt, emptyMembers);
+
+  std::vector<const RecordType*> types;
+  types.push_back(&lhsTy);
+  types.push_back(&emptyTy);
+
+  RecordBuffer lhs = lhsTy.GetMalloc()->malloc();
+  lhsTy.setInt32("a", 23, lhs);
+
+  RecordTypeFunction fun(ctxt, "rlike", types, "DECLARE tmp = 23, a = tmp");
+  bool result = fun.execute(lhs, nullptr, &runtimeCtxt) != 0;
+  BOOST_CHECK(result);
+  lhsTy.setInt32("a", 22, lhs);
+  result = fun.execute(lhs, nullptr, &runtimeCtxt) != 0;
+  BOOST_CHECK(!result);
+  lhsTy.GetFree()->free(lhs);
 }
 
 BOOST_AUTO_TEST_CASE(testStringLiteralEscapes)

@@ -79,18 +79,16 @@
 
 #include "md5.h"
 #include "IQLInterpreter.hh"
-#include "LLVMGen.h"
 #include "CodeGenerationContext.hh"
 #include "TypeCheckContext.hh"
-#include "GetVariablesPass.h"
+#include "GetVariablesPass.hh"
 #include "IQLLexer.h"
 #include "IQLParser.h"
 #include "IQLAnalyze.h"
-#include "IQLTypeCheck.h"
-#include "IQLGetVariables.h"
-#include "IQLToLLVM.h"
 #include "RecordType.hh"
 #include "IQLExpression.hh"
+#include "IQLTypeCheckNative.hh"
+#include "IQLToLLVMNative.hh"
 
 extern "C" {
 #include "decNumberLocal.h"
@@ -1877,7 +1875,7 @@ private:
   pIQLLexer mLexer;
   pIQLParser mParser;
   pANTLR3_COMMON_TREE_NODE_STREAM mNodes;
-  IQLExpression * mNativeAST;
+  std::vector<IQLStatement *> mNativeAST;
 
   void initParse(const std::string& transfer);
   void cleanup();
@@ -1889,23 +1887,25 @@ public:
   void parseUpdate(const std::string& transfer);
   void getFreeVariables(std::set<std::string>& freeVariables);
   const RecordType * typeCheckTransfer(const TypeCheckConfiguration & typeCheckConfig,
-				       DynamicRecordContext & recCtxt,
-				       const RecordType * source);
+                                       DynamicRecordContext & recCtxt,
+                                       const RecordType * source);
   const RecordType * typeCheckTransfer(const TypeCheckConfiguration & typeCheckConfig,
-				       DynamicRecordContext & recCtxt,
-				       const std::vector<AliasedRecordType>& sources);
+                                       DynamicRecordContext & recCtxt,
+                                       const std::vector<AliasedRecordType>& sources);
   const RecordType * typeCheckTransfer(const TypeCheckConfiguration & typeCheckConfig,
-				       DynamicRecordContext & recCtxt,
-				       const std::vector<AliasedRecordType>& sources,
-				       const std::vector<boost::dynamic_bitset<> >& masks);
+                                       DynamicRecordContext & recCtxt,
+                                       const std::vector<AliasedRecordType>& sources,
+                                       const std::vector<boost::dynamic_bitset<> >& masks);
   void typeCheckUpdate(const TypeCheckConfiguration & typeCheckConfig,
-		       DynamicRecordContext & recCtxt,
-		       const std::vector<const RecordType *>& sources,
-		       const std::vector<boost::dynamic_bitset<> >& masks);
+                       DynamicRecordContext & recCtxt,
+                       const std::vector<const RecordType *>& sources,
+                       const std::vector<boost::dynamic_bitset<> >& masks);
   pANTLR3_COMMON_TREE_NODE_STREAM getNodes() { return mNodes; }
   pANTLR3_BASE_TREE getAST() { return mNodes->root; }
-  IQLRecordConstructor * generateTransferAST(DynamicRecordContext & recCtxt);
+  std::vector<IQLStatement *> generateTransferAST(DynamicRecordContext & recCtxt);
   IQLExpression * generateFunctionAST(DynamicRecordContext & recCtxt);
+  IQLStatement * generateUpdateAST(DynamicRecordContext & recCtxt);
+  const std::vector<IQLStatement *> & getNativeAST() const { return mNativeAST; }
 };
 
 IQLParserStuff::IQLParserStuff()
@@ -1914,8 +1914,7 @@ IQLParserStuff::IQLParserStuff()
   mStream(NULL),
   mLexer(NULL),
   mParser(NULL),
-  mNodes(NULL),
-  mNativeAST(NULL)
+  mNodes(NULL)
 {
 }
 
@@ -2003,15 +2002,11 @@ void IQLParserStuff::getFreeVariables(std::set<std::string>& freeVariables)
   // input record with a name and then inserting all the members of the record type
   // with a symbol table.
   GetVariablesContext getVariablesContext;
+  DynamicRecordContext ctxt;
 
-  // Now pass through the type checker
-  ANTLR3AutoPtr<IQLGetVariables> alz(IQLGetVariablesNew(mNodes));
-  alz->recordConstructor(alz.get(), wrap(&getVariablesContext));
-  // We should only get a failure here if there is a bug in our
-  // tree grammar.  Not much a user can do about this.
-  if (alz->pTreeParser->rec->state->errorCount > 0)
-    throw std::runtime_error("INTERNAL ERROR: Failed to get free variables.");
-
+  auto ast = generateTransferAST(ctxt);
+  IQLGetVariablesNative(ast, getVariablesContext);    
+  
   for(std::set<std::string>::const_iterator 
 	it = getVariablesContext.getFreeVariables().begin(), 
 	end = getVariablesContext.getFreeVariables().end();
@@ -2036,17 +2031,10 @@ const RecordType * IQLParserStuff::typeCheckTransfer(const TypeCheckConfiguratio
   masks[0].resize(source->size(), true);
   TypeCheckContext typeCheckContext(typeCheckConfig, recCtxt, aliased, masks);
 
+  mNativeAST = generateTransferAST(recCtxt);
+
   // Now pass through the type checker
-  ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(mNodes));
-  alz->recordConstructor(alz.get(), wrap(&typeCheckContext));
-  if (alz->pTreeParser->rec->state->errorCount > 0)
-    throw std::runtime_error("Type check failed");
-
-  // There should be a present for us now...
-  if (typeCheckContext.getOutputRecord() == NULL)
-    throw std::runtime_error("Failed to create output record");
-
-  return typeCheckContext.getOutputRecord();
+  return IQLTypeCheckTransferNative(mNativeAST, typeCheckContext);
 }
 
 const RecordType * 
@@ -2075,23 +2063,17 @@ IQLParserStuff::typeCheckTransfer(const TypeCheckConfiguration & typeCheckConfig
   // with a symbol table.
   TypeCheckContext typeCheckContext(typeCheckConfig, recCtxt, sources, masks);
 
+  // Create native AST
+  mNativeAST = generateTransferAST(recCtxt);
+
   // Now pass through the type checker
-  ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(mNodes));
-  alz->recordConstructor(alz.get(), wrap(&typeCheckContext));
-  if (alz->pTreeParser->rec->state->errorCount > 0)
-    throw std::runtime_error("Type check failed");
-
-  // There should be a present for us now...
-  if (typeCheckContext.getOutputRecord() == NULL)
-    throw std::runtime_error("Failed to create output record");
-
-  return typeCheckContext.getOutputRecord();
+  return IQLTypeCheckTransferNative(mNativeAST, typeCheckContext);
 }
 
 void IQLParserStuff::typeCheckUpdate(const TypeCheckConfiguration & typeCheckConfig,
-				     DynamicRecordContext & recCtxt,
-				     const std::vector<const RecordType *>& sources,
-				     const std::vector<boost::dynamic_bitset<> >& masks)
+                                           DynamicRecordContext & recCtxt,
+                                           const std::vector<const RecordType *>& sources,
+                                           const std::vector<boost::dynamic_bitset<> >& masks)
 {
   // Create an appropriate context for type checking.  This requires associating the
   // input record with a name and then inserting all the members of the record type
@@ -2103,23 +2085,26 @@ void IQLParserStuff::typeCheckUpdate(const TypeCheckConfiguration & typeCheckCon
   } 
   TypeCheckContext typeCheckContext(typeCheckConfig, recCtxt, aliased, masks);
 
+  // Create native AST
+  mNativeAST.resize(0);
+  mNativeAST.push_back(generateUpdateAST(recCtxt));
+
   // Now pass through the type checker
-  ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(mNodes));
-  alz->statementBlock(alz.get(), wrap(&typeCheckContext));
-  if (alz->pTreeParser->rec->state->errorCount > 0)
-    throw std::runtime_error("Type check failed");
+  IQLTypeCheckStatementListNative(mNativeAST, typeCheckContext);
 }
 
-IQLRecordConstructor * IQLParserStuff::generateTransferAST(DynamicRecordContext & recCtxt)
+std::vector<IQLStatement *> IQLParserStuff::generateTransferAST(DynamicRecordContext & recCtxt)
 {
   // Generate native AST.  We'll eventually move all analysis
   // to this.
   ANTLR3AutoPtr<IQLAnalyze> nativeASTGenerator(IQLAnalyzeNew(mNodes));
-  IQLRecordConstructor * nativeAST = unwrap(nativeASTGenerator->recordConstructor(nativeASTGenerator.get(), 
-							   wrap(&recCtxt)));
+  std::unique_ptr<std::vector<IQLStatement *>> nativeAST(unwrap(nativeASTGenerator->recordConstructor(nativeASTGenerator.get(), 
+                                                                                                      wrap(&recCtxt))));
   if (nativeASTGenerator->pTreeParser->rec->state->errorCount > 0)
     throw std::runtime_error("AST generation failed");
-  return nativeAST;
+
+  std::vector<IQLStatement *> ret(std::move(*nativeAST.get()));
+  return ret;
 }
 
 IQLExpression * IQLParserStuff::generateFunctionAST(DynamicRecordContext & recCtxt)
@@ -2127,10 +2112,25 @@ IQLExpression * IQLParserStuff::generateFunctionAST(DynamicRecordContext & recCt
   // Generate native AST.  We'll eventually move all analysis
   // to this.
   ANTLR3AutoPtr<IQLAnalyze> nativeASTGenerator(IQLAnalyzeNew(mNodes));
-  IQLExpression * nativeAST = unwrap(nativeASTGenerator->singleExpression(nativeASTGenerator.get(), 
-							   wrap(&recCtxt)));
+  std::unique_ptr<std::vector<IQLStatement *>> nativeAST(unwrap(nativeASTGenerator->singleExpression(nativeASTGenerator.get(), 
+                                                                                                     wrap(&recCtxt))));
   if (nativeASTGenerator->pTreeParser->rec->state->errorCount > 0)
     throw std::runtime_error("AST generation failed");
+
+  // TODO: The AST of a function in NOT in general an expression as it may have DECLARE statements
+  return static_cast<IQLExpression*>(*nativeAST->back()->begin_children());
+}
+
+IQLStatement * IQLParserStuff::generateUpdateAST(DynamicRecordContext & recCtxt)
+{
+  // Generate native AST.  We'll eventually move all analysis
+  // to this.
+  ANTLR3AutoPtr<IQLAnalyze> nativeASTGenerator(IQLAnalyzeNew(mNodes));
+  IQLStatement * nativeAST(unwrap(nativeASTGenerator->statementBlock(nativeASTGenerator.get(), 
+                                                                     wrap(&recCtxt))));
+  if (nativeASTGenerator->pTreeParser->rec->state->errorCount > 0)
+    throw std::runtime_error("AST generation failed");
+
   return nativeAST;
 }
 
@@ -2304,8 +2304,8 @@ void TreculAggregateRuntime::executeTransfer(RecordBuffer & source1,
   ctxt->clear();
 }
 
-IQLRecordConstructor * TreculTransfer::getAST(class DynamicRecordContext& recCtxt,
-                                              const std::string& xfer)
+std::vector<IQLStatement *> TreculTransfer::getAST(class DynamicRecordContext& recCtxt,
+                                                   const std::string& xfer)
 {
   IQLParserStuff p;
   p.parseTransfer(xfer);
@@ -2348,8 +2348,7 @@ TreculTransfer::TreculTransfer(DynamicRecordContext& recCtxt,
     // Set state about whether we want move or copy semantics
     codeGen.IQLMoveSemantics = i;
     // Code generate
-    ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(p.getNodes()));  
-    toLLVM->recordConstructor(toLLVM.get(), wrap(&codeGen));
+    IQLToLLVMFunctionNative(p.getNativeAST(), codeGen);
     codeGen.completeFunctionContext();
     
     // If doing copy find out if this was an identity transfer
@@ -2407,8 +2406,7 @@ TreculTransfer2::TreculTransfer2(DynamicRecordContext& recCtxt,
     // Set state about whether we want move or copy semantics
     codeGen.IQLMoveSemantics = i;
     // Code generate
-    ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(p.getNodes()));  
-    toLLVM->recordConstructor(toLLVM.get(), wrap(&codeGen));
+    IQLToLLVMFunctionNative(p.getNativeAST(), codeGen);
     codeGen.completeFunctionContext();
   }
 }
@@ -2711,20 +2709,17 @@ TreculAggregate::TreculAggregate(DynamicRecordContext& recCtxt,
   const TypeCheckConfiguration & typeCheckConfig(TypeCheckConfiguration::get());
   TypeCheckContext typeCheckContext(typeCheckConfig, recCtxt, mSource, groupKeys, isOlap);
 
+  std::vector<IQLStatement *> nativeAST;
   // Now pass through the type checker
-  ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(p.getNodes()));
-  alz->recordConstructor(alz.get(), wrap(&typeCheckContext));
-  if (alz->pTreeParser->rec->state->errorCount > 0)
-    throw std::runtime_error("Type check failed");
-
-  // There should be a present for us now...
+  // Create native AST
+  nativeAST = p.generateTransferAST(recCtxt);
+  // Now pass through the type checker
+  mTarget = IQLTypeCheckTransferNative(nativeAST, typeCheckContext);
   if (typeCheckContext.getOutputRecord() == NULL ||
       typeCheckContext.getAggregateRecord() == NULL)
     throw std::runtime_error("Failed to create output record");
+  mAggregate = typeCheckContext.getAggregateRecord();
   
- mTarget = typeCheckContext.getOutputRecord();
- mAggregate = typeCheckContext.getAggregateRecord();
-
  // Create a valid code generation context based on the input and output record formats.
  codeGen.createAggregateContexts(typeCheckConfig);
  // Create update function on top of source
@@ -2784,8 +2779,7 @@ TreculAggregate::TreculAggregate(DynamicRecordContext& recCtxt,
 
  // Code generate starting in the transfer context
  codeGen.restoreAggregateTransferContext();
- ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(p.getNodes()));  
- toLLVM->recordConstructor(toLLVM.get(), wrap(&codeGen));
+ IQLToLLVMFunctionNative(nativeAST, codeGen);
  mIsIdentity = 1==codeGen.IsIdentity;
  codeGen.saveAggregateTransferContext();
  codeGen.completeAggregateContexts();
@@ -2842,6 +2836,7 @@ void TreculAggregate::init(class DynamicRecordContext& recCtxt,
     masks[1].set(i, false);
   }
   updateParser.typeCheckUpdate(TypeCheckConfiguration::get(), recCtxt, updateSources, masks);
+
   //
   // Code gen time
   //
@@ -2855,11 +2850,8 @@ void TreculAggregate::init(class DynamicRecordContext& recCtxt,
   // symbol table to prepare for code gen.
   codeGen.reinitialize();
   createUpdateFunction(codeGen, groupKeys);
-  {
-    ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(updateParser.getNodes()));  
-    toLLVM->statementBlock(toLLVM.get(), wrap(&codeGen));
-    codeGen.completeFunctionContext();
-  }
+  IQLToLLVMFunctionNative(updateParser.getNativeAST(), codeGen);
+  codeGen.completeFunctionContext();
 
   // 
   // Init function
@@ -2868,11 +2860,8 @@ void TreculAggregate::init(class DynamicRecordContext& recCtxt,
   codeGen.reinitialize();
 
   codeGen.createTransferFunction(mSource, mAggregate, mInitializeFun);
-  {
-    ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(initParser.getNodes()));  
-    toLLVM->recordConstructor(toLLVM.get(), wrap(&codeGen));
-    codeGen.completeFunctionContext();
-  }
+  IQLToLLVMFunctionNative(initParser.getNativeAST(), codeGen);
+  codeGen.completeFunctionContext();
   
   // 
   // Transfer function
@@ -2924,11 +2913,8 @@ void TreculAggregate::init(class DynamicRecordContext& recCtxt,
     codeGen.IQLMoveSemantics = 0;
   }
   codeGen.IsIdentity = 1;
-  {
-    ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(transferParser.getNodes()));  
-    toLLVM->recordConstructor(toLLVM.get(), wrap(&codeGen));
-    codeGen.completeFunctionContext();
-  }
+  IQLToLLVMFunctionNative(transferParser.getNativeAST(), codeGen);
+  codeGen.completeFunctionContext();
   mIsIdentity = 1==codeGen.IsIdentity;
   BOOST_ASSERT(isOlap || mIsIdentity);
 }
@@ -3051,13 +3037,12 @@ void TreculInPlaceUpdate::init(class DynamicRecordContext& recCtxt,
   IQLParserStuff p;
   p.parseUpdate(statements);
   p.typeCheckUpdate(TypeCheckConfiguration::get(), recCtxt, sources, masks);
-
+  
   // Create the LLVM function and populate variables in
   // symbol table to prepare for code gen.
   codeGen.createUpdate(mSources, masks, mFunName);
 
-  ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(p.getNodes()));  
-  toLLVM->statementBlock(toLLVM.get(), wrap(&codeGen));
+  IQLToLLVMFunctionNative(p.getNativeAST(), codeGen);    
   codeGen.completeFunctionContext();
 }
 
@@ -3137,31 +3122,25 @@ void TreculFunction::init(DynamicRecordContext& recCtxt,
   if (psr->pParser->rec->state->errorCount > 0)
     throw std::runtime_error((boost::format("Parse failed: %1%") % mStatements).str());
 
-  // std::cout << parserRet.tree->toStringTree(parserRet.tree)->chars << std::endl;
+  // Generate native AST for single expression function code generation.
+  ANTLR3AutoPtr<ANTLR3_COMMON_TREE_NODE_STREAM> analyzeNodes(antlr3CommonTreeNodeStreamNewTree(parserRet.tree, ANTLR3_SIZE_HINT));
+  ANTLR3AutoPtr<IQLAnalyze> nativeASTGenerator(IQLAnalyzeNew(analyzeNodes.get()));
+  std::unique_ptr<std::vector<IQLStatement *>> nativeAST(unwrap(nativeASTGenerator->singleExpression(nativeASTGenerator.get(),
+                                                                                                     wrap(&recCtxt))));
+  if (nativeASTGenerator->pTreeParser->rec->state->errorCount > 0)
+    throw std::runtime_error("AST generation failed");
 
-  // Create an appropriate context for type checking.  This requires associating the
-  // input record with a name and then inserting all the members of the record type
-  // with a symbol table.
-  // TODO: check for name ambiguity and resolve.
-  TypeCheckContext typeCheckContext(TypeCheckConfiguration::get(), recCtxt, mSources);
-
-  ANTLR3AutoPtr<ANTLR3_COMMON_TREE_NODE_STREAM> nodes(antlr3CommonTreeNodeStreamNewTree(parserRet.tree, ANTLR3_SIZE_HINT));
-  
-  // Now pass through the type checker
-  ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(nodes.get()));
-  IQLFieldTypeRef retTy = alz->singleExpression(alz.get(), wrap(&typeCheckContext));
-  if (alz->pTreeParser->rec->state->errorCount > 0)
-    throw std::runtime_error("Type check failed");
+  // Native type check annotates IQLExpression with result/coercion types.
+  TypeCheckContext nativeTypeCheckContext(TypeCheckConfiguration::get(), recCtxt, mSources);
+  const FieldType * nativeRetTy = IQLTypeCheckFunctionNative(*nativeAST.get(), nativeTypeCheckContext);
 
   // There should be a present for us now...
-  if (unwrap(retTy)->clone(true) != Int32Type::Get(recCtxt, true))
+  if (nativeRetTy->clone(true) != Int32Type::Get(recCtxt, true))
     throw std::runtime_error("Only supporting int32_t return type on functions right now");
 
-  // Setup LLVM access to our external structure(s).  
+  // Setup LLVM access to our external structure(s).
   codeGen.createFunction(mSources, codeGen.LLVMInt32Type, mFunName);
-
-  ANTLR3AutoPtr<IQLToLLVM> toLLVM(IQLToLLVMNew(nodes.get()));  
-  toLLVM->singleExpression(toLLVM.get(), wrap(&codeGen));
+  IQLToLLVMFunctionNative(*nativeAST.get(), codeGen);
   codeGen.completeFunctionContext();
 }
 
@@ -3240,7 +3219,7 @@ void IQLGraphBuilder::buildGraph(const std::string& graphSpec, bool isFile)
   // Now pass through the type checker
   IQLGraphContextRef gc = wrap(this);
   ANTLR3AutoPtr<ANTLR3_COMMON_TREE_NODE_STREAM> nodes(antlr3CommonTreeNodeStreamNewTree(parserRet.tree, ANTLR3_SIZE_HINT));
-  ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(nodes.get()));
+  ANTLR3AutoPtr<IQLAnalyze> alz(IQLAnalyzeNew(nodes.get()));
   alz->graph(alz.get(), gc);
   if (alz->pTreeParser->rec->state->errorCount > 0)
     throw std::runtime_error("Type check failed");
@@ -3283,11 +3262,10 @@ IQLRecordTypeBuilder::IQLRecordTypeBuilder(DynamicRecordContext& ctxt,
   // std::cout << parserRet.tree->toStringTree(parserRet.tree)->chars << std::endl;
 
   // Now pass through builder
-  TypeCheckContext typeCheckContext(TypeCheckConfiguration::get(), ctxt);
   IQLRecordTypeContextRef gc = wrap(this);
   ANTLR3AutoPtr<ANTLR3_COMMON_TREE_NODE_STREAM> nodes(antlr3CommonTreeNodeStreamNewTree(parserRet.tree, ANTLR3_SIZE_HINT));
-  ANTLR3AutoPtr<IQLTypeCheck> alz(IQLTypeCheckNew(nodes.get()));
-  alz->recordFormat(alz.get(), gc, wrap(&typeCheckContext));
+  ANTLR3AutoPtr<IQLAnalyze> alz(IQLAnalyzeNew(nodes.get()));
+  alz->recordFormat(alz.get(), gc, wrap(&ctxt));
   if (alz->pTreeParser->rec->state->errorCount > 0)
     throw std::runtime_error("Type check failed");
 }

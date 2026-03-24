@@ -35,31 +35,9 @@
 #ifndef __IQLGETVARIABLESPASS_H__
 #define __IQLGETVARIABLESPASS_H__
 
-/**
- * C interface to a pass to gather free variables from an IQL expression
- * list.  Doesn't do any kind of type checking or calculation, only 
- * identifies the names of variables.
- */
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-  
-  typedef struct IQLGetVariablesContextStruct * IQLGetVariablesContextRef;
-
-  void IQLGetVariablesAddField(IQLGetVariablesContextRef ctxt, const char * name);
-  void IQLGetVariablesBuildLocal(IQLGetVariablesContextRef ctxt, const char * name);
-  void IQLGetVariablesBuildVariableReference(IQLGetVariablesContextRef ctxt, 
-					     const char * name);
-  void IQLGetVariablesBuildArrayReference(IQLGetVariablesContextRef ctxt, 
-					  const char * name);
-  void IQLGetVariablesBeginAggregateFunction(IQLGetVariablesContextRef ctxt);
-  void IQLGetVariablesBuildAggregateFunction(IQLGetVariablesContextRef ctxt);
-#ifdef __cplusplus
-}
-
 #include <string>
 #include <set>
+#include <vector>
 
 class GetVariablesContext
 {
@@ -79,9 +57,7 @@ public:
   void buildAggregateFunction();
 };
 
-class GetVariablesContext * unwrap(IQLGetVariablesContextRef ctxt);
-IQLGetVariablesContextRef wrap(class GetVariablesContext *);
-
-#endif
+void IQLGetVariablesNative(const std::vector<class IQLStatement *> & stmts,
+                           GetVariablesContext & ctxt);
 
 #endif

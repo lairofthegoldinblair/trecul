@@ -39,7 +39,6 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 #include "CodeGenerationContext.hh"
-#include "LLVMGen.h"
 #include "RecordType.hh"
 #include "TypeCheckContext.hh"
 
@@ -516,7 +515,7 @@ void CodeGenerationFunctionContext::clear()
 {
   delete Builder;
   Builder = nullptr;
-  delete unwrap(RecordArguments);
+  delete RecordArguments;
   RecordArguments = nullptr; 
   delete mSymbolTable;
   mSymbolTable = nullptr; 
@@ -1667,7 +1666,7 @@ CodeGenerationContext::~CodeGenerationContext()
   }
   
   // Delete but do not double delete all allocated record args
-  std::set<IQLToLLVMRecordMapRef> args;
+  std::set<std::map<std::string, std::pair<std::string, const class RecordType*> > *> args;
   if (IQLRecordArguments) {
     args.insert(IQLRecordArguments);
   }
@@ -1681,7 +1680,7 @@ CodeGenerationContext::~CodeGenerationContext()
     args.insert(Transfer.RecordArguments);
   }
   for(auto b : args) {
-    delete unwrap(b);
+    delete b;
   }
 
   if (mOwnsModule && LLVMModule) {
@@ -2885,7 +2884,7 @@ void CodeGenerationContext::reinitialize()
   // Reinitialize and create transfer
   mSymbolTable->clear();
   LLVMFunction = NULL;
-  unwrap(IQLRecordArguments)->clear();
+  IQLRecordArguments->clear();
   for(auto & c : *AllocaCache) {
     c.second.clear();
   }
@@ -2902,7 +2901,7 @@ void CodeGenerationContext::createFunctionContext(const TypeCheckConfiguration &
   LLVMBuilder = new llvm::IRBuilder<>(*LLVMContext);
   mSymbolTable = new TreculSymbolTable(typeCheckConfig);
   LLVMFunction = NULL;
-  IQLRecordArguments = wrap(new std::map<std::string, std::pair<std::string, const RecordType*> >());
+  IQLRecordArguments = new std::map<std::string, std::pair<std::string, const RecordType*> >();
   IQLOutputRecord = NULL;
   AllocaCache = new local_cache();
 }
@@ -2970,7 +2969,7 @@ void CodeGenerationContext::addInputRecordType(const char * name,
 			      true, // Put the member into the symbol table
 			      name);
   }
-  std::map<std::string, std::pair<std::string, const RecordType *> >& recordTypes(*unwrap(IQLRecordArguments));
+  std::map<std::string, std::pair<std::string, const RecordType *> >& recordTypes(*IQLRecordArguments);
   recordTypes[name] = std::make_pair(argumentName, rec);
 
   // Add the record itself as a value in the symbol table, but as a pointer not a pointer to pointer
@@ -6212,7 +6211,7 @@ void CodeGenerationContext::buildSetFieldsRegex(const std::string& sourceName,
   llvm::Value * targetPtr = b->CreateLoad(b->getPtrTy(), lookupBasePointer("__OutputPointer__")->getValue(this));
 			       
   RecordTypeCopy c(sourceType,
-		   unwrap(IQLOutputRecord),
+		   IQLOutputRecord,
 		   expr,
 		   rename, 
 		   pos);
@@ -8806,7 +8805,7 @@ const IQLToLLVMValue * CodeGenerationContext::buildAggregateFunction(const char 
 
 void CodeGenerationContext::buildSetField(int * pos, const IQLToLLVMValue * val)
 {
-  const RecordType * outputRecord = unwrap(IQLOutputRecord);
+  const RecordType * outputRecord = IQLOutputRecord;
   std::string memberName = outputRecord->GetMember(*pos).GetName();
   FieldAddress outputAddress = outputRecord->getFieldAddress(memberName);
   const FieldType * fieldType = outputRecord->GetMember(*pos).GetType();
@@ -8815,7 +8814,7 @@ void CodeGenerationContext::buildSetField(int * pos, const IQLToLLVMValue * val)
   *pos += 1;
 
   // Track whether this transfer is an identity or not.
-  std::map<std::string, std::pair<std::string, const RecordType *> >& recordTypes(*unwrap(IQLRecordArguments));
+  std::map<std::string, std::pair<std::string, const RecordType *> >& recordTypes(*IQLRecordArguments);
   if (recordTypes.size() == 1 && 
       recordTypes.begin()->second.second->size() == outputRecord->size()) {
     // TODO: Verify that the types are structurally the same.
@@ -8855,7 +8854,7 @@ void CodeGenerationContext::buildSetFields(const char * recordName, int * pos)
   llvm::IRBuilder<> * b = LLVMBuilder;
   typedef std::map<std::string, std::pair<std::string, const RecordType *> > RecordArgs;
   // Copy all fields from the source record to the output.
-  const RecordArgs& recordTypes(*unwrap(IQLRecordArguments));
+  const RecordArgs& recordTypes(*IQLRecordArguments);
   // Find the record struct in the named inputs.
   RecordArgs::const_iterator it = recordTypes.find(recordName);
   if (it == recordTypes.end()) {
@@ -8875,7 +8874,7 @@ void CodeGenerationContext::buildSetFields(const char * recordName, int * pos)
   // couple of memcpy's and memset's.  Replace all source fields in the symbol table with
   // corresponding targets.
   if(IQLMoveSemantics) {
-    RecordTypeMove mv(it->second.second, unwrap(IQLOutputRecord));
+    RecordTypeMove mv(it->second.second, IQLOutputRecord);
     for(std::vector<MemcpyOp>::const_iterator opit = mv.getMemcpy().begin();
 	opit != mv.getMemcpy().end();
 	++opit) {
@@ -8906,7 +8905,7 @@ void CodeGenerationContext::buildSetFields(const char * recordName, int * pos)
     for(RecordType::const_member_iterator mit = it->second.second->begin_members();
 	mit != it->second.second->end_members();
 	++mit) {
-      const RecordType * out = unwrap(IQLOutputRecord);
+      const RecordType * out = IQLOutputRecord;
       std::string memberName = out->GetMember(*pos).GetName();
       out->LLVMMemberGetPointer(memberName, 
 				this, 
@@ -8930,7 +8929,7 @@ void CodeGenerationContext::buildQuotedId(const char * quotedId, const char * re
   std::string renameExpr(rename ? rename : "``");
   renameExpr = renameExpr.substr(1, renameExpr.size() - 2);
   typedef std::map<std::string, std::pair<std::string, const RecordType *> > RecordArgs;
-  const RecordArgs& recordTypes(*unwrap(IQLRecordArguments));
+  const RecordArgs& recordTypes(*IQLRecordArguments);
   for(RecordArgs::const_iterator it = recordTypes.begin();
       it != recordTypes.end();
       ++it) {
@@ -9144,7 +9143,7 @@ void CodeGenerationContext::createTransferFunction(const std::vector<AliasedReco
                              mask);
   }
   // Special context entry for output record required by statement list
-  this->IQLOutputRecord = wrap(output);
+  this->IQLOutputRecord = output;
   suggestedFunName = LLVMFunction->getName();
 }
 
@@ -9183,7 +9182,7 @@ void CodeGenerationContext::createTransferFunction(const std::vector<const Recor
 				 *it,
 				 mask);
   }
-  this->IQLOutputRecord = wrap(output);
+  this->IQLOutputRecord = output;
   suggestedFunName = LLVMFunction->getName();
 }
 
@@ -9293,7 +9292,7 @@ void NullInitializedAggregate::update(CodeGenerationContext * ctxt,
   llvm::BasicBlock * mergeBlock = 
     llvm::BasicBlock::Create(*c, "cont", TheFunction);
   // LValue around the field
-  std::map<std::string, std::pair<std::string, const RecordType *> >& recordTypes(*unwrap(ctxt->IQLRecordArguments));
+  std::map<std::string, std::pair<std::string, const RecordType *> >& recordTypes(*ctxt->IQLRecordArguments);
   const RecordType * outputRecord = recordTypes.find("input1")->second.second;
   BOOST_ASSERT(outputRecord != NULL);
   IQLToLLVMField fieldLVal(ctxt, outputRecord, aggFn, "__BasePointer1__");

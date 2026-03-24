@@ -514,10 +514,6 @@ primaryExpression
 			{ 
 				// Unquotify
 			}
-	| WSTRING_LITERAL
-			{ 
-				// Unquotify
-			}
     | IPV4_LITERAL
     | IPV6_LITERAL
 	| TK_TRUE

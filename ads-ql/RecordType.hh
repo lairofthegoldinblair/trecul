@@ -871,18 +871,14 @@ class DynamicRecordContext
 private:
   std::map<Digest, FieldType *> mTypes;
   std::set<const RecordType *> mRecords;
-  std::set<class IQLExpression *> mExprs;
-  std::set<class IQLFieldConstructor *> mFields;
-  std::set<class IQLRecordConstructor *> mRecordCtors;
+  std::set<class IQLStatement *> mStmts;
 public:
   DynamicRecordContext();
   ~DynamicRecordContext();
   FieldType * lookup(const Digest& id) const;
   void add(const Digest& id, FieldType * val);
   void add(const RecordType * ty);
-  void add(class IQLExpression * expr);
-  void add(class IQLFieldConstructor * f);
-  void add(class IQLRecordConstructor * r);
+  void add(class IQLStatement * s);
 };
 
 class FieldType

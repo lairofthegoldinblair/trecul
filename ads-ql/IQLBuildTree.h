@@ -9,31 +9,14 @@
 extern "C" {
 #endif
 
+  typedef struct IQLRecordTypeContextStruct * IQLRecordTypeContextRef;
+  typedef struct IQLGraphContextStruct * IQLGraphContextRef;
   typedef struct IQLTreeFactoryStruct * IQLTreeFactoryRef;
+  typedef struct IQLStatementStruct * IQLStatementRef;
+  typedef struct IQLStatementListStruct * IQLStatementListRef;
   typedef struct IQLExpressionStruct * IQLExpressionRef;
   typedef struct IQLExpressionListStruct * IQLExpressionListRef;
   typedef const struct IQLFieldTypeStruct * IQLFieldTypeRef;
-  typedef struct IQLRecordConstructorStruct * IQLRecordConstructorRef;
-  typedef struct IQLFieldConstructorStruct * IQLFieldConstructorRef;
-  typedef struct IQLFieldConstructorListStruct * IQLFieldConstructorListRef;
-
-  IQLFieldConstructorListRef IQLFieldConstructorListCreate(IQLTreeFactoryRef ctxtRef);
-  void IQLFieldConstructorListFree(IQLTreeFactoryRef ctxtRef,
-				   IQLFieldConstructorListRef l);
-  void IQLFieldConstructorListAppend(IQLTreeFactoryRef ctxtRef,
-				     IQLFieldConstructorListRef l,
-				     IQLFieldConstructorRef e);
-
-  IQLFieldConstructorRef IQLBuildAddFields(IQLTreeFactoryRef ctxtRef, 
-					   const char * recordName);
-  IQLFieldConstructorRef IQLBuildAddField(IQLTreeFactoryRef ctxtRef, 
-					  const char * fieldName,
-					  IQLExpressionRef expr);
-  IQLFieldConstructorRef IQLBuildQuotedId(IQLTreeFactoryRef ctxtRef, 
-					  const char * pattern,
-					  const char * names);
-  IQLRecordConstructorRef IQLBuildRecord(IQLTreeFactoryRef ctxtRef,
-					 IQLFieldConstructorListRef fields);
 
   IQLFieldTypeRef IQLBuildInt8Type(IQLTreeFactoryRef ctxtRef, int nullable);
   IQLFieldTypeRef IQLBuildInt8ArrayType(IQLTreeFactoryRef ctxtRef, const char * sz, int nullable);
@@ -78,6 +61,13 @@ extern "C" {
 			       IQLExpressionListRef l,
 			       IQLExpressionRef e);
 
+  IQLExpressionRef IQLBuildTypeExpr(IQLTreeFactoryRef ctxtRef,
+                                    IQLFieldTypeRef ft,
+                                    int line, int column);
+  IQLExpressionRef IQLBuildDecltype(IQLTreeFactoryRef ctxtRef,
+                                    IQLExpressionRef e,
+                                    const char * sz,
+                                    int line, int column);
   IQLExpressionRef IQLBuildLogicalOr(IQLTreeFactoryRef ctxtRef,
   				     IQLExpressionRef left,
   				     IQLExpressionRef right,
@@ -190,7 +180,7 @@ extern "C" {
 				IQLExpressionListRef args,
 				int line, int column);
   IQLExpressionRef IQLBuildCast(IQLTreeFactoryRef ctxtRef,
-				IQLFieldTypeRef ty,
+				IQLExpressionRef ty,
 				IQLExpressionRef arg,
 				int line, int column);
   IQLExpressionRef IQLBuildLiteralCast(IQLTreeFactoryRef ctxtRef,
@@ -208,6 +198,9 @@ extern "C" {
   IQLExpressionRef IQLBuildInt32(IQLTreeFactoryRef ctxtRef,
 				 const char * text,
 				 int line, int column);
+  IQLExpressionRef IQLBuildHexInt32(IQLTreeFactoryRef ctxtRef,
+            const char * text,
+            int line, int column);
   IQLExpressionRef IQLBuildInt64(IQLTreeFactoryRef ctxtRef,
 				 const char * text,
 				 int line, int column);
@@ -239,14 +232,32 @@ extern "C" {
   IQLExpressionRef IQLBuildString(IQLTreeFactoryRef ctxtRef,
 				  const char * text,
 				  int line, int column);
+  IQLExpressionRef IQLBuildWString(IQLTreeFactoryRef ctxtRef,
+           const char * text,
+           int line, int column);
   IQLExpressionRef IQLBuildVariable(IQLTreeFactoryRef ctxtRef,
 				    const char * text,
 				    const char * text2,
 				    int line, int column);
-  IQLExpressionRef IQLBuildArrayRef(IQLTreeFactoryRef ctxtRef,
-				    const char * text,
-				    IQLExpressionRef idx,
-				    int line, int column);
+  IQLExpressionRef IQLBuildVariableLValue(IQLTreeFactoryRef ctxtRef,
+                                          const char * text,
+                                          int line, int column);
+  IQLExpressionRef IQLBuildStructMemberRef(IQLTreeFactoryRef ctxtRef,
+                                           IQLExpressionRef s,
+                                           const char * member,
+                                           int line, int column); 
+  IQLExpressionRef IQLBuildStructMemberLValue(IQLTreeFactoryRef ctxtRef,
+                                              IQLExpressionRef s,
+                                              const char * member,
+                                              int line, int column); 
+ IQLExpressionRef IQLBuildArrayRef(IQLTreeFactoryRef ctxtRef,
+                                   IQLExpressionRef arr,
+                                   IQLExpressionRef idx,
+                                   int line, int column);
+ IQLExpressionRef IQLBuildArrayLValue(IQLTreeFactoryRef ctxtRef,
+                                      IQLExpressionRef arr,
+                                      IQLExpressionRef idx,
+                                      int line, int column);
   IQLExpressionRef IQLBuildArray(IQLTreeFactoryRef ctxtRef,
 				 IQLExpressionListRef args,
 				 int line, int column);
@@ -254,9 +265,80 @@ extern "C" {
                                IQLExpressionListRef args,
                                int line, int column);
 
+  IQLStatementListRef IQLStatementListCreate(IQLTreeFactoryRef ctxtRef);
+  void IQLStatementListFree(IQLTreeFactoryRef ctxtRef,
+			     IQLStatementListRef l);
+  void IQLStatementListAppend(IQLTreeFactoryRef ctxtRef,
+			       IQLStatementListRef l,
+			       IQLStatementRef e);
+  IQLStatementRef IQLBuildStatementBlock(IQLTreeFactoryRef ctxtRef,
+                                         IQLStatementListRef stmts,
+                                         int line, int column);
+  IQLStatementRef IQLBuildBreak(IQLTreeFactoryRef ctxtRef,
+                                int line, int column);
+  IQLStatementRef IQLBuildContinue(IQLTreeFactoryRef ctxtRef,
+                                   int line, int column);
+  IQLStatementRef IQLBuildDeclare(IQLTreeFactoryRef ctxtRef,
+                                  IQLExpressionRef val,
+                                  const char * nm,
+                                  int line, int column);
+  IQLStatementRef IQLBuildDeclareNoInit(IQLTreeFactoryRef ctxtRef,
+                                        IQLFieldTypeRef ty,
+                                        const char * nm,
+                                        int line, int column);
+  IQLStatementRef IQLBuildIfThenElse(IQLTreeFactoryRef ctxtRef,
+                                     IQLExpressionRef cond,
+                                     IQLStatementRef thenStmts,
+                                     IQLStatementRef elseStmts,
+                                     int line, int column);
+  IQLStatementRef IQLBuildReturn(IQLTreeFactoryRef ctxtRef,
+                                 IQLExpressionRef val,
+                                 int line, int column);
+  IQLStatementRef IQLBuildAddFields(IQLTreeFactoryRef ctxtRef, 
+                                    const char * recordName,
+                                 int line, int column);
+  IQLStatementRef IQLBuildAddField(IQLTreeFactoryRef ctxtRef, 
+                                   const char * fieldName,
+                                   IQLExpressionRef expr,
+                                 int line, int column);
+  IQLStatementRef IQLBuildQuotedId(IQLTreeFactoryRef ctxtRef, 
+                                   const char * pattern,
+                                   const char * names,
+                                 int line, int column);
+  IQLStatementRef IQLBuildSet(IQLTreeFactoryRef ctxtRef,
+                              IQLExpressionRef lhs,
+                              IQLExpressionRef rhs,
+                              int line, int column);
+  IQLStatementRef IQLBuildSwitch(IQLTreeFactoryRef ctxtRef,
+                                 IQLExpressionRef expr,
+                                 IQLStatementListRef cases,
+                                 int line, int column);
+  IQLStatementRef IQLBuildSwitchCase(IQLTreeFactoryRef ctxtRef,
+                                     const char * expr,
+                                     IQLStatementListRef stmts,
+                                     int line, int column);
+  IQLStatementRef IQLBuildWhile(IQLTreeFactoryRef ctxtRef,
+                                IQLExpressionRef cond,
+                                IQLStatementRef stmts,
+                                int line, int column);
 
+  /**
+   * Interface for building graphs/plans.
+   */
+  void IQLGraphNodeStart(IQLGraphContextRef ctxt, const char * type, const char * name);
+  void IQLGraphNodeBuildIntegerParam(IQLGraphContextRef ctxt, const char * name, const char * val);
+  void IQLGraphNodeBuildStringParam(IQLGraphContextRef ctxt, const char * name, const char * val);
+  void IQLGraphNodeComplete(IQLGraphContextRef ctxt);
+  void IQLGraphNodeBuildEdge(IQLGraphContextRef ctxt, const char * from, const char * to);
+
+
+  /**
+   * Interface for building record type.
+   */
+  void IQLRecordTypeBuildField(IQLRecordTypeContextRef ctxt, const char * name, IQLFieldTypeRef ty);
 #ifdef __cplusplus
 }
+
 #endif
 
 #endif

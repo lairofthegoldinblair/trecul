@@ -44,7 +44,6 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Instructions.h"
 
-#include "LLVMGen.h"
 #include "CodeGenerationContext.hh"
 #include "RecordType.hh"
 #include "IQLExpression.hh"
@@ -210,20 +209,8 @@ DynamicRecordContext::~DynamicRecordContext()
     delete *it;
   }
 
-  for(std::set<IQLExpression*>::iterator it = mExprs.begin();
-      it != mExprs.end();
-      ++it) {
-    delete *it;
-  }
-
-  for(std::set<IQLFieldConstructor*>::iterator it = mFields.begin();
-      it != mFields.end();
-      ++it) {
-    delete *it;
-  }
-
-  for(std::set<IQLRecordConstructor*>::iterator it = mRecordCtors.begin();
-      it != mRecordCtors.end();
+  for(std::set<IQLStatement*>::iterator it = mStmts.begin();
+      it != mStmts.end();
       ++it) {
     delete *it;
   }
@@ -245,19 +232,9 @@ void DynamicRecordContext::add(const RecordType * ty)
   mRecords.insert(ty);
 }
 
-void DynamicRecordContext::add(IQLExpression * expr)
+void DynamicRecordContext::add(IQLStatement * s)
 {
-  mExprs.insert(expr);
-}
-
-void DynamicRecordContext::add(IQLFieldConstructor * f)
-{
-  mFields.insert(f);
-}
-
-void DynamicRecordContext::add(IQLRecordConstructor * r)
-{
-  mRecordCtors.insert(r);
+  mStmts.insert(s);
 }
 
 llvm::Type * FieldType::LLVMGetType(CodeGenerationContext * ctxt) const

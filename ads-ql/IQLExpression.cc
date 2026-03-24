@@ -38,6 +38,7 @@
 #include <boost/lexical_cast.hpp>
 #include "IQLExpression.hh"
 #include "IQLBuildTree.h"
+#include "IQLGraphBuilder.hh"
 #include "RecordType.hh"
 
 IQLExpression::~IQLExpression()
@@ -54,15 +55,17 @@ bool IQLExpression::equals(const IQLExpression * rhs) const
 
   std::stack<std::pair<IQLExpression::arg_const_iterator, 
     IQLExpression::arg_const_iterator> > patternStk;
-  std::vector<IQLExpression *> patternTmp;
+  std::vector<IQLStatement *> patternTmp;
   std::stack<std::pair<IQLExpression::arg_const_iterator, 
     IQLExpression::arg_const_iterator> > inputStk;
-  std::vector<IQLExpression *> inputTmp;
+  std::vector<IQLStatement *> inputTmp;
   // Push the node with arguments on the stack.
   patternTmp.push_back(const_cast<IQLExpression *>(pattern));
   inputTmp.push_back(const_cast<IQLExpression *>(input));
-  patternStk.push(std::make_pair(patternTmp.begin(), patternTmp.end()));
-  inputStk.push(std::make_pair(inputTmp.begin(), inputTmp.end()));
+  patternStk.push(std::make_pair(boost::make_transform_iterator(patternTmp.begin(), Downcast()),
+                                 boost::make_transform_iterator(patternTmp.end(), Downcast())));
+  inputStk.push(std::make_pair(boost::make_transform_iterator(inputTmp.begin(), Downcast()),
+                               boost::make_transform_iterator(inputTmp.end(), Downcast())));
 
   while(patternStk.size() && inputStk.size()) {
     if (patternStk.top().first != patternStk.top().second) {      
@@ -90,19 +93,6 @@ bool IQLExpression::equals(const IQLExpression * rhs) const
   return patternStk.size() == 0 && inputStk.size() == 0;
 }
 
-void IQLExpression::replaceArg(IQLExpression * oldArg,
-			       IQLExpression * newArg)
-{
-  for(std::size_t i=0, sz=mArgs.size(); i<sz; ++i) {
-    if (mArgs[i] == oldArg) {
-      mArgs[i] = newArg;
-      return;
-    }
-  }
-  throw std::runtime_error("Internal Error: call to IQLExpression::replaceArg"
-			   " with invalid argument");
-}
-
 LogicalOrExpr * LogicalOrExpr::clone() const
 {
   return new LogicalOrExpr(*this);
@@ -116,6 +106,61 @@ LogicalAndExpr * LogicalAndExpr::clone() const
 LogicalNotExpr * LogicalNotExpr::clone() const
 {
   return new LogicalNotExpr(*this);
+}
+
+IsNullExpr * IsNullExpr::clone() const
+{
+  return new IsNullExpr(*this);
+}
+
+BitwiseAndExpr * BitwiseAndExpr::clone() const
+{
+  return new BitwiseAndExpr(*this);
+}
+
+BitwiseOrExpr * BitwiseOrExpr::clone() const
+{
+  return new BitwiseOrExpr(*this);
+}
+
+BitwiseXorExpr * BitwiseXorExpr::clone() const
+{
+  return new BitwiseXorExpr(*this);
+}
+
+BitwiseNotExpr * BitwiseNotExpr::clone() const
+{
+  return new BitwiseNotExpr(*this);
+}
+
+PlusExpr * PlusExpr::clone() const
+{
+  return new PlusExpr(*this);
+}
+
+MinusExpr * MinusExpr::clone() const
+{
+  return new MinusExpr(*this);
+}
+
+TimesExpr * TimesExpr::clone() const
+{
+  return new TimesExpr(*this);
+}
+
+DivideExpr * DivideExpr::clone() const
+{
+  return new DivideExpr(*this);
+}
+
+ModulusExpr * ModulusExpr::clone() const
+{
+  return new ModulusExpr(*this);
+}
+
+ConcatenationExpr * ConcatenationExpr::clone() const
+{
+  return new ConcatenationExpr(*this);
 }
 
 EqualsExpr * EqualsExpr::clone() const
@@ -206,15 +251,15 @@ CallExpr * CallExpr::clone() const
 }
 
 CastExpr::CastExpr(DynamicRecordContext & ctxt,
-		   const FieldType * ty,
+		   IQLExpression * ty,
 		   IQLExpression * arg,
 		   const SourceLocation& loc)
   :
   IQLExpression(ctxt, IQLExpression::CAST, 
+                ty,
 		arg,
 		loc)
 {
-  setData(ty);
 }
 
 CastExpr * CastExpr::clone() const
@@ -238,6 +283,11 @@ Int32Expr::Int32Expr(DynamicRecordContext & ctxt,
 Int32Expr * Int32Expr::clone() const
 {
   return new Int32Expr(*this);
+}
+
+HexInt32Expr * HexInt32Expr::clone() const
+{
+  return new HexInt32Expr(*this);
 }
 
 Int64Expr::Int64Expr(DynamicRecordContext & ctxt, 
@@ -386,19 +436,76 @@ VariableExpr * VariableExpr::clone() const
   return new VariableExpr(*this);
 }
 
+VariableLValueExpr::VariableLValueExpr(DynamicRecordContext & ctxt, 
+                                       const char * text,
+                                       const SourceLocation& loc)
+  :
+  IQLExpression(ctxt, IQLExpression::VARIABLELVALUE, loc)
+{
+  setData(text);
+}
+
+VariableLValueExpr * VariableLValueExpr::clone() const
+{
+  return new VariableLValueExpr(*this);
+}
+
+StructMemberReferenceExpr::StructMemberReferenceExpr(DynamicRecordContext & ctxt, 
+                                                     IQLExpression * s,
+                                                     const char * member,
+                                                     const SourceLocation& loc)
+  :
+  IQLExpression(ctxt, IQLExpression::STRUCTMEMBERREF, s, loc)
+{
+  setData(member);
+}
+
+StructMemberReferenceExpr * StructMemberReferenceExpr::clone() const
+{
+  return new StructMemberReferenceExpr(*this);
+}
+
+StructMemberLValueExpr::StructMemberLValueExpr(DynamicRecordContext & ctxt, 
+                                                     IQLExpression * s,
+                                                     const char * member,
+                                                     const SourceLocation& loc)
+  :
+  IQLExpression(ctxt, IQLExpression::STRUCTMEMBERLVALUE, s, loc)
+{
+  setData(member);
+}
+
+StructMemberLValueExpr * StructMemberLValueExpr::clone() const
+{
+  return new StructMemberLValueExpr(*this);
+}
+
 ArrayReferenceExpr::ArrayReferenceExpr(DynamicRecordContext & ctxt, 
-				       const char * text,
+				       IQLExpression * arr,
 				       IQLExpression * idx,
 				       const SourceLocation& loc)
   :
-  IQLExpression(ctxt, IQLExpression::ARRAYREF, idx, loc)
+  IQLExpression(ctxt, IQLExpression::ARRAYREF, arr, idx, loc)
 {
-  setData(text);
 }
 
 ArrayReferenceExpr * ArrayReferenceExpr::clone() const
 {
   return new ArrayReferenceExpr(*this);
+}
+
+ArrayLValueExpr::ArrayLValueExpr(DynamicRecordContext & ctxt, 
+				       IQLExpression * arr,
+				       IQLExpression * idx,
+				       const SourceLocation& loc)
+  :
+  IQLExpression(ctxt, IQLExpression::ARRAYLVALUE, arr, idx, loc)
+{
+}
+
+ArrayLValueExpr * ArrayLValueExpr::clone() const
+{
+  return new ArrayLValueExpr(*this);
 }
 
 ArrayExpr::ArrayExpr(DynamicRecordContext & ctxt,
@@ -429,6 +536,40 @@ StructExpr::StructExpr(DynamicRecordContext & ctxt,
 StructExpr * StructExpr::clone() const
 {
   return new StructExpr(*this);
+}
+
+
+TypeExpr::TypeExpr(DynamicRecordContext & ctxt, 
+                   const FieldType * ty,
+                   const SourceLocation& loc)
+  :
+  IQLExpression(ctxt, IQLExpression::TYPE, loc)
+{
+  setFieldType(ty);
+}
+  
+TypeExpr * TypeExpr::clone() const
+{
+  return new TypeExpr(*this);
+}
+
+DecltypeExpr::DecltypeExpr(DynamicRecordContext & ctxt, 
+                           IQLExpression * e,
+                           const char * sz,
+                           const SourceLocation& loc)
+  :
+  IQLExpression(ctxt, IQLExpression::DECLTYPE, e, loc)
+{
+  if (nullptr != sz) {
+    setData(sz);
+  } else {
+    setData("");
+  }
+}
+  
+DecltypeExpr * DecltypeExpr::clone() const
+{
+  return new DecltypeExpr(*this);
 }
 
 IQLEquiJoinDetector::IQLEquiJoinDetector(DynamicRecordContext& ctxt,
@@ -592,12 +733,24 @@ void IQLFreeVariablesRule::onExpr(IQLExpression * expr)
       mVariables.insert(expr->getStringData());
     }
     break;
-  case IQLExpression::ARRAYREF:
-    if (mVariables.find(expr->getStringData()) ==
-	mVariables.end()) {
-      mVariables.insert(expr->getStringData());
+  case IQLExpression::STRUCTMEMBERREF:
+    {
+      IQLExpression * base = *expr->begin_args();
+      if (base->getNodeType() == IQLExpression::VARIABLE) {
+	std::string qualified = base->getStringData() + "." + expr->getStringData();
+	if (mVariables.find(qualified) == mVariables.end()) {
+	  mVariables.insert(qualified);
+	}
+      } else {
+	onExpr(base);
+      }
     }
-    onExpr(*expr->begin_args());
+    break;
+  case IQLExpression::ARRAYREF:
+    for(IQLExpression::arg_const_iterator a = expr->begin_args(),
+	e = expr->end_args(); a != e; ++a) {
+      onExpr(*a);
+    }
     break;
   // TODO: Handle DECLARE since these are binders.
   default:
@@ -688,34 +841,24 @@ void IQLSplitPredicateRule::onExpr(DynamicRecordContext & ctxt,
 }
 
 // Implementation of the C binding
-class IQLRecordConstructor * unwrap(IQLRecordConstructorRef r)
+class IQLStatement * unwrap(IQLStatementRef r)
 {
-  return reinterpret_cast<class IQLRecordConstructor *>(r);
+  return reinterpret_cast<class IQLStatement *>(r);
 }
 
-IQLRecordConstructorRef wrap(class IQLRecordConstructor * r)
+IQLStatementRef wrap(class IQLStatement * r)
 {
-  return reinterpret_cast<IQLRecordConstructorRef>(r);
+  return reinterpret_cast<IQLStatementRef>(r);
 }
 
-class IQLFieldConstructor * unwrap(IQLFieldConstructorRef r)
+std::vector<IQLStatement *> * unwrap(IQLStatementListRef r)
 {
-  return reinterpret_cast<class IQLFieldConstructor *>(r);
+  return reinterpret_cast<std::vector<IQLStatement *> *>(r);
 }
 
-IQLFieldConstructorRef wrap(class IQLFieldConstructor * r)
+IQLStatementListRef wrap(std::vector<IQLStatement *> * r)
 {
-  return reinterpret_cast<IQLFieldConstructorRef>(r);
-}
-
-std::vector<IQLFieldConstructor *> * unwrap(IQLFieldConstructorListRef r)
-{
-  return reinterpret_cast<std::vector<IQLFieldConstructor *> *>(r);
-}
-
-IQLFieldConstructorListRef wrap(std::vector<IQLFieldConstructor *> * r)
-{
-  return reinterpret_cast<IQLFieldConstructorListRef>(r);
+  return reinterpret_cast<IQLStatementListRef>(r);
 }
 
 class IQLExpression * unwrap(IQLExpressionRef r)
@@ -748,56 +891,24 @@ IQLTreeFactoryRef wrap(class DynamicRecordContext * r)
   return reinterpret_cast<IQLTreeFactoryRef>(r);
 }
 
-// Decl; defined in LLVMGen.cc
-const FieldType * unwrap(IQLFieldTypeRef r);
-IQLFieldTypeRef wrap(const FieldType * r);
-
-IQLFieldConstructorListRef IQLFieldConstructorListCreate(IQLTreeFactoryRef ctxtRef)
+IQLGraphBuilder * unwrap(IQLGraphContextRef val)
 {
-  return wrap(new std::vector<IQLFieldConstructor *> ());
+  return reinterpret_cast<IQLGraphBuilder *>(val);
 }
 
-void IQLFieldConstructorListFree(IQLTreeFactoryRef ctxtRef,
-				 IQLFieldConstructorListRef l)
+IQLGraphContextRef wrap(IQLGraphBuilder * val)
 {
-  delete unwrap(l);
+  return reinterpret_cast<IQLGraphContextRef>(val);
 }
 
-void IQLFieldConstructorListAppend(IQLTreeFactoryRef ctxtRef,
-				   IQLFieldConstructorListRef l,
-				   IQLFieldConstructorRef e)
+const FieldType * unwrap(IQLFieldTypeRef r)
 {
-  unwrap(l)->push_back(unwrap(e));
+  return reinterpret_cast<const FieldType *> (r);
 }
 
-IQLFieldConstructorRef IQLBuildAddFields(IQLTreeFactoryRef ctxtRef, 
-					 const char * recordName)
+IQLFieldTypeRef wrap(const FieldType * r)
 {
-  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
-  return wrap(IQLFieldGlob::create(ctxt, recordName));  
-}
-
-IQLFieldConstructorRef IQLBuildAddField(IQLTreeFactoryRef ctxtRef, 
-					const char * fieldName,
-					IQLExpressionRef expr)
-{
-  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
-  return wrap(IQLNamedExpression::create(ctxt, unwrap(expr), fieldName));  
-}
-
-IQLFieldConstructorRef IQLBuildQuotedId(IQLTreeFactoryRef ctxtRef, 
-					const char * pattern,
-					const char * names)
-{
-  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
-  return wrap(IQLFieldPattern::create(ctxt, pattern, names));  
-}
-
-IQLRecordConstructorRef IQLBuildRecord(IQLTreeFactoryRef ctxtRef,
-				       IQLFieldConstructorListRef fields)
-{
-  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
-  return wrap(IQLRecordConstructor::create(ctxt, *unwrap(fields)));  
+  return reinterpret_cast<IQLFieldTypeRef> (r);
 }
 
 IQLExpressionListRef IQLExpressionListCreate(IQLTreeFactoryRef ctxt)
@@ -816,6 +927,25 @@ void IQLExpressionListAppend(IQLTreeFactoryRef ctxt,
 			     IQLExpressionRef e)
 {
   unwrap(l)->push_back(unwrap(e));
+}
+
+IQLExpressionRef IQLBuildTypeExpr(IQLTreeFactoryRef ctxtRef,
+                                  IQLFieldTypeRef ft,
+                                  int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(TypeExpr::create(ctxt, unwrap(ft),
+				    SourceLocation(line, column)));
+}
+
+IQLExpressionRef IQLBuildDecltype(IQLTreeFactoryRef ctxtRef,
+                                  IQLExpressionRef e,
+                                  const char * sz,
+                                  int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(DecltypeExpr::create(ctxt, unwrap(e), sz,
+                                   SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildLogicalOr(IQLTreeFactoryRef ctxtRef,				     
@@ -1002,7 +1132,9 @@ IQLExpressionRef IQLBuildPlus(IQLTreeFactoryRef ctxtRef,
 			      IQLExpressionRef rightRef,
 			      int line, int column)
 {
-  return IQLBuildBinaryFun(ctxtRef, "+", leftRef, rightRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(PlusExpr::createBinary(ctxt, unwrap(leftRef), unwrap(rightRef),
+            SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildMinus(IQLTreeFactoryRef ctxtRef,
@@ -1010,7 +1142,9 @@ IQLExpressionRef IQLBuildMinus(IQLTreeFactoryRef ctxtRef,
 			       IQLExpressionRef rightRef,
 			       int line, int column)
 {
-  return IQLBuildBinaryFun(ctxtRef, "-", leftRef, rightRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(MinusExpr::createBinary(ctxt, unwrap(leftRef), unwrap(rightRef),
+             SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildTimes(IQLTreeFactoryRef ctxtRef,
@@ -1018,7 +1152,9 @@ IQLExpressionRef IQLBuildTimes(IQLTreeFactoryRef ctxtRef,
 			       IQLExpressionRef rightRef,
 			       int line, int column)
 {
-  return IQLBuildBinaryFun(ctxtRef, "*", leftRef, rightRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(TimesExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+       SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildDivide(IQLTreeFactoryRef ctxtRef,
@@ -1026,7 +1162,9 @@ IQLExpressionRef IQLBuildDivide(IQLTreeFactoryRef ctxtRef,
 				IQLExpressionRef rightRef,
 				int line, int column)
 {
-  return IQLBuildBinaryFun(ctxtRef, "/", leftRef, rightRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(DivideExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+        SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildModulus(IQLTreeFactoryRef ctxtRef,
@@ -1034,7 +1172,9 @@ IQLExpressionRef IQLBuildModulus(IQLTreeFactoryRef ctxtRef,
 				 IQLExpressionRef rightRef,
 				 int line, int column)
 {
-  return IQLBuildBinaryFun(ctxtRef, "%", leftRef, rightRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(ModulusExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+         SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildConcatenation(IQLTreeFactoryRef ctxtRef,
@@ -1042,21 +1182,27 @@ IQLExpressionRef IQLBuildConcatenation(IQLTreeFactoryRef ctxtRef,
                                        IQLExpressionRef rightRef,
                                        int line, int column)
 {
-  return IQLBuildBinaryFun(ctxtRef, "||", leftRef, rightRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(ConcatenationExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+				 SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildUnaryPlus(IQLTreeFactoryRef ctxtRef,
 				   IQLExpressionRef leftRef,
 				   int line, int column)
 {
-  return IQLBuildUnaryFun(ctxtRef, "+", leftRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(PlusExpr::createUnary(ctxt, unwrap(leftRef),
+			     SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildUnaryMinus(IQLTreeFactoryRef ctxtRef,
 				    IQLExpressionRef leftRef,
 				    int line, int column)
 {
-  return IQLBuildUnaryFun(ctxtRef, "-", leftRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(MinusExpr::createUnary(ctxt, unwrap(leftRef),
+			      SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildBitwiseAnd(IQLTreeFactoryRef ctxtRef,
@@ -1064,7 +1210,9 @@ IQLExpressionRef IQLBuildBitwiseAnd(IQLTreeFactoryRef ctxtRef,
 				    IQLExpressionRef rightRef,
 				    int line, int column)
 {
-  return IQLBuildBinaryFun(ctxtRef, "&", leftRef, rightRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(BitwiseAndExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+            SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildBitwiseOr(IQLTreeFactoryRef ctxtRef,
@@ -1072,7 +1220,9 @@ IQLExpressionRef IQLBuildBitwiseOr(IQLTreeFactoryRef ctxtRef,
 				   IQLExpressionRef rightRef,
 				   int line, int column)
 {
-  return IQLBuildBinaryFun(ctxtRef, "|", leftRef, rightRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(BitwiseOrExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+           SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildBitwiseXor(IQLTreeFactoryRef ctxtRef,
@@ -1080,14 +1230,18 @@ IQLExpressionRef IQLBuildBitwiseXor(IQLTreeFactoryRef ctxtRef,
 				    IQLExpressionRef rightRef,
 				    int line, int column)
 {
-  return IQLBuildBinaryFun(ctxtRef, "^", leftRef, rightRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(BitwiseXorExpr::create(ctxt, unwrap(leftRef), unwrap(rightRef),
+            SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildBitwiseNot(IQLTreeFactoryRef ctxtRef,
 				    IQLExpressionRef leftRef,
 				    int line, int column)
 {
-  return IQLBuildUnaryFun(ctxtRef, "~", leftRef, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(BitwiseNotExpr::create(ctxt, unwrap(leftRef),
+			      SourceLocation(line, column)));
 }
 
 
@@ -1101,7 +1255,7 @@ IQLExpressionRef IQLBuildCase(IQLTreeFactoryRef ctxtRef,
 }
 
 IQLExpressionRef IQLBuildCast(IQLTreeFactoryRef ctxtRef,
-			      IQLFieldTypeRef ty,
+			      IQLExpressionRef ty,
 			      IQLExpressionRef arg,
 			      int line, int column)
 {
@@ -1119,12 +1273,14 @@ IQLExpressionRef IQLBuildLiteralCast(IQLTreeFactoryRef ctxtRef,
   if (boost::algorithm::iequals("date", typeName)) {
     ty = DateType::Get(ctxt);
   } else if (boost::algorithm::iequals("datetime", typeName)) {
-    ty = DateType::Get(ctxt);
+    ty = DatetimeType::Get(ctxt);
   } else {
     throw std::runtime_error((boost::format("Invalid type: %1%") %
 			      typeName).str());
   }
-  return wrap(CastExpr::create(ctxt, ty, StringExpr::create(ctxt, arg, SourceLocation(line, column)),
+  return wrap(CastExpr::create(ctxt,
+                               TypeExpr::create(ctxt, ty, SourceLocation(line, column)),
+                               StringExpr::create(ctxt, arg, SourceLocation(line, column)),
 			       SourceLocation(line, column)));
 }
 
@@ -1144,6 +1300,14 @@ IQLExpressionRef IQLBuildInt32(IQLTreeFactoryRef ctxtRef,
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
   return wrap(Int32Expr::create(ctxt, text, SourceLocation(line, column)));  
+}
+
+IQLExpressionRef IQLBuildHexInt32(IQLTreeFactoryRef ctxtRef,
+				  const char * text,
+				  int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(HexInt32Expr::create(ctxt, text, SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildInt64(IQLTreeFactoryRef ctxtRef,
@@ -1199,8 +1363,9 @@ IQLExpressionRef IQLBuildIsNull(IQLTreeFactoryRef ctxtRef,
 				int isNot,
 				int line, int column)
 {
-  return IQLBuildUnaryFun(ctxtRef, isNot ? "_ISNOTNULL_" : "_ISNULL_",
-			  left, line, column);
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(IsNullExpr::create(ctxt, unwrap(left), isNot != 0,
+       SourceLocation(line, column)));
 }
 
 IQLExpressionRef IQLBuildDouble(IQLTreeFactoryRef ctxtRef,
@@ -1224,14 +1389,14 @@ IQLExpressionRef IQLBuildString(IQLTreeFactoryRef ctxtRef,
 				int line, int column)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
-  int l = strlen(text);
-  if (l < 2) {
-    throw std::runtime_error("Internal Error: Invalid text for "
-			     "IQL string literal");
-  }
-  std::string s(text+1, text+l-2);
-  boost::algorithm::replace_all(s, "''", "'");
-  return wrap(StringExpr::create(ctxt, s.c_str(), SourceLocation(line, column)));  
+  return wrap(StringExpr::create(ctxt, text, SourceLocation(line, column)));  
+}
+
+IQLExpressionRef IQLBuildWString(IQLTreeFactoryRef ctxtRef,
+         const char * text,
+         int line, int column)
+{
+  throw std::runtime_error("WSTRING_LITERAL not supported yet");
 }
 
 IQLExpressionRef IQLBuildVariable(IQLTreeFactoryRef ctxtRef,
@@ -1243,14 +1408,50 @@ IQLExpressionRef IQLBuildVariable(IQLTreeFactoryRef ctxtRef,
   return wrap(VariableExpr::create(ctxt, text, text2, SourceLocation(line, column)));  
 }
 
-IQLExpressionRef IQLBuildArrayRef(IQLTreeFactoryRef ctxtRef,
+IQLExpressionRef IQLBuildVariableLValue(IQLTreeFactoryRef ctxtRef,
 				  const char * text,
+				  int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(VariableLValueExpr::create(ctxt, text, SourceLocation(line, column)));  
+}
+
+IQLExpressionRef IQLBuildStructMemberRef(IQLTreeFactoryRef ctxtRef,
+                                         IQLExpressionRef s,
+                                         const char * member,
+                                         int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(StructMemberReferenceExpr::create(ctxt, unwrap(s), member, SourceLocation(line, column)));  
+}
+
+IQLExpressionRef IQLBuildStructMemberLValue(IQLTreeFactoryRef ctxtRef,
+                                            IQLExpressionRef s,
+                                            const char * member,
+                                            int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(StructMemberLValueExpr::create(ctxt, unwrap(s), member, SourceLocation(line, column)));  
+}
+
+IQLExpressionRef IQLBuildArrayRef(IQLTreeFactoryRef ctxtRef,
+                                  IQLExpressionRef arr,
 				  IQLExpressionRef idx,
 				  int line, int column)
 {
   DynamicRecordContext & ctxt(*unwrap(ctxtRef));
-  return wrap(ArrayReferenceExpr::create(ctxt, text, unwrap(idx), 
+  return wrap(ArrayReferenceExpr::create(ctxt, unwrap(arr), unwrap(idx), 
 					 SourceLocation(line, column)));  
+}
+
+IQLExpressionRef IQLBuildArrayLValue(IQLTreeFactoryRef ctxtRef,
+                                     IQLExpressionRef arr,
+                                     IQLExpressionRef idx,
+                                     int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(ArrayLValueExpr::create(ctxt, unwrap(arr), unwrap(idx), 
+                                      SourceLocation(line, column)));  
 }
 
 IQLExpressionRef IQLBuildArray(IQLTreeFactoryRef ctxtRef,
@@ -1462,171 +1663,186 @@ IQLFieldTypeRef IQLBuildArrayType(IQLTreeFactoryRef ctxtRef, const char * typeNa
   return IQLBuildArrayType(ctxtRef, unwrap(IQLBuildType(ctxtRef, typeName, false)), sz, nullable);
 }
 
-const char * IQLExpressionPrinter::getExpressionSymbol(uint32_t nodeType)
+IQLStatementListRef IQLStatementListCreate(IQLTreeFactoryRef ctxt)
 {
-  switch(nodeType) {
-  case IQLExpression::LOR: return "OR";
-  case IQLExpression::LAND: return "AND";
-  case IQLExpression::LNOT: return "NOT";
-  case IQLExpression::BAND: return "&";
-  case IQLExpression::BOR: return "|";
-  case IQLExpression::BXOR: return "^";
-  case IQLExpression::BNOT: return "~";
-  case IQLExpression::EQ: return "=";
-  case IQLExpression::GTN: return ">";
-  case IQLExpression::LTN: return "<";
-  case IQLExpression::GTEQ: return ">=";
-  case IQLExpression::LTEQ: return "<=";
-  case IQLExpression::NEQ: return "<>";
-  case IQLExpression::MINUS: return "-";
-  case IQLExpression::PLUS: return "+";
-  case IQLExpression::TIMES: return "*";
-  case IQLExpression::DIVIDE: return "/";
-  case IQLExpression::MOD: return "%";
-  case IQLExpression::CONCAT: return "||";
-  case IQLExpression::NIL: return "INTERVAL";
-  default:
-    throw std::runtime_error((boost::format("Unknown node type %1%") % nodeType).str());
+  return wrap(new std::vector<IQLStatement *> ());
+}
+
+void IQLStatementListFree(IQLTreeFactoryRef ctxt,
+                          IQLStatementListRef l)
+{
+  return delete unwrap(l);
+}
+
+void IQLStatementListAppend(IQLTreeFactoryRef ctxt,
+                            IQLStatementListRef l,
+                            IQLStatementRef e)
+{
+  unwrap(l)->push_back(unwrap(e));
+}
+
+IQLStatementRef IQLBuildStatementBlock(IQLTreeFactoryRef ctxtRef,
+                                       IQLStatementListRef stmts,
+                                       int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  auto s = unwrap(stmts);
+  return wrap(StatementBlock::create(ctxt, s->begin(), s->end(), SourceLocation(line, column)));  
+}
+
+IQLStatementRef IQLBuildBreak(IQLTreeFactoryRef ctxtRef, int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(BreakStatement::create(ctxt, SourceLocation(line, column)));
+}
+
+IQLStatementRef IQLBuildContinue(IQLTreeFactoryRef ctxtRef, int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(ContinueStatement::create(ctxt, SourceLocation(line, column)));
+}
+
+IQLStatementRef IQLBuildDeclare(IQLTreeFactoryRef ctxtRef, IQLExpressionRef val, const char * nm,
+                                int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(DeclareStatement::create(ctxt, unwrap(val), nm, SourceLocation(line, column)));
+}
+
+IQLStatementRef IQLBuildDeclareNoInit(IQLTreeFactoryRef ctxtRef,
+                                      IQLFieldTypeRef ty,
+                                      const char * nm,
+                                      int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(DeclareStatement::create(ctxt, unwrap(ty), nm, SourceLocation(line, column)));
+}
+
+IQLStatementRef IQLBuildIfThenElse(IQLTreeFactoryRef ctxtRef,
+                                   IQLExpressionRef cond,
+                                   IQLStatementRef thenStmts,
+                                   IQLStatementRef elseStmts,
+                                   int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(IfThenElseStatement::create(ctxt, unwrap(cond), unwrap(thenStmts),
+                                          unwrap(elseStmts), SourceLocation(line, column)));
+}
+
+IQLStatementRef IQLBuildReturn(IQLTreeFactoryRef ctxtRef, IQLExpressionRef val,
+                               int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(ReturnStatement::create(ctxt, unwrap(val), SourceLocation(line, column)));
+}
+
+IQLStatementRef IQLBuildAddFields(IQLTreeFactoryRef ctxtRef, 
+					 const char * recordName,
+                                 int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(FieldGlobStatement::create(ctxt, recordName, SourceLocation(line, column)));  
+}
+
+IQLStatementRef IQLBuildAddField(IQLTreeFactoryRef ctxtRef, 
+					const char * fieldName,
+					IQLExpressionRef expr,
+                                 int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(AddFieldStatement::create(ctxt, unwrap(expr), fieldName, SourceLocation(line, column)));  
+}
+
+IQLStatementRef IQLBuildQuotedId(IQLTreeFactoryRef ctxtRef, 
+					const char * pattern,
+					const char * names,
+                                 int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(FieldPatternStatement::create(ctxt, pattern, names, SourceLocation(line, column)));  
+}
+
+IQLStatementRef IQLBuildSet(IQLTreeFactoryRef ctxtRef,
+                            IQLExpressionRef lhs,
+                            IQLExpressionRef rhs,
+                            int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(SetStatement::create(ctxt, unwrap(lhs), unwrap(rhs), SourceLocation(line, column)));  
+}
+
+IQLStatementRef IQLBuildSwitch(IQLTreeFactoryRef ctxtRef,
+                               IQLExpressionRef expr,
+                               IQLStatementListRef cases,
+                               int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  auto s = unwrap(cases);
+  return wrap(SwitchStatement::create(ctxt, unwrap(expr), s->begin(), s->end(), SourceLocation(line, column)));  
+}
+
+IQLStatementRef IQLBuildSwitchCase(IQLTreeFactoryRef ctxtRef,
+                                   const char * expr,
+                                   IQLStatementListRef stmts,
+                                   int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  auto s = unwrap(stmts);
+  return wrap(SwitchCaseStatement::create(ctxt, expr, s->begin(), s->end(), SourceLocation(line, column)));  
+}
+
+IQLStatementRef IQLBuildWhile(IQLTreeFactoryRef ctxtRef,
+                              IQLExpressionRef cond,
+                              IQLStatementRef stmts,
+                              int line, int column)
+{
+  DynamicRecordContext & ctxt(*unwrap(ctxtRef));
+  return wrap(WhileStatement::create(ctxt, unwrap(cond), unwrap(stmts), SourceLocation(line, column)));  
+}
+
+void IQLGraphNodeStart(IQLGraphContextRef ctxt, const char * type, const char * name)
+{
+  unwrap(ctxt)->nodeStart(type, name);
+}
+
+void IQLGraphNodeBuildIntegerParam(IQLGraphContextRef ctxt, const char * name, const char * val)
+{
+  unwrap(ctxt)->nodeAddIntegerParam(name, val);
+}
+
+void IQLGraphNodeBuildStringParam(IQLGraphContextRef ctxt, const char * name, const char * val)
+{
+  unwrap(ctxt)->nodeAddStringParam(name, val);
+}
+
+void IQLGraphNodeComplete(IQLGraphContextRef ctxt)
+{
+  unwrap(ctxt)->nodeComplete();
+}
+
+void IQLGraphNodeBuildEdge(IQLGraphContextRef ctxt, const char * from, const char * to)
+{
+  unwrap(ctxt)->edgeBuild(from, to);
+}
+
+void IQLRecordTypeBuildField(IQLRecordTypeContextRef ctxt, 
+			     const char * name, 
+			     IQLFieldTypeRef ty)
+{
+  if (NULL == ty) {
+    throw std::runtime_error("Invalid primitive type");
   }
+  const FieldType * ft = unwrap(ty);
+  unwrap(ctxt)->buildField(name, ft);
 }
 
-IQLExpressionPrinter::IQLExpressionPrinter(std::ostream& ostr, IQLExpression * input)
+class IQLRecordTypeBuilder * unwrap(IQLRecordTypeContextRef val)
 {
-  mBinaryInfix.insert("+");
-  mBinaryInfix.insert("-");
-  mBinaryInfix.insert("*");
-  mBinaryInfix.insert("/");
-  mBinaryInfix.insert("%");
-  mUnaryInfix.insert("+");
-  mUnaryInfix.insert("-");
-
-  // Bottom up pattern replacement.
-  std::vector<std::pair<IQLExpression::arg_const_iterator, 
-    IQLExpression::arg_const_iterator> > stk;
-  std::vector<IQLExpression *> tmp;
-  tmp.push_back(input);
-  // Push the node with arguments on the stack.
-  stk.push_back(std::make_pair(tmp.begin(), tmp.end()));
-  while(stk.size()) {
-    if (stk.back().first != stk.back().second) {
-      IQLExpression * e = *stk.back().first;
-      switch (e->getNodeType()) {
-      case IQLExpression::ARRAYREF:
-	ostr << e->getStringData().c_str() << "[";  
-	break;
-      case IQLExpression::CALL:
-	if (isBinaryInfix(e)) {
-	  ostr << "(";
-	} else {
-	  ostr << e->getStringData().c_str() << "(";
-	}
-	break;
-      case IQLExpression::LAND:
-      case IQLExpression::LOR:
-      case IQLExpression::EQ:
-      case IQLExpression::NEQ:
-      case IQLExpression::GTEQ:
-      case IQLExpression::GTN:
-      case IQLExpression::LTEQ:
-      case IQLExpression::LTN:
-	  ostr << "(";
-	break;
-      case IQLExpression::CASE:
-	ostr << "CASE WHEN ";  
-	break;
-      case IQLExpression::NIL:
-	ostr << "NULL";  
-	break;
-      case IQLExpression::VARIABLE:
-      case IQLExpression::INT32:
-      case IQLExpression::INT64:
-      case IQLExpression::DOUBLE:
-      case IQLExpression::DECIMAL:
-	ostr << e->getStringData().c_str();
-	break;
-      case IQLExpression::STRING:
-	// TODO: Do we need to quotify?
-	ostr << e->getStringData().c_str();
-	break;
-      case IQLExpression::BOOLEAN:
-	ostr << (e->getBooleanData() ? "TRUE" : "FALSE");
-	break;
-      default:
-	break;
-      }
-      stk.push_back(std::make_pair(e->begin_args(), 
-				   e->end_args()));
-    } else {
-      stk.pop_back();
-      if (stk.size()) {
-	// Done with subtree at stk.back().first	
-	IQLExpression * e = *stk.back().first;
-	++stk.back().first;
-	if (stk.size() > 1) {
-	  IQLExpression * parent = *stk[stk.size()-2].first;
-	  switch (parent->getNodeType()) {
-	  case IQLExpression::ARRAYREF:
-	    ostr << "]";  
-	    break;
-	  case IQLExpression::CALL:
-	    if (isBinaryInfix(parent)) {
-	      ostr << ")";
-	      if(stk.back().first != stk.back().second) {
-		ostr << parent->getStringData().c_str() << "(";
-	      }
-	    } else {
-	      if(stk.back().first != stk.back().second) {
-		ostr << ",";
-	      } else {
-		ostr << ")";
-	      }
-	    }
-	    break;
-	  case IQLExpression::CASE:
-	    if (stk.back().first == stk.back().second) {
-	      ostr << " END";  
-	    } else if ((stk.back().first - parent->begin_args())  % 2) {
-	      ostr << " THEN ";
-	    } else if(stk.back().first+1 != stk.back().second) {
-	      ostr << " WHEN ";
-	    } else {
-	      ostr << " ELSE ";
-	    }
-	    break;	    
-	  case IQLExpression::LAND:
-	  case IQLExpression::LOR:
-	  case IQLExpression::EQ:
-	  case IQLExpression::NEQ:
-	  case IQLExpression::GTEQ:
-	  case IQLExpression::GTN:
-	  case IQLExpression::LTEQ:
-	  case IQLExpression::LTN:
-	      ostr << ")";
-	      if(stk.back().first != stk.back().second) {
-		ostr << getExpressionSymbol(parent->getNodeType()) << "(";
-	      }
-	    break;
-	break;
-	  default:
-	    break;
-	  }
-	}
-      }
-    }    
-  }
+  return reinterpret_cast<IQLRecordTypeBuilder *>(val);
 }
 
-bool IQLExpressionPrinter::isBinaryInfix(IQLExpression * e)
+IQLRecordTypeContextRef wrap(class IQLRecordTypeBuilder * val)
 {
-  return e->getNodeType() == IQLExpression::CALL &&
-    e->args_size() == 2 &&
-    mBinaryInfix.end() != mBinaryInfix.find(e->getStringData());
-}
-
-bool IQLExpressionPrinter::isUnaryPrefix(IQLExpression * e)
-{
-  return e->getNodeType() == IQLExpression::CALL &&
-    e->args_size() == 1 &&
-    mUnaryInfix.end() != mUnaryInfix.find(e->getStringData());
+  return reinterpret_cast<IQLRecordTypeContextRef>(val);
 }
 

@@ -809,8 +809,8 @@ public:
   /**
    * Get abstract syntax tree.
    */
-  static class IQLRecordConstructor * getAST(class DynamicRecordContext& recCtxt,
-					     const std::string& xfer);
+  static std::vector<class IQLStatement *> getAST(class DynamicRecordContext& recCtxt,
+                                                  const std::string& xfer);
 
   /**
    * Get the list of free variables in the transfer.

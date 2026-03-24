@@ -44,7 +44,6 @@
 
 #include "llvm/IR/IRBuilder.h"
 
-#include "LLVMGen.h"
 #include "TypeCheckContext.hh"
 
 namespace llvm {
@@ -71,14 +70,26 @@ class FieldAddress;
 class BitcpyOp;
 class BitsetOp;
 
-typedef struct IQLToLLVMRecordMapStruct * IQLToLLVMRecordMapRef;
-typedef const struct IQLRecordTypeStruct * IQLRecordTypeRef;
-typedef const struct IQLToLLVMValueStruct * IQLToLLVMValueRef;
+enum DecimalOpCode {
+  iqlOpDecPlus,
+  iqlOpDecMinus,
+  iqlOpDecTimes,
+  iqlOpDecDivide
+};
 
-IQLToLLVMRecordMapRef wrap(std::map<std::string, std::pair<std::string, const class RecordType*> > * r);
-std::map<std::string, std::pair<std::string, const class RecordType*> > * unwrap(IQLToLLVMRecordMapRef r);
-const class RecordType * unwrap(IQLRecordTypeRef r);
-IQLRecordTypeRef wrap(const class RecordType * r);
+enum VarcharOpCode {
+  iqlOpVarcharPlus
+};
+
+enum IQLToLLVMPredicate {
+  IQLToLLVMOpEQ,
+  IQLToLLVMOpNE,
+  IQLToLLVMOpGT,
+  IQLToLLVMOpGE,
+  IQLToLLVMOpLT,
+  IQLToLLVMOpLE,
+  IQLToLLVMOpRLike
+};
 
 class IQLToLLVMValue
 {
@@ -384,8 +395,8 @@ public:
   llvm::IRBuilder<> * Builder;
   class TreculSymbolTable * mSymbolTable;
   llvm::Function * Function;
-  IQLToLLVMRecordMapRef RecordArguments;
-  IQLRecordTypeRef OutputRecord;
+  std::map<std::string, std::pair<std::string, const class RecordType*> > * RecordArguments;
+  const RecordType * OutputRecord;
   std::map<const FieldType*, 
            std::vector<llvm::Value *> > * AllocaCache;
   CodeGenerationFunctionContext();
@@ -444,9 +455,9 @@ private:
   // String pool
   std::map<std::string, const IQLToLLVMValue *> StringPool;
   // Output record type for expression lists.
-  IQLRecordTypeRef IQLOutputRecord;
+  const RecordType * IQLOutputRecord;
   // Alias to record type mapping for inputs
-  IQLToLLVMRecordMapRef IQLRecordArguments;
+  std::map<std::string, std::pair<std::string, const class RecordType*> > * IQLRecordArguments;
   // Memcpy
   llvm::Value * LLVMMemcpyIntrinsic;
   // Memset
