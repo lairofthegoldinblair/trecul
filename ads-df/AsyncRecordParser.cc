@@ -122,9 +122,12 @@ void ImporterSpec::createDefaultImport(const RecordType * recordType,
       if (i > 2) {
 	// Last generator is at sz - i.  So make the last
 	// element a consumer at sz - i + 1.  Thus new size
-	// is sz-i+2.
+	// is sz-i+2.   Be sure to delete all of importers we are
+        // removing or replacing.
+        for(std::size_t j=sz - i + 1; j != sz; ++j) {
+          delete importers[j];
+        }
 	importers.resize(sz - i + 2);
-	delete importers[sz - i + 1];
 	importers[sz - i + 1] = new ConsumeTerminatedStringSpec(recordDelim);
       }
       break;

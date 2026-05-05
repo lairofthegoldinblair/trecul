@@ -672,5 +672,10 @@ BOOST_AUTO_TEST_CASE(testCustomImporter)
     BOOST_CHECK_EQUAL(304, 
 		      recTy.getFieldAddress("coop_id").getInt32(buf));
   }
+
+  for(auto s : specs) {
+    delete s;
+  }
+  recTy.getFree().free(buf);
 }
 

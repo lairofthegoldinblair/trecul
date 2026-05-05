@@ -975,6 +975,7 @@ RuntimeSortMergeOperator::RuntimeSortMergeOperator(RuntimeOperator::Services& se
 
 RuntimeSortMergeOperator::~RuntimeSortMergeOperator()
 {
+  delete mRuntimeContext;
 }
 
 void RuntimeSortMergeOperator::start()
@@ -1334,6 +1335,7 @@ RuntimeSortOperator::~RuntimeSortOperator()
   }
   delete mWriterType;
   delete mWriter;
+  delete mLessFunction.IQLCompare.Context;
   delete mRuntimeContext;
   freeMergeGraph();
 }
@@ -1664,6 +1666,7 @@ RuntimeSortOperator::RuntimeSortOperator(RuntimeOperator::Services& services,
 
 RuntimeSortOperator::~RuntimeSortOperator()
 {
+  delete mLessFunction.IQLCompare.Context;
   delete mRuntimeContext;
 }
 

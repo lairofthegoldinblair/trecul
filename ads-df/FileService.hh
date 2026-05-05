@@ -40,6 +40,8 @@ public:
 		   uint8_t * buffer,
 		   int32_t size,
 		   RuntimePort * completionPort);
+  void requestClose(FileServiceFile * f, RuntimePort * completionPort);
+
 
   // Utility routines for handling completion 
   // messages on ports; these are hiding the 

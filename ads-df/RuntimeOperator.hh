@@ -1466,7 +1466,11 @@ public:
     {
       return value(mHashPtr, next_page());
     }
-
+    // Is current value marked
+    bool marked()
+    {
+      return next_page()->marked(mHashPtr);
+    }
     static RecordBuffer& value(uint32_t * hashPtr, bucket_page * p)
     {
       return p->Value[hashPtr - &(p->Hash[0])];      
@@ -2277,7 +2281,7 @@ private:
   paged_hash_table::query_iterator<paged_hash_table::probe_predicate> mSearchIterator;
   RecordBuffer mNullProbeRecord;
   RecordBuffer mNullTableRecord;
-  paged_hash_table::scan_not_marked_iterator mScanIterator;
+  paged_hash_table::scan_all_iterator mScanIterator;
   const RuntimeHashJoinOperatorType & getHashJoinType() { return *reinterpret_cast<const RuntimeHashJoinOperatorType *>(&getOperatorType()); }
 
   RecordBuffer onTableNonMatch(RecordBuffer tableBuf);

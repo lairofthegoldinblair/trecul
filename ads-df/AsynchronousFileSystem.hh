@@ -67,6 +67,7 @@ template <class _FileTraits>
 class AsynchronousFileSystem
 {
 public:
+  typedef _FileTraits file_traits;
   typedef typename _FileTraits::file_type file_type;
   typedef AsynchronousFileSystemReadHandler<file_type> handler_type;
 private:

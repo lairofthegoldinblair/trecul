@@ -143,7 +143,7 @@ HttpOperatorProcess::HttpOperatorProcess(const std::string& program)
 					    "executable: %1%.  "
 					    "Check installation") % exe.string()).str());
 
-  mProcess.reset(new boost::process::child(exe.string(), "--file", mTestFile.getName()));
+  mProcess.reset(new boost::process::child(exe.string(), "--file", mTestFile.getName(), "--loglevel", "trace"));
   
   // Wait for process to start
   boost::asio::io_service io_service;

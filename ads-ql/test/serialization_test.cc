@@ -172,7 +172,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeSimpleFlatBufferOneShot, SyncSerializeAsyn
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -187,7 +187,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeSimpleFlatBufferTwoBites, SyncSerializeAsy
   BOOST_CHECK_EQUAL(output, serializeBuf.data()+(serializeBuf.size()/2));
   ret = serializer.serialize(outputBuf, output, serializeBuf.data()+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -200,7 +200,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeSimpleFlatBufferOneByteAtATime, SyncSerial
   for(std::size_t i=0; i<serializeBuf.size(); ++i) {
     bool ret = serializer.serialize(outputBuf, output, output+1, *state.get(), &runtimeCtxt);
     BOOST_CHECK_EQUAL(ret, i+1 == serializeBuf.size());
-    BOOST_CHECK_EQUAL(output, serializeBuf.data()+i+1);
+    BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+i+1));
   }
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
@@ -275,7 +275,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeSimpleFlatBufferNullableOneShot, SyncSeria
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -316,7 +316,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeSmallVarcharOneShot, SyncSerializeAsyncDes
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -357,7 +357,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeSmallNullableVarcharOneShot, SyncSerialize
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -399,7 +399,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNullVarcharOneShot, SyncSerializeAsyncDese
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -447,7 +447,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeLargeVarcharFirstPositionOneShot, SyncSeri
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()], &large[0]));
 }
@@ -499,7 +499,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeLargeVarcharMiddlePositionOneShot, SyncSer
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()], &large[0]));
 }
@@ -551,7 +551,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeLargeVarcharLastPositionOneShot, SyncSeria
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()], &large[0]));
 }
@@ -603,7 +603,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNullableLargeVarcharOneShot, SyncSerialize
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()], &large[0]));
 }
@@ -660,7 +660,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeTwoLargeVarcharOneShot, SyncSerializeAsync
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()], &large1[0]));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()+large1.size()+1], &large2[0]));
@@ -678,13 +678,13 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeTwoLargeVarcharThreeBites, SyncSerializeAs
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, serializeBuf.data() + outputType->GetAllocSize() + 5, *state.get(), &runtimeCtxt);
   BOOST_CHECK(!ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data() + outputType->GetAllocSize() + 5);
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data() + outputType->GetAllocSize() + 5));
   ret = serializer.serialize(outputBuf, output, serializeBuf.data() + outputType->GetAllocSize() + large1.size() + 5, *state.get(), &runtimeCtxt);
   BOOST_CHECK(!ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data() + outputType->GetAllocSize() + large1.size() + 5);
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data() + outputType->GetAllocSize() + large1.size() + 5));
   ret = serializer.serialize(outputBuf, output, serializeBuf.data() + serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data() + serializeBuf.size()); 
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data() + serializeBuf.size())); 
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()], &large1[0]));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()+large1.size()+1], &large2[0]));
@@ -708,6 +708,7 @@ BOOST_FIXTURE_TEST_CASE(DeserializeTwoLargeVarcharOneShot, SyncSerializeAsyncDes
                               &decimalVal, 16));
   BOOST_REQUIRE_EQUAL(0, strcmp(large1.c_str(),outputType->getFieldAddress("c").getVarcharPtr(deserializeBuf)->c_str()));
   BOOST_REQUIRE_EQUAL(0, strcmp(large2.c_str(),outputType->getFieldAddress("d").getVarcharPtr(deserializeBuf)->c_str()));
+  outputType->getFree().free(deserializeBuf);
 }
 
 BOOST_FIXTURE_TEST_CASE(DeserializeTwoLargeVarcharThreeBites, SyncSerializeAsyncDeserializeTestFixture)
@@ -734,6 +735,7 @@ BOOST_FIXTURE_TEST_CASE(DeserializeTwoLargeVarcharThreeBites, SyncSerializeAsync
                               &decimalVal, 16));
   BOOST_REQUIRE_EQUAL(0, strcmp(large1.c_str(),outputType->getFieldAddress("c").getVarcharPtr(deserializeBuf)->c_str()));
   BOOST_REQUIRE_EQUAL(0, strcmp(large2.c_str(),outputType->getFieldAddress("d").getVarcharPtr(deserializeBuf)->c_str()));
+  outputType->getFree().free(deserializeBuf);
 }
 
 BOOST_FIXTURE_TEST_CASE(SerializeFixedArrayCopyableType, SyncSerializeAsyncDeserializeTestFixture)
@@ -754,7 +756,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeFixedArrayCopyableTypeOneShot, SyncSeriali
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -791,7 +793,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNullableFixedArrayCopyableTypeOneShot, Syn
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -829,7 +831,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeFixedArrayNullableCopyableTypeOneShot, Syn
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -867,7 +869,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNullableFixedArrayNullableCopyableTypeOneS
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -913,7 +915,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeFixedArrayNonCopyableTypeOneShot, SyncSeri
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()], &large[0]));
 }
@@ -954,7 +956,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNullFixedArrayCopyableTypeOneShot, SyncSer
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -992,7 +994,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeVariableArrayCopyableTypeOneShot, SyncSeri
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[outputType->GetAllocSize()], &data[0], sizeof(data)));
 }
@@ -1032,7 +1034,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNullableVariableArrayCopyableTypeOneShot, 
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[outputType->GetAllocSize()], &data[0], sizeof(data)));
 }
@@ -1075,7 +1077,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeVariableArrayNullableCopyableTypeOneShot, 
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[outputType->GetAllocSize()], &data[0], sizeof(data)));
 }
@@ -1120,7 +1122,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNullableVariableArrayNullableCopyableTypeO
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[outputType->GetAllocSize()], &data[0], sizeof(data)));
 }
@@ -1171,7 +1173,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeVariableArrayNonCopyableTypeOneShot, SyncS
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(5, reinterpret_cast<const Varchar *>(&serializeBuf[outputType->GetAllocSize()])->size());
   BOOST_CHECK_EQUAL(0, ::strcmp("small", reinterpret_cast<const Varchar *>(&serializeBuf[outputType->GetAllocSize()])->c_str()));
@@ -1225,7 +1227,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNullableVariableArrayNonCopyableTypeOneSho
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(5, reinterpret_cast<const Varchar *>(&serializeBuf[outputType->GetAllocSize()])->size());
   BOOST_CHECK_EQUAL(0, ::strcmp("small", reinterpret_cast<const Varchar *>(&serializeBuf[outputType->GetAllocSize()])->c_str()));
@@ -1280,7 +1282,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeVariableArrayNullableNonCopyableTypeOneSho
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(5, reinterpret_cast<const Varchar *>(&serializeBuf[outputType->GetAllocSize()])->size());
   BOOST_CHECK_EQUAL(0, ::strcmp("small", reinterpret_cast<const Varchar *>(&serializeBuf[outputType->GetAllocSize()])->c_str()));
@@ -1337,7 +1339,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNullableVariableArrayNullableNonCopyableTy
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(5, reinterpret_cast<const Varchar *>(&serializeBuf[outputType->GetAllocSize()])->size());
   BOOST_CHECK_EQUAL(0, ::strcmp("small", reinterpret_cast<const Varchar *>(&serializeBuf[outputType->GetAllocSize()])->c_str()));
@@ -1383,7 +1385,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNestedRecordCopyableTypesOneShot, SyncSeri
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -1431,7 +1433,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNestedRecordNullableCopyableTypesOneShot, 
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -1483,7 +1485,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNestedRecordSmallVarcharOneShot, SyncSeria
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -1532,7 +1534,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNestedRecordSmallNullableVarcharOneShot, S
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -1588,7 +1590,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNestedRecordLargeVarcharOneShot, SyncSeria
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()], &large[0]));
 }
@@ -1648,7 +1650,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNestedRecordLargeNullableVarcharOneShot, S
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()], &large[0]));
 }
@@ -1709,7 +1711,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeNestedRecordNullVarcharOneShot, SyncSerial
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -1769,7 +1771,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeFixedArrayOfNestedRecordOneShot, SyncSeria
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
   BOOST_CHECK_EQUAL(0, ::strcmp(&serializeBuf[outputType->GetAllocSize()], &large[0]));
 }
@@ -1850,7 +1852,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeVariableArrayOfNestedRecordOneShot, SyncSe
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[0], outputBuf.Ptr, outputType->GetAllocSize()));
   // Yeah, this says get getVarcharPtr but it also gets a pointer to the VarArray...
   BOOST_CHECK_EQUAL(0, ::memcmp(&serializeBuf[outputType->GetAllocSize()], outputType->getFieldAddress("b").getVarcharPtr(outputBuf)->c_str(), 2*rowTy->GetAllocSize()));
@@ -1920,7 +1922,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeFixedArrayOfFixedArraysOneShot, SyncSerial
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -1938,6 +1940,7 @@ BOOST_FIXTURE_TEST_CASE(DeserializeFixedArrayOfFixedArraysOneShot, SyncSerialize
   BOOST_CHECK(checkFieldEqual("a", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("b", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("c", outputBuf, deserializeBuf));
+  outputType->getFree().free(deserializeBuf);
 }
 
 BOOST_FIXTURE_TEST_CASE(SerializeFixedArrayOfNullableFixedArrays, SyncSerializeAsyncDeserializeTestFixture)
@@ -1961,7 +1964,7 @@ BOOST_FIXTURE_TEST_CASE(AsyncSerializeFixedArrayOfNullableFixedArraysOneShot, Sy
   char * output = serializeBuf.data();
   bool ret = serializer.serialize(outputBuf, output, output+serializeBuf.size(), *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(output, serializeBuf.data()+serializeBuf.size());
+  BOOST_CHECK_EQUAL((void *) output, (void *) (serializeBuf.data()+serializeBuf.size()));
   BOOST_CHECK_EQUAL(0, ::memcmp(serializeBuf.data(), outputBuf.Ptr, outputType->GetAllocSize()));
 }
 
@@ -1979,6 +1982,7 @@ BOOST_FIXTURE_TEST_CASE(DeserializeFixedArrayOfNullableFixedArraysOneShot, SyncS
   BOOST_CHECK(checkFieldEqual("a", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("b", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("c", outputBuf, deserializeBuf));
+  outputType->getFree().free(deserializeBuf);
 }
 
 BOOST_FIXTURE_TEST_CASE(SerializeFixedArrayOfVariableArrays, SyncSerializeAsyncDeserializeTestFixture)
@@ -2027,6 +2031,7 @@ BOOST_FIXTURE_TEST_CASE(DeserializeFixedArrayOfVariableArraysOneShot, SyncSerial
   BOOST_CHECK(checkFieldEqual("a", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("b", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("c", outputBuf, deserializeBuf));
+  outputType->getFree().free(deserializeBuf);
 }
 
 BOOST_FIXTURE_TEST_CASE(SerializeVariableArrayOfFixedArrays, SyncSerializeAsyncDeserializeTestFixture)
@@ -2075,6 +2080,7 @@ BOOST_FIXTURE_TEST_CASE(DeserializeVariableArrayOfFixedArraysOneShot, SyncSerial
   BOOST_CHECK(checkFieldEqual("a", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("b", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("c", outputBuf, deserializeBuf));
+  outputType->getFree().free(deserializeBuf);
 }
 
 BOOST_FIXTURE_TEST_CASE(SerializeVariableArrayOfVariableArrays, SyncSerializeAsyncDeserializeTestFixture)
@@ -2127,6 +2133,7 @@ BOOST_FIXTURE_TEST_CASE(DeserializeVariableArrayOfVariableArraysOneShot, SyncSer
   BOOST_CHECK(checkFieldEqual("a", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("b", outputBuf, deserializeBuf));
   BOOST_CHECK(checkFieldEqual("c", outputBuf, deserializeBuf));
+  outputType->getFree().free(deserializeBuf);
 }
 
 class Utils
@@ -2177,7 +2184,7 @@ BOOST_FIXTURE_TEST_CASE(DeserializeMultipleRecords, SyncSerializeAsyncDeserializ
   members.emplace_back("f", CharType::Get(ctxt, 8));
   members.emplace_back("g", DatetimeType::Get(ctxt));
   members.emplace_back("h", DateType::Get(ctxt));
-  outputType = new RecordType(ctxt, members);
+  outputType = RecordType::get(ctxt, members);
   state = TreculSerializationState::get(outputType);
   BOOST_CHECK_EQUAL(buf.size(), 3U*outputType->GetAllocSize() + expected1.size() + expected2.size() + expected3.size() + 3U);
   auto deserializer = makeDeserializer();
@@ -2213,7 +2220,7 @@ BOOST_FIXTURE_TEST_CASE(DeserializeMultipleRecords, SyncSerializeAsyncDeserializ
   state->state = 0;
   ret = deserializer.deserialize(deserializeBuf, input, inputEnd, *state.get(), &runtimeCtxt);
   BOOST_CHECK(ret);
-  BOOST_CHECK_EQUAL(input, inputStart + 3*outputType->GetAllocSize() + expected1.size() + expected2.size() + expected3.size() + 3);
+  BOOST_CHECK_EQUAL((void *) input, (void *) (inputStart + 3*outputType->GetAllocSize() + expected1.size() + expected2.size() + expected3.size() + 3));
   BOOST_CHECK_EQUAL(99293433, outputType->getInt32("a", deserializeBuf));
   BOOST_CHECK_EQUAL(77717273732774273LL, outputType->getInt64("b", deserializeBuf));
   BOOST_CHECK_EQUAL(0, ::memcmp(&expectedDec3, outputType->getFieldAddress("c").getDecimalPtr(deserializeBuf), sizeof(decimal128)));

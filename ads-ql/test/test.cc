@@ -1398,6 +1398,7 @@ BOOST_AUTO_TEST_CASE(testRowConstructorWithNullableField)
   ++addressIt;
   BOOST_CHECK(!addressIt->isNull(innerBuf));
   BOOST_CHECK_EQUAL(0, ::strcmp("small", addressIt->getCharPtr(innerBuf)));
+  t1.getTarget()->getFree().free(outputBuf);
 }
 
 BOOST_AUTO_TEST_CASE(testIQLArrayRowConstructor)

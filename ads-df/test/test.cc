@@ -1253,11 +1253,14 @@ BOOST_AUTO_TEST_CASE(testPagedHashTable)
     int32_t cnt=0;
     while(sit.next(&runtimeCtxt)) {
       cnt += 1;
+      recTy.getFree().free(sit.value());
     }
     // Pretty weak check, at least we have
     // the right number of records.
     BOOST_CHECK_EQUAL(cnt, 100002);
   }
+  rhsTy.getFree().free(rhs1);
+  rhsTy.getFree().free(rhs2);
 }
 
 BOOST_AUTO_TEST_CASE(testBlockBufferStream)
@@ -1932,6 +1935,8 @@ BOOST_AUTO_TEST_CASE(testLessThan1)
   recTy.setInt32("coop_id", 1231, B);
   BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
   BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));
+  recTy.getFree().free(A);
+  recTy.getFree().free(B);
   delete lessThanFun;  
 }
 
@@ -1995,6 +2000,8 @@ BOOST_AUTO_TEST_CASE(testLessThan2)
   recTy.setInt32("coop_id", 1231, B);
   BOOST_CHECK_EQUAL(0, lessThan.execute(A,B,&runtimeCtxt));
   BOOST_CHECK_EQUAL(0, lessThan.execute(B,A,&runtimeCtxt));  
+  recTy.getFree().free(A);
+  recTy.getFree().free(B);
   delete lessThanFun;
 }
 
@@ -2777,7 +2784,7 @@ make_generate_operator_type(PlanCheckContext & ctxt, const std::string & prog, u
 
   std::vector<AliasedRecordType> inputAndEmpty;
   inputAndEmpty.push_back(AliasedRecordType("input", &emptyType));
-  inputAndEmpty.push_back(AliasedRecordType("input", &emptyType));
+  inputAndEmpty.push_back(AliasedRecordType("empty", &emptyType));
   TreculFunction f(ctxt, ctxt.getCodeGenerator(), "myLoopUpperBound", inputAndEmpty, 
                    boost::lexical_cast<std::string>(upperBound));
 

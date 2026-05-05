@@ -1381,7 +1381,7 @@ class GenericAsyncReadOperator : public RuntimeOperator
 private:
   typedef _OpType operator_type;
 
-  enum State { START, OPEN_FILE, READ_BLOCK, WRITE_BLOCK, WRITE_EOF };
+  enum State { START, OPEN_FILE, CLOSE_FILE, READ_BLOCK, WRITE_BLOCK, WRITE_EOF };
   State mState;
 
   // The list of files from which I read; retrieved
@@ -1511,8 +1511,11 @@ public:
 	}
 	// Either EOF or parse failure.  In either
 	// case done with this file.
-	// TODO: FIXME
-	// delete mFileHandle;
+        mFileService->requestClose(mFileHandle, getCompletionPorts()[0]);
+        requestCompletion(0);
+        mState = CLOSE_FILE;
+        return;
+      case CLOSE_FILE:
 	mFileHandle = NULL;
       }
       // Done with the last file so output EOS.

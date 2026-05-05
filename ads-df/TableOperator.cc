@@ -550,6 +550,9 @@ TableOutput::TableOutput(const TableMetadata * metadata,
 
 TableOutput::~TableOutput()
 {
+  for(auto cg : mColumnGroups) {
+    delete cg;
+  }
 }
 
 ColumnGroupOutput * TableOutput::create(PlanCheckContext& ctxt,

@@ -2835,22 +2835,41 @@ void RuntimeHashJoinOperator::onEvent(RuntimePort * port)
       }
     }
 
-    if (getHashJoinType().mJoinType == HashJoin::FULL_OUTER ||
-	getHashJoinType().mJoinType == HashJoin::LEFT_OUTER) {
-      // Find any non matchers in the table and output.
-      mScanIterator.init(mTable);
-      while(mScanIterator.next(mRuntimeContext)) {
-	// Write the contents of the table
-	requestWrite(0);
-	mState = WRITE_TABLE_UNMATCHED;
-	return;
+    mScanIterator.init(mTable);
+    while(mScanIterator.next(mRuntimeContext)) {
+      if ((getHashJoinType().mJoinType == HashJoin::FULL_OUTER ||
+           getHashJoinType().mJoinType == HashJoin::LEFT_OUTER) &&
+          !mScanIterator.marked()) {
+        // Write the contents of the table
+        requestWrite(0);
+        mState = WRITE_TABLE_UNMATCHED;
+        return;
       case WRITE_TABLE_UNMATCHED: 
-	{
-	  RecordBuffer out = onTableNonMatch(mScanIterator.value());
-	  write(port, out, false);
-	}
+        {
+          RecordBuffer out = onTableNonMatch(mScanIterator.value());
+          write(port, out, false);
+        }
+      } else {
+        getHashJoinType().mTableFree.free(mScanIterator.value());
       }
     }
+    // if (getHashJoinType().mJoinType == HashJoin::FULL_OUTER ||
+    //     getHashJoinType().mJoinType == HashJoin::LEFT_OUTER) {
+    //   // Find any non matchers in the table and output.
+    //   mScanUnmarkedIterator.init(mTable);
+    //   while(mScanUnmarkedIterator.next(mRuntimeContext)) {
+    //     // Write the contents of the table
+    //     requestWrite(0);
+    //     mState = WRITE_TABLE_UNMATCHED;
+    //     return;
+    //   case WRITE_TABLE_UNMATCHED: 
+    //     {
+    //       RecordBuffer out = onTableNonMatch(mScanUnmarkedIterator.value());
+    //       write(port, out, false);
+    //     }
+    //   }
+    // } else {
+    // }
 
     requestWrite(0);
     mState = WRITE_EOS;
@@ -4095,9 +4114,10 @@ void RuntimeSortMergeJoinOperator::onEvent(RuntimePort * port)
 	return;
       case WRITE_RIGHT_NON_MATCH_DRAIN:
 	onRightNonMatch(port);
-	// TODO: Is this correct for RIGHT_OUTER or
-	// is it a memory leak????
-	mRightInput = RecordBuffer(NULL);
+        if (getMyOperatorType().mJoinType == SortMergeJoin::FULL_OUTER ||
+            getMyOperatorType().mJoinType == SortMergeJoin::RIGHT_ANTI_SEMI) {
+          mRightInput = RecordBuffer(NULL);
+        }
       } 
       if (mRightInput != RecordBuffer(NULL))
 	getMyOperatorType().mRightFree.free(mRightInput);

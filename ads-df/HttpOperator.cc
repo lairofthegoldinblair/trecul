@@ -325,6 +325,7 @@ HttpSession::HttpSession(boost::asio::ip::tcp::socket * socket,
 HttpSession::~HttpSession()
 {
   close();
+  delete mSocket;
   if (mFreeBuffer) {
     delete [] mIO;
     mIO = NULL;
@@ -340,10 +341,9 @@ HttpSession::~HttpSession()
 
 void HttpSession::close() 
 {
-  if (mSocket) {
+  if (mSocket && mSocket->is_open()) {
+    BOOST_LOG_TRIVIAL(trace) << "[HttpSession::close] Session " << this << " closing socket";
     mSocket->close();
-    delete mSocket;
-    mSocket = NULL;
   }
 }
 
@@ -389,16 +389,16 @@ void HttpSession::handleRead(HttpSession * session,
 			     const boost::system::error_code& error,
 			     size_t bytes_transferred)
 {
-  BOOST_LOG_TRIVIAL(trace) << "[HttpSession::handleRead] Read " << bytes_transferred << " bytes on " <<
+  BOOST_LOG_TRIVIAL(trace) << "[HttpSession::handleRead] Session " << session << " read " << bytes_transferred << " bytes on " <<
     (session->mSocket->is_open() ? "open" : "closed") << " socket " <<
-    session->mSocket->local_endpoint() << " -> " << session->mSocket->remote_endpoint() << ". Error " << error.message() << std::endl;
+    session->mSocket->local_endpoint() << " -> " << session->mSocket->remote_endpoint() << ". Error " << error.message();
   // Just enqueue for later execution.
   RecordBuffer buf;
   buf.Ptr = (uint8_t *) session;
   session->mIOSize = bytes_transferred;
   if (error) {
-    BOOST_LOG_TRIVIAL(trace) << "[HttpSession::handleRead] Closing socket " <<
-      session->mSocket->local_endpoint() << " -> " << session->mSocket->remote_endpoint() << " because of error " << error.message() << std::endl;
+    BOOST_LOG_TRIVIAL(trace) << "[HttpSession::handleRead] Session " << session << " closing socket " <<
+      session->mSocket->local_endpoint() << " -> " << session->mSocket->remote_endpoint() << " because of error " << error.message();
     session->mSocket->shutdown(boost::asio::ip::tcp::socket::shutdown_both);
     session->mSocket->close();
   }
@@ -479,20 +479,20 @@ void HttpSession::onEvent(HttpSessionCallback * p)
   switch(mState) {
   case START:
     if (mSocket->is_open()) {
-      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Starting session on open socket " << mSocket->local_endpoint() << " -> " << mSocket->remote_endpoint() << std::endl;
+      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Starting session " << this << " on open socket " << mSocket->local_endpoint() << " -> " << mSocket->remote_endpoint();
     } else {
-      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Starting session on closed socket" << std::endl;
+      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Starting session " << this << " on closed socket";
     }
     while(mSocket->is_open()) {
-      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] About to make read request" << std::endl;        
+      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Session " << this << " about to make read request";        
       // Increment count first because request could be completed by another thread prior to
       // our getting a chance to increment
       p->onReadWriteRequest();
       // Read and process request
       if (mSocket->is_open()) {
-        BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] async read on open socket " << mSocket->local_endpoint() << " -> " << mSocket->remote_endpoint() << std::endl;
+        BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Session " << this << " async read on open socket " << mSocket->local_endpoint() << " -> " << mSocket->remote_endpoint();
       } else {
-        BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] async read  on closed socket" << std::endl;
+        BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Session " << this << " async read  on closed socket";
       }
       mSocket->async_read_some(boost::asio::buffer(mIO, 8192),
 			       boost::bind(&HttpSession::handleRead, 
@@ -506,7 +506,9 @@ void HttpSession::onEvent(HttpSessionCallback * p)
       {
 	size_t sz = ::http_parser_execute(&mParser, &mParserSettings, mIO,
 					  mIOSize);
-        BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Parsing request data of length " << mIOSize << ": " << std::string(mIO, mIO + mIOSize) << " returned " << http_errno_name(HTTP_PARSER_ERRNO(&mParser)) << std::endl;
+        BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Session " << this << " parsing request data of length "
+                                 << mIOSize << ": " << std::string(mIO, mIO + mIOSize)
+                                 << " returned " << http_errno_name(HTTP_PARSER_ERRNO(&mParser));
 	if (HTTP_PARSER_ERRNO(&mParser) != HPE_OK) {
 	  if (mUrlState == URL_INVALID) {
 	    setResponseNotFound();
@@ -515,27 +517,26 @@ void HttpSession::onEvent(HttpSessionCallback * p)
 	  }
 	  break;
 	} else if (mParser.upgrade) {
-          BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Upgrade requested" << std::endl;
+          BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Session " << this << " upgrade requested";
 	  setResponseNotImplemented();
 	  break;
 	} else if (mMessageComplete) {
 	  setResponseOK();
-          BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Request complete sending OK" << std::endl;
+          BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Session " << this << " request complete sending OK";
 	  break;
 	}
       }
-      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Request still open" << std::endl;        
     }
 
     if (mSocket->is_open()) {
-      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Done parsing request on open socket " << mSocket->local_endpoint() << " -> " << mSocket->remote_endpoint() << std::endl;
+      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Session " << this << " done parsing request on open socket " << mSocket->local_endpoint() << " -> " << mSocket->remote_endpoint();
     } else {
-      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Done parsing request on closed socket" << std::endl;
+      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Session " << this << " done parsing request on closed socket";
     }
 
     // Send response
     while(mIOSize > 0 && mSocket->is_open()) {
-      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Writing " << mIOSize << " bytes of response data" <<std::endl;
+      BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Session " << this << " writing " << mIOSize << " bytes of response data" <<std::endl;
       // Increment count first because request could be completed by another thread prior to
       // our getting a chance to increment
       p->onReadWriteRequest();
@@ -551,7 +552,7 @@ void HttpSession::onEvent(HttpSessionCallback * p)
     case WRITE:
       mResponseComplete = (0 == mIOSize);
       if (mResponseComplete) {
-        BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Response completely written" << std::endl;
+        BOOST_LOG_TRIVIAL(trace) << "[HttpSession::onEvent] Session " << this << " response completely written";
       }
     }
 
@@ -849,7 +850,7 @@ public:
     if (error) {
       buf.Ptr = reinterpret_cast<uint8_t *>(new boost::system::error_code (error));
     }
-    BOOST_LOG_TRIVIAL(trace) << "[HttpReadOperator::handleAccept] Connection accepted with error " << error << std::endl;
+    BOOST_LOG_TRIVIAL(trace) << "[HttpReadOperator::handleAccept] Connection accepted with error " << error;
     // TODO: Error handling...
     onAcceptCompletion(buf);
   }
@@ -857,12 +858,12 @@ public:
   void handleShutdown(const boost::system::error_code& error,
 		      int signal_number)
   {
-    BOOST_LOG_TRIVIAL(trace) << "Received shutdown request (signal number = " << signal_number << ")" << std::endl;
+    BOOST_LOG_TRIVIAL(trace) << "[HttpReadOperator::handleShutdown] Received shutdown request (signal number = " << signal_number << ")";
     if (mAcceptor) {
       boost::system::error_code ec;
       mAcceptor->close(ec);
       if (ec) {
-	BOOST_LOG_TRIVIAL(warning) << "Failed cancelling accept" << std::endl;
+	BOOST_LOG_TRIVIAL(warning) << "[HttpReadOperator::handleShutdown] Failed cancelling accept";
       }
     }
     mListening.store(false);
@@ -913,7 +914,7 @@ public:
                                           getAcceptServiceCompletionFifo(),
                                           boost::asio::placeholders::error));
     } else {
-      BOOST_LOG_TRIVIAL(trace) << "Turned off listening on port" << std::endl;
+      BOOST_LOG_TRIVIAL(trace) << "[HttpReadOperator::accept] Turned off listening on port";
     }
   }
 
@@ -931,13 +932,13 @@ public:
     uint32_t requestState(0);
     ServiceCompletionPort * enabledCompletionPorts = nullptr;
     if (mNumAsyncRequests > 0) {
-      BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::requestIOs] read on ReadWriteServiceCompletionPort" << std::endl;
+      BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::requestIOs] requesting read on ReadWriteServiceCompletionPort";
       requestState |= 1;
       enabledCompletionPorts = getReadWriteServiceCompletionPort();
       enabledCompletionPorts->request_init();
     }
     if (mNumAsyncAccepts > 0) {
-      BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::requestIOs] read on AcceptServiceCompletionPort" << std::endl;
+      BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::requestIOs] requesting read on AcceptServiceCompletionPort";
       requestState |= 1;
       if (nullptr == enabledCompletionPorts) {
         enabledCompletionPorts = getAcceptServiceCompletionPort();
@@ -953,7 +954,7 @@ public:
     }
     switch(requestState) {
     case 0:
-      BOOST_LOG_TRIVIAL(trace) << "HttpOperator::requestIOs: No longer accepting new connections and no open sessions. Shutting down operator." << std::endl;
+      BOOST_LOG_TRIVIAL(trace) << "[HttpOperator::requestIOs] No longer accepting new connections and no open sessions. Shutting down operator.";
       return false;
     case 1:
       requestCompletion(*enabledCompletionPorts);
@@ -1028,7 +1029,7 @@ public:
             // Is this a new connection or a read for a session
             // Start the session and accept a new connection.	    
             if (mBuffer == RecordBuffer()) {
-              BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::onEvent] Creating session from accepted socket" <<std::endl;
+              BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::onEvent] Opening session " << mAcceptingSession << " from accepted socket";
               mAcceptingSession->onEvent(this);
               enqueueOpen(*mAcceptingSession);
               mAcceptingSession = nullptr;
@@ -1036,9 +1037,9 @@ public:
               auto error = reinterpret_cast<boost::system::error_code *>(mBuffer.Ptr);
               // if (*error != boost::system::error_code(ECANCELED, boost::system::system_category())) {
               if (*error != boost::asio::error::make_error_code(boost::asio::error::operation_aborted)) {
-                BOOST_LOG_TRIVIAL(warning) << "Received error in asynchronous accept: " << *error << std::endl;
+                BOOST_LOG_TRIVIAL(warning) << "[RuntimeHttpOperator::onEvent] Received error in asynchronous accept: " << *error;
               } else {
-                BOOST_LOG_TRIVIAL(trace) << "Received error in asynchronous accept: " << *error << std::endl;
+                BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::onEvent] Received error in asynchronous accept: " << *error;
               }
               delete error;
               delete mAcceptingSession;
@@ -1052,14 +1053,18 @@ public:
             --mNumAsyncRequests;
             read(port, mBuffer);
 	    HttpSession & session (getSession(mBuffer));
+            BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::onEvent] Session " << &session << " IO completion";
 	    session.onEvent(this);
 	    if (session.buffers().size() > 0) {
+              BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::onEvent] Session " << &session << " has output ready to write";
 	      enqueueOutputReady(session);
 	    } else if (session.error()) {
+              BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::onEvent] Session " << &session << " has error";
 	      dequeue(session);
 	      // TODO: Logging....
 	      delete &session;
 	    } else if (session.completed()) {
+              BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::onEvent] Session " << &session << " is completed";
 	      if (session.buffers().size() == 0) {
 		// Quite likely that we don't have an output here.  The output
 		// was already sent and we have been writing our HTTP response since
@@ -1069,7 +1074,9 @@ public:
 	      } else {
 		enqueueCompleted(session);
 	      }
-	    }
+	    } else {
+              BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::onEvent] Session " << &session << " remains in current state";
+            }
           } else {
             // Write an output record.
             // TODO: Priority?
@@ -1092,6 +1099,11 @@ public:
           }
           // Make next request for IO based on current server state.	
       } while(requestIOs());
+
+      BOOST_LOG_TRIVIAL(trace) << "[RuntimeHttpOperator::onEvent] Closing with "
+                               << mOpenSessions.size() << " open sessions "
+                               << mOutputReadySessions.size() << " output ready sessions "
+                               << mCompletedSessions.size() << " completed sessions";        
 
       // All done close up shop.
       requestWrite(0);

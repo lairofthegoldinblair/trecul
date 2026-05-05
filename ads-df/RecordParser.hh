@@ -178,6 +178,7 @@ public:
   static void close(file_type f)
   {
     ::gzclose(f->mFile);
+    delete f;
   }
   static int32_t read(file_type f, uint8_t * buf, int32_t bufSize);
   static int32_t write(file_type f, uint8_t * buf, int32_t bufSize)

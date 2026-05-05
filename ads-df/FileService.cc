@@ -38,7 +38,7 @@ public:
     // std::cout << "[FileServiceHandler::readComplete] " << std::endl;
     RecordBuffer buf;
     // TODO: Elimnate egregious hack
-    buf.Ptr = (uint8_t *) bytesRead;
+    buf.Ptr = (uint8_t *) (std::intptr_t) bytesRead;
     mCompletion.write(buf);
     delete this;
   }
@@ -55,6 +55,13 @@ public:
     RecordBuffer buf;
     // TODO: Elimnate egregious hack
     buf.Ptr = (uint8_t *) new FileServiceFile(f);
+    mCompletion.write(buf);
+    delete this;
+  }
+
+  void closeComplete()
+  {
+    RecordBuffer buf;
     mCompletion.write(buf);
     delete this;
   }
@@ -75,6 +82,8 @@ public:
 		   uint8_t * buffer,
 		   int32_t size,
 		   RuntimePort * completionPort);
+  void requestClose(FileServiceFile * file,
+                    RuntimePort * completionPort);
 };
 
 FileServiceImpl::FileServiceImpl()
@@ -122,6 +131,22 @@ void FileServiceImpl::requestRead(FileServiceFile * file,
 		     
 }
 
+void FileServiceImpl::requestClose(FileServiceFile * file,
+                                   RuntimePort * completionPort)
+{
+  if (!mHdfs) {
+    // std::cout << "[FileServiceImpl::requestOpenForRead] Making async request" << std::endl;
+    mHdfs = AsyncFileSystem::get();
+  }
+
+  FileServiceHandler * handler = new FileServiceHandler(dynamic_cast<ServiceCompletionPort*>(completionPort)->getFifo());
+  // Perhaps someday we want this to be async?
+  // mHdfs->requestClose(file->getHandle(), *handler);
+  AsyncFileSystem::file_traits::close(file->getHandle());
+  delete file;
+  handler->closeComplete();
+}
+
 FileService::FileService(int32_t numThreads)
   :
   mImpl(new FileServiceImpl())
@@ -147,6 +172,12 @@ void FileService::requestRead(FileServiceFile * file,
 			      RuntimePort * completionPort)
 {
   mImpl->requestRead(file, buffer, size, completionPort);
+}
+
+void FileService::requestClose(FileServiceFile * file,
+                               RuntimePort * completionPort)
+{
+  mImpl->requestClose(file, completionPort);
 }
 
 static FileService * gFS=NULL;
