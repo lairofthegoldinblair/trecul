@@ -1094,6 +1094,7 @@ private:
   TreculRecordSerialize * mSerialization;
   TreculRecordDeserialize * mDeserialization;
   TreculRecordSerializedLength * mSerializedLength;
+  TreculPrintOperation * mPrint;
   std::string mTempDir;
   std::size_t mMemory;
 public:
@@ -1129,6 +1130,9 @@ private:
   TreculRecordDeserializeRuntime mDeserialize;
   TreculFunctionReference mSerializedLengthRef;
   TreculRecordSerializedLengthRuntime mSerializedLength;
+  // Print for debugging
+  TreculFunctionReference mPrintRef;
+  TreculRecordPrintRuntime mPrint;  
   // Malloc and free for disk sort runs
   RecordTypeMalloc mMalloc;
   TreculFunctionReference mFreeRef;
@@ -1153,6 +1157,7 @@ private:
     ar & BOOST_SERIALIZATION_NVP(mDeserializeRef);
     ar & BOOST_SERIALIZATION_NVP(mSerializedLengthRef);
     ar & BOOST_SERIALIZATION_NVP(mMalloc);
+    ar & BOOST_SERIALIZATION_NVP(mPrintRef);
     ar & BOOST_SERIALIZATION_NVP(mFreeRef);
     ar & BOOST_SERIALIZATION_NVP(mTempDir);
     ar & BOOST_SERIALIZATION_NVP(mMemoryAllowed);
@@ -1190,6 +1195,35 @@ public:
     mMemoryAllowed(memoryAllowed)
   {
   }
+  RuntimeSortOperatorType(const RecordType * input,
+                          const TreculFreeOperation & freeFunctor,
+                          const TreculPrintOperation & print,
+                          const TreculRecordSerialize & serialize,
+                          const TreculRecordDeserialize & deserialize,
+                          const TreculRecordSerializedLength & serializedLength,
+			  const TreculFunction * keyPrefix,
+			  const TreculFunction * lessFun,
+			  const TreculFunction * presortedEquals,
+			  const TreculFunction * presortedLessThanEquals,
+			  const std::string& tempDir,
+			  std::size_t memoryAllowed)
+    :
+    RuntimeOperatorType("RuntimeSortOperatorType"),
+    mKeyPrefixRef(nullptr != keyPrefix ? keyPrefix->getReference() : TreculFunctionReference()),
+    mLessThanFunRef(nullptr != lessFun ? lessFun->getReference() : TreculFunctionReference()),
+    mPresortedEqualsFunRef(nullptr != presortedEquals ? presortedEquals->getReference() : TreculFunctionReference()),
+    mPresortedLessThanEqualsFunRef(nullptr != presortedLessThanEquals ? presortedLessThanEquals->getReference() : TreculFunctionReference()),
+    mSerializationStateFactory(input),
+    mSerializeRef(serialize.getReference()),
+    mDeserializeRef(deserialize.getReference()),
+    mSerializedLengthRef(serializedLength.getReference()),
+    mMalloc(input->getMalloc()),
+    mPrintRef(print.getReference()),
+    mFreeRef(freeFunctor.getReference()),
+    mTempDir(tempDir),
+    mMemoryAllowed(memoryAllowed)
+  {
+  }
   ~RuntimeSortOperatorType()
   {
   }
@@ -1200,6 +1234,9 @@ public:
     mSerialize = m.getFunction<TreculRecordSerializeRuntime>(mSerializeRef);
     mDeserialize = m.getFunction<TreculRecordDeserializeRuntime>(mDeserializeRef);
     mSerializedLength = m.getFunction<TreculRecordSerializedLengthRuntime>(mSerializedLengthRef);
+    if (!mPrintRef.empty()) {
+      mPrint = m.getFunction<TreculRecordPrintRuntime>(mPrintRef);
+    }
     if (!mKeyPrefixRef.empty()) {
       mKeyPrefix = m.getFunction<TreculFunctionRuntime>(mKeyPrefixRef);
     }

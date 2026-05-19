@@ -1066,6 +1066,7 @@ LogicalSort::LogicalSort()
   mSerialization(nullptr),
   mDeserialization(nullptr),
   mSerializedLength(nullptr),
+  mPrint(nullptr),
   mMemory(128*1024*1024)
 {
 }
@@ -1080,6 +1081,7 @@ LogicalSort::~LogicalSort()
   delete mSerialization;
   delete mDeserialization;
   delete mSerializedLength;
+  delete mPrint;
 }
 
 void LogicalSort::check(PlanCheckContext& ctxt)
@@ -1137,6 +1139,7 @@ void LogicalSort::check(PlanCheckContext& ctxt)
 					  "presort_eq", true);
     mPresortedKeyLessThanEq = LessThanEqualsFunction::get(ctxt, input, input, presortedKeys, true, "presorted_leq");
   }
+  mPrint = new TreculPrintOperation(ctxt.getCodeGenerator(), getInput(0)->getRecordType());
 }
 
 void LogicalSort::create(class RuntimePlanBuilder& plan)
@@ -1144,6 +1147,7 @@ void LogicalSort::create(class RuntimePlanBuilder& plan)
   RuntimeOperatorType * opType = 
     new RuntimeSortOperatorType(getInput(0)->getRecordType(),
                                 *mFree,
+                                *mPrint,
                                 *mSerialization,
                                 *mDeserialization,
                                 *mSerializedLength,
@@ -1823,7 +1827,22 @@ void RuntimeSortVerifyOperator::onEvent(RuntimePort * port)
                                                                                    mInput,
                                                                                    mRuntimeContext);
         if (0 == ret) {
-          throw std::runtime_error("[RuntimeSortVerifyOperator::onEvent] Input not sorted");
+          if (!!getMyOperatorType().mPrint) {
+            std::stringstream sstr1,sstr2;
+            getMyOperatorType().mPrint.imbue(sstr1);
+            getMyOperatorType().mPrint.print(mPrevious, sstr1);
+            getMyOperatorType().mPrint.imbue(sstr2);
+            getMyOperatorType().mPrint.print(mInput, sstr2);
+            getMyOperatorType().mFree.free(mPrevious);
+            getMyOperatorType().mFree.free(mInput);
+            mPrevious = mInput = nullptr;
+            throw std::runtime_error((boost::format("[RuntimeSortVerifyOperator::onEvent] Input not sorted in partition %1%:\nprevious: %2%current: %3%") % getPartition() % sstr1.str() % sstr2.str()).str());
+          } else {          
+            getMyOperatorType().mFree.free(mPrevious);
+            getMyOperatorType().mFree.free(mInput);
+            mPrevious = mInput = nullptr;
+            throw std::runtime_error((boost::format("[RuntimeSortVerifyOperator::onEvent] Input not sorted in partition %1%") % getPartition()).str());
+          }
         }
       }
       if (mPrevious) {
